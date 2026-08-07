@@ -1,0 +1,47 @@
+{
+  "name": "shiori-keeper-frontend",
+  "version": "0.2.2",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "prepare": "nuxt prepare",
+    "dev": "nuxt dev --host 0.0.0.0",
+    "build": "nuxt build",
+    "start": "node .output/server/index.mjs",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview",
+    "e2e": "bash -lc '../scripts/run-e2e-tests.sh'",
+    "e2e:run": "bash -lc 'set -o pipefail; mkdir -p .artifacts && ../scripts/run-e2e-tests.sh | tee .artifacts/playwright-e2e.log'",
+    "e2e:headed": "bash -lc '../scripts/run-e2e-tests.sh --headed'",
+    "test": "bunx vitest run --no-file-parallelism",
+    "typecheck": "vue-tsc --noEmit"
+  },
+  "dependencies": {
+    "@iconify-json/lucide": "^1.2.100",
+    "@iconify-json/simple-icons": "^1.2.75",
+    "@internationalized/date": "^3.12.0",
+    "@nuxt/ui": "^4.6.0",
+    "@tanstack/table-core": "^8.21.3",
+    "@unovis/ts": "^1.6.4",
+    "@unovis/vue": "^1.6.4",
+    "@vueuse/core": "^14.2.1",
+    "@vueuse/nuxt": "^14.2.1",
+    "date-fns": "^4.1.0",
+    "nuxt": "^4.4.2",
+    "scule": "^1.3.0",
+    "tailwindcss": "^4.1.13",
+    "vue": "^3.5.31",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@nuxt/eslint": "^1.15.2",
+    "@playwright/test": "^1.62.1",
+    "@playwright/mcp": "^0.0.70",
+    "@types/node": "^25.6.0",
+    "eslint": "^10.1.0",
+    "typescript": "^6.0.2",
+    "vitest": "^3.2.4",
+    "vue-tsc": "^3.2.6"
+  }
+}

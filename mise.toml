@@ -1,0 +1,123 @@
+[tools]
+act = "latest"
+bun = "1.3.12"
+dbmate = "latest"
+git-cliff = "2.12.0"
+"github:aptible/supercronic" = "latest"
+uv = "latest"
+
+[tasks.dev]
+description = "Start the API and frontend development servers"
+run = "./run-local.sh"
+
+[tasks.setup-hooks]
+description = "Configure repository Git hooks"
+run = "./scripts/setup-repo.sh"
+
+[tasks.api-install]
+description = "Install the API dependencies"
+run = "uv sync --directory api --frozen"
+
+[tasks.api-dev]
+description = "Start the API development server"
+run = "uv run --directory api api-dev"
+
+[tasks.api-lint]
+description = "Lint the API"
+run = "uv run --directory api ruff check ."
+
+[tasks.api-typecheck]
+description = "Type-check the API"
+run = "uv run --directory api pyright"
+
+[tasks.api-test]
+description = "Test the API"
+run = "uv run --directory api pytest -q"
+
+[tasks.frontend-dev]
+description = "Start the frontend development server"
+run = "bun --cwd frontend run dev"
+
+[tasks.frontend-install]
+description = "Install the frontend dependencies"
+run = "bun --cwd frontend install --frozen-lockfile"
+
+[tasks.frontend-generate]
+description = "Generate the frontend static distribution"
+run = "bun --cwd frontend run generate"
+
+[tasks.frontend-test]
+description = "Run frontend unit tests"
+run = "bun --cwd frontend run test"
+
+[tasks.frontend-typecheck]
+description = "Type-check the frontend"
+run = "bun --cwd frontend run typecheck"
+
+[tasks.e2e]
+description = "Run frontend end-to-end tests"
+run = "./scripts/run-e2e-tests.sh"
+
+[tasks.batch-check]
+description = "Check the batch application"
+run = "cargo check --manifest-path batch/Cargo.toml"
+
+[tasks.batch-fmt]
+description = "Format the batch application"
+run = "cargo fmt --manifest-path batch/Cargo.toml"
+
+[tasks.batch-fmt-check]
+description = "Check batch formatting"
+run = "cargo fmt --manifest-path batch/Cargo.toml --check"
+
+[tasks.batch-test]
+description = "Test the batch application"
+run = "cargo test --manifest-path batch/Cargo.toml"
+
+[tasks.extension-dev]
+description = "Start Chrome extension development mode"
+run = "bun --cwd browser_extension run dev"
+
+[tasks.extension-install]
+description = "Install the browser extension dependencies"
+run = "bun --cwd browser_extension install --frozen-lockfile"
+
+[tasks.extension-build]
+description = "Build the Chrome extension"
+run = "bun --cwd browser_extension run build"
+
+[tasks.extension-test]
+description = "Test the browser extension"
+run = "bun --cwd browser_extension run test"
+
+[tasks.extension-typecheck]
+description = "Type-check the browser extension"
+run = "bun --cwd browser_extension run compile"
+
+[tasks.db-up]
+description = "Apply SQLite migrations to data/data.db"
+run = "mise x -- dbmate -u sqlite:data/data.db up"
+
+[tasks.db-down]
+description = "Roll back the latest SQLite migration from data/data.db"
+run = "mise x -- dbmate -u sqlite:data/data.db down"
+
+[tasks.docker-up]
+description = "Build and start the Docker Compose development environment"
+run = "docker compose up --build"
+
+[tasks.docker-down]
+description = "Stop the Docker Compose development environment"
+run = "docker compose down"
+
+[tasks.check-popup-api-contract]
+description = "Check the browser extension popup API contract"
+run = "./scripts/check-browser-extension-popup-api-contract.sh"
+
+[tasks.act-pr]
+description = "Run the pull request workflow locally with act"
+run = "act pull_request -W .github/workflows/pr-tests.yml"
+
+[tasks.test-all]
+description = "Run all repository checks"
+run = "./scripts/run-all-tests.sh"

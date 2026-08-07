@@ -1,0 +1,138 @@
+# LLM Learning Note: rusqlite
+
+This file summarizes the `rusqlite` crate for agents working in this repository.
+It focuses on the mental model, common usage, feature flags, and practical constraints.
+
+## Reading Order
+
+1. [Repository README](../../README.md)
+1. [LLM reading guide](../../llm-reading-guide.md)
+1. `rusqlite` official README
+   - https://github.com/rusqlite/rusqlite?tab=readme-ov-file
+
+## What rusqlite Is
+
+- `rusqlite` is an ergonomic wrapper for using SQLite from Rust.
+- It is the high-level Rust API on top of SQLite C bindings.
+- The core workflow is:
+  - open a `Connection`
+  - create or prepare SQL
+  - bind parameters
+  - read rows through `Row`
+
+## Core Mental Model
+
+- `Connection` represents a live SQLite database connection.
+- `execute(...)` is used for statements that do not return rows.
+- `prepare(...)` creates a reusable `Statement`.
+- `query_map(...)` maps result rows into Rust values or structs.
+- `row.get(index)` converts a column into a Rust type.
+- Parameters are passed as tuples, slices, or empty parameter lists.
+
+## Minimal Example
+
+```rust
+use rusqlite::{Connection, Result};
+
+#[derive(Debug)]
+struct Person {
+    id: i32,
+    name: String,
+    data: Option<Vec<u8>>,
+}
+
+fn main() -> Result<()> {
+    let conn = Connection::open_in_memory()?;
+    conn.execute(
+        "CREATE TABLE person (
+            id    INTEGER PRIMARY KEY,
+            name  TEXT NOT NULL,
+            data  BLOB
+        )",
+        (),
+    )?;
+
+    conn.execute(
+        "INSERT INTO person (name, data) VALUES (?1, ?2)",
+        (&"Steven", &None::<Vec<u8>>),
+    )?;
+
+    let mut stmt = conn.prepare("SELECT id, name, data FROM person")?;
+    let people = stmt.query_map([], |row| {
+        Ok(Person {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            data: row.get(2)?,
+        })
+    })?;
+
+    for person in people {
+        println!("{:?}", person?);
+    }
+
+    Ok(())
+}
+```
+
+## Supported SQLite Version
+
+- The base `rusqlite` package supports SQLite `3.34.1` or newer.
+- Some optional features require a newer SQLite version.
+- If the project must support older SQLite versions, that is an explicit compatibility constraint.
+
+## Feature Flags
+
+- `bundled`
+  - compiles and links SQLite with the crate
+  - useful when system SQLite is missing, old, or hard to link
+  - good default for applications that control their own database runtime
+- `load_extension`
+  - enables loading dynamic SQLite extensions
+- `loadable_extension`
+  - lets Rust code be compiled as a loadable SQLite extension
+- `backup`
+  - exposes SQLite online backup APIs
+- `functions`
+  - registers Rust closures as SQLite functions
+- `window`
+  - adds window function support and implies `functions`
+- `trace`
+  - hooks into tracing and profiling APIs
+- `blob`
+  - provides `Read`, `Write`, and `Seek` access to BLOBs
+- `limits`
+  - exposes per-connection SQLite limits
+- `serde_json`, `chrono`, `time`, `jiff`, `url`
+  - add type conversions for common Rust ecosystem types
+- `sqlcipher`, `bundled-sqlcipher`, `bundled-sqlcipher-vendored-openssl`
+  - enable SQLCipher-backed builds instead of plain SQLite
+
+## Parameter And Type Handling
+
+- Prefer explicit parameter binding instead of string concatenation.
+- Use Rust option types for nullable columns.
+- Use `Option<T>` for values that can be `NULL`.
+- Let `row.get(...)` perform type conversion directly into the target Rust type.
+- When reading into structs, map rows explicitly so the schema contract stays visible.
+
+## Operational Guidance
+
+- Use `bundled` when reproducible builds matter more than linking against the system SQLite.
+- Use the system SQLite only when deployment constraints require it.
+- Keep SQL and row mapping close together so schema changes are easy to audit.
+- Treat feature selection as part of the application build contract, not an implementation detail.
+- For library crates, avoid forcing `bundled` unless you want to own the SQLite runtime choice for consumers.
+
+## Practical Patterns
+
+- For inserts, call `execute(...)` and pass parameters as a tuple.
+- For single-row lookups, use `prepare(...)` plus `query_map(...)` or `query_row(...)`.
+- For bulk reads, keep one prepared statement and iterate the mapped rows.
+- For BLOB data, prefer the `blob` feature over manual byte-buffer hacks when interactive access is needed.
+
+## Key Constraints To Remember
+
+- `rusqlite` is SQLite-specific; do not treat it as a database-agnostic ORM.
+- Feature flags change available APIs and minimum SQLite capabilities.
+- The default build does not necessarily include bundled SQLite.
+- The crate is best used when you want explicit SQL control with Rust-friendly conversion.

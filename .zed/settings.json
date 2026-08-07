@@ -1,0 +1,12 @@
+{
+  "tab_size": 2,
+  "preferred_line_length": 100,
+  "languages": {
+    "Python": {
+      "tab_size": 4
+    },
+    "Vue.js": { "tab_size": 2 },
+    "TypeScript": { "tab_size": 2 }
+  },
+  "format_on_save": "on"
+}

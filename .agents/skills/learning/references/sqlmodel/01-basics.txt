@@ -1,0 +1,66 @@
+SQLModel 基本メモ
+
+1. 何に使うか
+- SQLModel は、Python の型ヒントで DB モデルを定義したいときに使う
+- Pydantic のバリデーションと SQLAlchemy の ORM 的な操作を同じ流れで扱える
+- FastAPI と相性がよく、API の入出力と DB モデルの設計を揃えやすい
+
+2. 基本構文
+```python
+from typing import Optional
+from sqlmodel import Field, SQLModel
+
+
+class Hero(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    name: str
+    secret_name: str
+    age: int | None = None
+```
+
+- `SQLModel` を継承する
+- `table=True` でテーブルとして扱う
+- `Field()` で制約や主キーを指定する
+- `None` を含む型は NULL 許容を表す
+
+3. モデルの考え方
+- `id: int | None = Field(default=None, primary_key=True)` は、自動採番される主キーの典型
+- `name: str` は必須列
+- `age: int | None = None` は省略可能な列
+- API 用の入力モデルは `table=True` を付けず、`BaseModel` 的に使うことも多い
+
+4. DB 接続とテーブル作成
+```python
+from sqlmodel import SQLModel, Session, create_engine
+
+engine = create_engine("sqlite:///database.db")
+SQLModel.metadata.create_all(engine)
+```
+
+- `create_engine()` は接続先を作る
+- `metadata.create_all()` は登録済みテーブルを作る
+- アプリ全体で `engine` を使い回す
+
+5. CRUD の入口
+```python
+from sqlmodel import Session, select
+
+with Session(engine) as session:
+    heroes = session.exec(select(Hero)).all()
+```
+
+- `Session(engine)` でセッションを開く
+- `select(Hero)` で Hero テーブルを読む
+- `session.exec()` の戻り値から `all()` や `first()` を使う
+
+6. 学習で覚える順番
+- まずは単一テーブルの `create/read/update/delete`
+- 次に NULL 許容と主キーの設計
+- その後に関連テーブルと外部キー
+- 最後に FastAPI と組み合わせた入出力分離
+
+7. 実務での注意
+- DB 用モデルと API 用モデルを無理に 1 つへ統合しすぎない
+- 検証ロジックが増えるなら、入力モデル側に寄せる
+- 依存関係が複雑なら、リポジトリやサービス層で扱う
+

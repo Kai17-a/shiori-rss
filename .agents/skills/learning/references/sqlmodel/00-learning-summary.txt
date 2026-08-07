@@ -1,0 +1,41 @@
+SQLModel 学習サマリ
+
+目的:
+- Python の型ヒントを中心に、DB モデルと Pydantic 風のデータ検証を同時に扱う
+- FastAPI と SQLAlchemy の間を、できるだけ素直な書き方でつなぐ
+- 小さな CRUD から、関連テーブルを持つ実用的なアプリまで拡張しやすくする
+
+前提:
+- SQLModel は Pydantic と SQLAlchemy の考え方をまとめたライブラリ
+- 1 つのクラスを「API 入出力」と「DB テーブル」の両方に使える
+- `table=True` を付けるとテーブル定義として扱う
+
+基本の流れ:
+1. `SQLModel` を継承してモデルを書く
+2. `Field()` で主キーや制約を表す
+3. `create_engine()` で接続先を作る
+4. `SQLModel.metadata.create_all(engine)` でテーブルを作る
+5. `Session(engine)` と `select()` で読み書きする
+
+使い分けの感覚:
+- `table=True` のクラス: DB のテーブル
+- `BaseModel` だけのクラス: API のリクエスト/レスポンス
+- 同じ形でも、用途ごとに分けた方が変更に強い
+
+よく使うポイント:
+- 主キーは `Field(default=None, primary_key=True)`
+- 任意項目は `str | None = None` のように書く
+- リレーションは `Relationship` と外部キーで表す
+- 検索は `session.exec(select(Model))` が基本
+
+学習時のチェック項目:
+- モデル定義が DB 用か API 用かを最初に分けて考える
+- NULL 許容と必須項目を型と `Field` で明示する
+- 関連は、単なる ID 参照か、オブジェクト関係かを区別する
+- 変更したらテーブル作成・クエリ・関連読み取りまで通して確認する
+
+参照:
+- https://sqlmodel.tiangolo.com/
+- https://sqlmodel.tiangolo.com/tutorial/
+- https://sqlmodel.tiangolo.com/tutorial/relationship-attributes/
+

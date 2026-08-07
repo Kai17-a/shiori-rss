@@ -1,0 +1,260 @@
+SQLModel LLM Reference
+
+Purpose
+- SQLModel combines Pydantic-style data validation with SQLAlchemy ORM/table mapping.
+- It is best used when you want typed Python models that can serve as:
+  - database table models
+  - request/response schemas
+  - shared domain data shapes
+- The most important design rule is to separate table models from API schemas when their responsibilities differ.
+
+Core Mental Model
+- `SQLModel` without `table=True` is a data model.
+- `SQLModel` with `table=True` is both a data model and a SQLAlchemy-mapped table model.
+- `Field(...)` declares validation details and SQL column configuration.
+- `Session` handles unit-of-work style database operations.
+- `select(...)` builds typed queries for reads.
+- `Relationship(...)` declares object-level relations on top of foreign keys.
+
+When To Use SQLModel
+- Use it for FastAPI services that want strong typing and straightforward SQLAlchemy integration.
+- Use it when you want a simpler model layer than raw SQLAlchemy declarative mapping.
+- Use it when request/response models and persistence models overlap enough to benefit from shared fields and inheritance.
+- Avoid collapsing every concern into one class. Separate models usually produce clearer contracts.
+
+Table Model Basics
+- Typical primary key pattern:
+  - `id: int | None = Field(default=None, primary_key=True)`
+- Nullable columns are represented with optional types and usually `= None`.
+- Indexed columns can use `Field(index=True)`.
+- Foreign keys use `Field(foreign_key="other_table.id")`.
+- SQLModel metadata is created with:
+  - `SQLModel.metadata.create_all(engine)`
+
+Minimal Example
+```python
+from sqlmodel import Field, SQLModel
+
+
+class Hero(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    name: str = Field(index=True)
+    secret_name: str
+    age: int | None = Field(default=None, index=True)
+```
+
+Engine and Session Pattern
+- Create one application-level engine and reuse it.
+- For SQLite in FastAPI examples, SQLModel docs use:
+  - `connect_args = {"check_same_thread": False}`
+- Typical setup:
+```python
+from sqlmodel import Session, SQLModel, create_engine
+
+sqlite_url = "sqlite:///database.db"
+connect_args = {"check_same_thread": False}
+engine = create_engine(sqlite_url, echo=True, connect_args=connect_args)
+
+
+def create_db_and_tables() -> None:
+    SQLModel.metadata.create_all(engine)
+
+
+def get_session():
+    with Session(engine) as session:
+        yield session
+```
+
+CRUD Patterns
+- Create:
+  - instantiate model or use `Model.model_validate(input_model)`
+  - `session.add(obj)`
+  - `session.commit()`
+  - `session.refresh(obj)` to load DB-generated values such as IDs
+- Read:
+  - `session.exec(select(Model)).all()`
+  - `session.get(Model, primary_key)`
+- Update:
+  - load current DB row first
+  - partial update payloads with `model_dump(exclude_unset=True)`
+  - apply with `db_obj.sqlmodel_update(update_data)`
+  - `session.add(db_obj)`, `commit()`, `refresh()`
+- Delete:
+  - load row
+  - `session.delete(obj)`
+  - `session.commit()`
+
+FastAPI Integration
+- Recommended session injection pattern:
+```python
+from fastapi import Depends, FastAPI
+from sqlmodel import Session
+
+app = FastAPI()
+
+
+@app.post("/heroes/")
+def create_hero(*, session: Session = Depends(get_session), hero: HeroCreate):
+    db_hero = Hero.model_validate(hero)
+    session.add(db_hero)
+    session.commit()
+    session.refresh(db_hero)
+    return db_hero
+```
+- The docs consistently move session lifecycle management into a dependency instead of opening a `with Session(...)` block in every route.
+- This makes testing and dependency overrides simpler.
+
+Schema Separation Strategy
+- Prefer a small model family instead of one overloaded model:
+  - `HeroBase`: shared fields
+  - `Hero`: table model
+  - `HeroCreate`: request body for creation
+  - `HeroUpdate`: partial update schema
+  - `HeroPublic`: response schema with required `id`
+- Reason:
+  - request schemas should not expose DB-generated IDs
+  - response schemas should mark fields as required when they are always present in persisted data
+  - update schemas usually need all fields optional
+
+Canonical Example
+```python
+from sqlmodel import Field, SQLModel
+
+
+class HeroBase(SQLModel):
+    name: str = Field(index=True)
+    secret_name: str
+    age: int | None = Field(default=None, index=True)
+
+
+class Hero(HeroBase, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+
+
+class HeroCreate(HeroBase):
+    pass
+
+
+class HeroPublic(HeroBase):
+    id: int
+
+
+class HeroUpdate(SQLModel):
+    name: str | None = None
+    secret_name: str | None = None
+    age: int | None = None
+```
+
+Why Response Models Matter
+- If a persisted object always has an ID, the response schema should declare `id: int`, not `int | None`.
+- This creates a stronger API contract and avoids unnecessary null checks in generated clients and frontend code.
+
+Relationships
+- One-to-many typically uses:
+  - foreign key field on the child model
+  - `Relationship(back_populates="...")` on both sides
+- Example:
+```python
+from sqlmodel import Field, Relationship, SQLModel
+
+
+class Team(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    name: str = Field(index=True)
+    headquarters: str
+    heroes: list["Hero"] = Relationship(back_populates="team")
+
+
+class Hero(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    name: str = Field(index=True)
+    secret_name: str
+    age: int | None = Field(default=None, index=True)
+    team_id: int | None = Field(default=None, foreign_key="team.id")
+    team: Team | None = Relationship(back_populates="heroes")
+```
+
+Many-to-Many
+- SQLModel supports many-to-many via an explicit link table model.
+- The key configuration is `link_model=LinkModel` on both relationship sides.
+- Example pattern:
+```python
+class HeroTeamLink(SQLModel, table=True):
+    team_id: int | None = Field(default=None, foreign_key="team.id", primary_key=True)
+    hero_id: int | None = Field(default=None, foreign_key="hero.id", primary_key=True)
+
+
+class Team(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    name: str = Field(index=True)
+    headquarters: str
+    heroes: list["Hero"] = Relationship(back_populates="teams", link_model=HeroTeamLink)
+
+
+class Hero(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    name: str = Field(index=True)
+    secret_name: str
+    age: int | None = Field(default=None, index=True)
+    teams: list[Team] = Relationship(back_populates="heroes", link_model=HeroTeamLink)
+```
+
+Delete Semantics and Cascades
+- `cascade_delete=True` on `Relationship(...)` configures ORM-side delete cascade behavior.
+- Database-side foreign key behavior can be configured with `ondelete=...`, such as:
+  - `ondelete="CASCADE"`
+  - `ondelete="SET NULL"`
+- These solve different problems:
+  - ORM cascade controls what SQLAlchemy/SQLModel does in Python-side object operations
+  - `ondelete` configures what the database enforces for foreign key deletes
+- Docs note that without explicit `ondelete="SET NULL"` or similar DB constraints, manual DB deletes can leave orphaned references.
+- If the database should handle deletes itself, SQLAlchemy-level passive delete options may be appropriate.
+
+Operational Guidance
+- Treat table models as persistence concerns first, API schemas second.
+- Keep route handlers thin:
+  - parse input with schema models
+  - convert with `model_validate`
+  - persist through session/repository layer
+- Use update schemas and `exclude_unset=True` for PATCH semantics.
+- Use `session.get()` for direct primary-key lookup.
+- Prefer explicit response models in FastAPI routes.
+- For larger applications, place SQLModel behind repository/service boundaries instead of putting all query logic in routes.
+
+Common Pitfalls
+- Using a table model directly as create input and accidentally allowing client-supplied IDs.
+- Returning table models directly when the API contract needs stronger guarantees than the DB model provides.
+- Forgetting `session.refresh()` after inserts when later code expects generated fields.
+- Overusing one giant model instead of separate create/update/public schemas.
+- Confusing ORM cascade behavior with database foreign key `ON DELETE` behavior.
+- Assuming many-to-many works without an explicit link table.
+
+Recommended Learning Order
+1. Single-table models with `Field(...)`
+2. Engine and session lifecycle
+3. Basic CRUD with `select(...)`, `session.get(...)`, `commit()`, `refresh()`
+4. FastAPI dependency injection for sessions
+5. Separate create/update/public models
+6. One-to-many relationships
+7. Many-to-many link tables
+8. Delete semantics: ORM cascade vs database `ondelete`
+
+Source Scope
+- Existing local notes:
+  - `specs/learning/sqlmodel/00-learning-summary.txt`
+  - `specs/learning/sqlmodel/01-basics.txt`
+  - `specs/learning/sqlmodel/02-fastapi-integration.txt`
+- Official SQLModel docs:
+  - https://sqlmodel.tiangolo.com/learn/
+  - https://sqlmodel.tiangolo.com/tutorial/fastapi/multiple-models/
+  - https://sqlmodel.tiangolo.com/tutorial/fastapi/session-with-dependency/
+  - https://sqlmodel.tiangolo.com/tutorial/fastapi/relationships/
+  - https://sqlmodel.tiangolo.com/tutorial/many-to-many/create-models-with-link/
+  - https://sqlmodel.tiangolo.com/tutorial/relationship-attributes/cascade-delete-relationships/
+
+Short Takeaway
+- SQLModel is most effective when you use typed models deliberately:
+  - table models for persistence
+  - separate schemas for API contracts
+  - dependency-managed sessions for FastAPI
+  - explicit relationship and delete behavior instead of relying on defaults

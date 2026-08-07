@@ -1,0 +1,69 @@
+SQLModel と FastAPI の接続メモ
+
+1. 役割分担
+- FastAPI は HTTP の受け口
+- SQLModel は DB モデルとデータ検証の土台
+- 実務では、API 層・サービス層・DB 層を分けると保守しやすい
+
+2. よくある構成
+```python
+from fastapi import FastAPI, Depends
+from sqlmodel import SQLModel, Session, select
+
+app = FastAPI()
+
+def get_session():
+    with Session(engine) as session:
+        yield session
+```
+
+- `Depends(get_session)` でセッションを注入する
+- 1 リクエストごとにセッションを開閉する形がわかりやすい
+
+3. 作成 API の流れ
+```python
+@app.post("/heroes")
+def create_hero(hero: Hero, session: Session = Depends(get_session)):
+    session.add(hero)
+    session.commit()
+    session.refresh(hero)
+    return hero
+```
+
+- 受け取ったデータを `session.add()` する
+- `commit()` で確定する
+- `refresh()` で自動生成された値を反映する
+
+4. 読み取り API の流れ
+```python
+@app.get("/heroes")
+def list_heroes(session: Session = Depends(get_session)):
+    return session.exec(select(Hero)).all()
+```
+
+- クエリは `select()` で作る
+- 単純な一覧は `all()` で返す
+- 条件付き検索は `where()` を組み合わせる
+
+5. API 入出力の分離
+- POST/PUT の入力は `HeroCreate` や `HeroUpdate` のように分けると安全
+- DB レコードの構造と、外部公開するレスポンスの構造は一致しなくてよい
+- 返却時に必要な関連データだけを組み立てる設計が扱いやすい
+
+6. 関連の扱い
+- `foreign_key="team.id"` のように外部キーを張る
+- `Relationship()` でオブジェクトとして参照できる
+- 単なる ID の受け渡しと、関連オブジェクトの読み出しを分けて考える
+
+7. FastAPI での学習ポイント
+- セッションの生成と破棄を依存関係に閉じる
+- バリデーションはできるだけリクエストモデル側で行う
+- DB 操作はサービス層かリポジトリ層に寄せる
+- テストでは SQLite の一時 DB で挙動を確認する
+
+8. このリポジトリでの読み替え
+- `api/model/models.py` は Pydantic ベースの入出力モデル
+- `api/repositories/` は DB アクセスの責務
+- `api/services/` は業務ロジックの責務
+- 将来的に SQLModel を導入するなら、この分割と整合する形で置く
+

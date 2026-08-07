@@ -1,0 +1,17 @@
+[package]
+name = "shiori-keeper-batch"
+version = "0.2.2"
+edition = "2024"
+
+[dependencies]
+chrono = { version = "0.4.44", default-features = false }
+feed-rs = "2.4.0"
+rusqlite = { version = "0.39.0", features = ["bundled"] }
+reqwest = { version = "0.13", features = ["json"] }
+tokio = { version = "1", features = ["full"] }
+serde_json = { version = "1.0", default-features = false, features = ["alloc"] }
+scraper = "0.27"
+
+[dev-dependencies]
+tempfile = "3"
+wiremock = "0.6"

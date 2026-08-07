@@ -1,0 +1,64 @@
+# LLM 読み学習ガイド: dbmate
+
+このファイルは、このリポジトリで `dbmate` を扱うときに他のエージェントが先に読むための要約である。
+対象は主に migration 作成、適用、ロールバック、DB スキーマ出力の基本挙動。
+
+## 読む順番
+
+1. [README.md](../../README.md)
+1. [AGENTS.md](../../AGENTS.md)
+1. `api/` 配下の migration と DB 初期化コード
+1. `dbmate` 公式 README の該当箇所
+   - Rolling Back Migrations
+   - Running Migrations
+   - Command Line Options
+
+## dbmate の基本
+
+- `dbmate` は DB migration ツールである
+- このリポジトリでは `mise x -- dbmate <command>` で実行する
+- SQLite の接続先は `-u "sqlite:data/data.db"` のようにコマンド引数で指定する
+- `dbmate up` は DB を作成し、pending migrations を適用する
+- `dbmate migrate` は pending migrations を適用する。DB の作成はしない
+- `dbmate rollback` は直近 1 件の migration を戻す
+- `dbmate down` は `rollback` の別名である
+- `dbmate status` は migration 一覧の状態確認に使う
+- `dbmate dump` は現在のスキーマを `schema.sql` に書き出す
+
+## ロールバックの要点
+
+- dbmate はデフォルトでは rollback 方法を自動推論しない
+- rollback したい migration には `-- migrate:down` セクションを必ず実装する
+- `-- migrate:up` と `-- migrate:down` は migration ファイル内で対になる
+- 例:
+
+```sql
+-- migrate:up
+create table users (
+  id integer,
+  name varchar(255),
+  email varchar(255) not null
+);
+
+-- migrate:down
+drop table users;
+```
+
+- `dbmate rollback` 実行時は、最後に適用された migration の `migrate:down` が実行される
+
+## 運用上の注意
+
+- migration は数値順で適用される
+- ただし、独立ブランチで古い番号の migration が後から入ると、適用順が想定外になる可能性がある
+- 開発時に rollback を使う migration には、破壊的変更だけでなく復元可能性も意識する
+- `dbmate up` を使うか `dbmate migrate` を使うかは、DB 作成まで含めるかで選ぶ
+
+## このリポジトリでの使い方
+
+- API 側の DB 初期化や migration と整合することを優先する
+- SQLite を前提にした migration でも、`rollback` 用の `migrate:down` を省略しない
+- 変更時は `up` と `down` の両方向が破綻しないか確認する
+
+## 参考
+
+- https://github.com/amacneil/dbmate?tab=readme-ov-file#rolling-back-migrations

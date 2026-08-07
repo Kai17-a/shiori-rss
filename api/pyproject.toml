@@ -1,0 +1,38 @@
+[project]
+name = "shiori-keeper"
+version = "0.2.2"
+description = "Keep borowser bookmarks"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.13"
+dependencies = [
+    "beautifulsoup4>=4.15.0",
+    "fastapi[standard]>=0.135.3",
+    "feedparser>=6.0.11",
+    "hypothesis>=6.151.12",
+    "httpx>=0.28.1",
+    "pydantic>=2.12.5",
+    "pytest>=9.0.3",
+    "sqlmodel>=0.0.24",
+]
+
+[project.scripts]
+api-dev = "api.main:dev"
+api-run = "api.main:serve"
+
+[dependency-groups]
+dev = [
+    "pyright>=1.1.408",
+    "ruff>=0.15.10",
+]
+
+[tool.uv]
+package = true
+
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["api", "api.model", "api.repositories", "api.routers", "api.services"]
+package-dir = { "api" = "." }

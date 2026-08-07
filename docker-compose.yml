@@ -1,0 +1,15 @@
+services:
+  shiori-keeper:
+    container_name: shiori-keeper-local
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: /data/data.db
+      RSS_CRON_SCHEDULE: "${RSS_CRON_SCHEDULE:-0 * * * *}"
+      TZ: "${TZ:-UTC}"
+    ports:
+      - "3033:3000"
+      - "8044:8000"
+    volumes:
+      - ./data:/data

@@ -1,0 +1,9 @@
+beautifulsoup4>=4.15.0
+fastapi[standard]>=0.111.0
+feedparser>=6.0.11
+httpx>=0.27.0
+hypothesis>=6.100.0
+pydantic>=2.7.0
+pytest>=8.2.0
+sqlmodel>=0.0.24
+pyright>=1.1.408

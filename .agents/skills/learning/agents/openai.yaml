@@ -1,0 +1,4 @@
+interface:
+  display_name: "Learning"
+  short_description: "Load repository learning notes for API and batch work"
+  default_prompt: "Use the learning skill, read the relevant SQLModel, dbmate, or rusqlite notes from references/, and apply them before editing api/ or batch/ code."

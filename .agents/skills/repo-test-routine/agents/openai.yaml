@@ -1,0 +1,4 @@
+interface:
+  display_name: "Repo Test Routine"
+  short_description: "Run and verify the repository test workflow"
+  default_prompt: "Use this skill when the task is about running or verifying tests in this repository. Prefer scripts/run-all-tests.sh for full verification and scripts/run-e2e-tests.sh for browser end-to-end checks. When API code changes, run ruff, pyright, and pytest for the affected package. When frontend code changes, run bun run test and E2E as needed. Preserve unrelated worktree changes."

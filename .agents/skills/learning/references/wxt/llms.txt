@@ -1,0 +1,106 @@
+# WXT 学習メモ
+
+## 公式情報
+
+- 公式サイト: https://wxt.dev/
+- GitHub: https://github.com/wxt-dev/wxt
+
+## 概要
+
+WXT は Web Extension 向けの次世代フレームワークである。
+Nuxt に似た開発体験を Web Extension に持ち込み、TypeScript 前提で高速な開発と配布を支援する。
+
+## 主要な特徴
+
+- Chrome, Firefox, Edge, Safari など主要ブラウザを対象にビルドできる
+- Manifest V2 と Manifest V3 の両方を同一コードベースで扱える
+- HMR と高速な再読み込みにより開発サイクルが速い
+- ファイルベースの entrypoints から manifest を生成する
+- TypeScript と auto-imports を標準で活用できる
+- Vue, React, Svelte など特定のフロントエンドに固定されない
+- 自動公開や ZIP 作成、アップロード、提出までの支援機能がある
+
+## プロジェクト構造
+
+WXT は `entrypoints/` を中心にした明確な構成を採る。
+
+- `entrypoints/`: 拡張機能の各エントリーポイント
+- `components/`, `composables/`, `hooks/`, `utils/`: 既定で auto-import 対象
+- `assets/`: ビルド処理される静的資産
+- `public/`: そのまま出力へコピーするファイル
+- `modules/`: ローカル WXT モジュール
+- `wxt.config.ts`: メイン設定
+- `.wxt/`: 生成物と型定義
+- `.output/`: ビルド成果物
+
+`srcDir` や各種ディレクトリ名は設定で変更できる。
+
+## エントリーポイント
+
+WXT は `entrypoints/` 配下のファイルを拡張機能の入力として扱う。
+HTML, JS, CSS, TS, JSX, SCSS など Vite が扱える形式を利用できる。
+
+- `background`: バックグラウンド処理
+- `popup`: ポップアップ UI
+- `options`: オプション画面
+- `content`: コンテンツスクリプト
+
+entrypoint ごとの設定は別ファイルに分けず、各 entrypoint 内で宣言する。
+HTML entrypoint は `<meta>` で manifest 情報を指定する。
+
+## Manifest
+
+WXT では `manifest.json` を手で管理しない。
+代わりに以下をまとめて生成する。
+
+- `wxt.config.ts` のグローバル設定
+- entrypoint ごとの設定
+- WXT モジュール
+- hooks
+
+manifest は browser や target に応じて動的に組み立てられる。
+MV3 形式で書けば、必要に応じて MV2 へ変換される。
+
+## Auto-imports
+
+WXT は `unimport` を使って auto-imports を提供する。
+
+既定で auto-import 対象になる主なディレクトリ:
+
+- `<srcDir>/components/*`
+- `<srcDir>/composables/*`
+- `<srcDir>/hooks/*`
+- `<srcDir>/utils/*`
+
+TypeScript とエディタ補完のために `wxt prepare` を実行する。
+必要なら `#imports` から明示的に import もできる。
+
+## Extension APIs
+
+WXT はブラウザごとの差異を吸収して `browser` を共通 API として扱う。
+これにより promise ベースの拡張 API をクロスブラウザで使いやすい。
+
+## ストレージ
+
+WXT には拡張機能の storage API を扱うための簡易ラッパーがある。
+利用時は `storage` 権限が必要になる。
+
+## このリポジトリでの使いどころ
+
+このリポジトリの `web_extension/` で WXT を使う場合、次を押さえる。
+
+- entrypoints ベースで UI と background を分ける
+- `wxt.config.ts` で manifest と build 挙動を制御する
+- auto-imports を前提に `composables/` と `utils/` を整理する
+- MV2/MV3 の差分は WXT の変換に寄せる
+
+## 参照した公式ソース
+
+- https://wxt.dev/
+- https://wxt.dev/guide/essentials/project-structure
+- https://wxt.dev/guide/essentials/entrypoints.html
+- https://wxt.dev/guide/essentials/config/manifest.html
+- https://wxt.dev/guide/essentials/config/auto-imports
+- https://wxt.dev/guide/essentials/extension-apis
+- https://wxt.dev/storage.html
+- https://github.com/wxt-dev/wxt
