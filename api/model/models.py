@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import ClassVar
+from typing import ClassVar, Literal
 
 from pydantic import AnyHttpUrl, BaseModel, Field as PydField, field_validator, model_validator
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, String, Text, text
@@ -243,6 +243,49 @@ class SettingsWebhookSummaryResponse(BaseModel):
 
 class SettingsWebhookSummaryUpdate(BaseModel):
     enabled: bool
+
+
+class LLMSettingsUpdate(BaseModel):
+    provider: Literal["vllm", "ollama", "openai"]
+    base_url: AnyHttpUrl
+    api_key: str | None = None
+    clear_api_key: bool = False
+    model: str = PydField(min_length=1)
+
+    @field_validator("model")
+    @classmethod
+    def normalize_model(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Model cannot be empty")
+        return value
+
+    @field_validator("api_key")
+    @classmethod
+    def normalize_api_key(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        return value.strip() or None
+
+
+class LLMSettingsResponse(BaseModel):
+    provider: str
+    base_url: str
+    api_key_configured: bool
+    model: str
+
+
+class LLMSettingsTestRequest(BaseModel):
+    provider: Literal["vllm", "ollama", "openai"] | None = None
+    base_url: AnyHttpUrl | None = None
+    api_key: str | None = None
+    clear_api_key: bool = False
+    model: str | None = None
+
+
+class LLMSettingsTestResponse(BaseModel):
+    ok: bool
+    reply: str | None = None
 
 
 class ErrorResponse(BaseModel):

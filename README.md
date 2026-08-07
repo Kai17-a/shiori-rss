@@ -23,12 +23,13 @@ docker run --rm -p 3000:3000 -p 8000:8000 \
 - Discord、Slack、Microsoft Teams Webhook への新着通知
 - フィードごとの通知先選択と重複通知防止
 - 通知への記事概要の有無、ライト・ダーク・システムテーマ設定
+- Ollama、vLLM、OpenAI互換LLMの接続設定と疎通テスト
 
 ## Screens
 
 - `RSS`: フィード管理、定期実行設定、手動実行
 - `RSS detail`: 記事履歴
-- `Settings`: テーマと Webhook 管理
+- `Settings`: テーマ、Webhook、LLM接続の管理
 
 データは SQLite に保存されます。フィード URL と Webhook URL は重複登録できません。
 

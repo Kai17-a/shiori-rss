@@ -3,6 +3,10 @@ from fastapi import APIRouter, Depends
 from api.dependencies import get_settings_service
 from api.model.models import (
     ErrorResponse,
+    LLMSettingsResponse,
+    LLMSettingsTestRequest,
+    LLMSettingsTestResponse,
+    LLMSettingsUpdate,
     SettingsRssExecutionResponse,
     SettingsRssExecutionUpdate,
     SettingsRssWebhookNotificationResponse,
@@ -19,6 +23,32 @@ from api.model.models import (
 from api.services.settings_service import SettingsService
 
 router = APIRouter(prefix="/settings", tags=["settings"])
+
+
+@router.get("/llm", status_code=200, response_model=LLMSettingsResponse)
+def get_llm_settings(service: SettingsService = Depends(get_settings_service)):
+    return service.get_llm_settings()
+
+
+@router.put("/llm", status_code=200, response_model=LLMSettingsResponse)
+def set_llm_settings(
+    body: LLMSettingsUpdate,
+    service: SettingsService = Depends(get_settings_service),
+):
+    return service.set_llm_settings(body)
+
+
+@router.delete("/llm", status_code=204)
+def delete_llm_settings(service: SettingsService = Depends(get_settings_service)):
+    service.delete_llm_settings()
+
+
+@router.post("/llm/test", status_code=200, response_model=LLMSettingsTestResponse)
+def test_llm_settings(
+    body: LLMSettingsTestRequest,
+    service: SettingsService = Depends(get_settings_service),
+):
+    return service.test_llm_settings(body)
 
 
 @router.get("/webhooks", status_code=200, response_model=SettingsWebhookListResponse)

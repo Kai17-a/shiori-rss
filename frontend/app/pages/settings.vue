@@ -37,6 +37,100 @@
         </UPageCard>
 
         <UPageCard
+          title="LLM connection"
+          description="Configure and verify an Ollama, vLLM, or OpenAI-compatible endpoint"
+          :ui="{ body: 'space-y-5' }"
+        >
+          <UAlert
+            v-if="!llmConfigured && !llmLoading"
+            title="LLM settings are not configured"
+            description="Test and save a connection to make it available to the application."
+            color="warning"
+            variant="soft"
+          />
+
+          <form class="grid gap-4 lg:grid-cols-2" @submit.prevent="saveLlmSettings">
+            <UFormField label="Provider" required class="w-full">
+              <USelect
+                v-model="llmForm.provider"
+                :items="llmProviderOptions"
+                value-key="value"
+                label-key="label"
+                class="w-full"
+              />
+            </UFormField>
+
+            <UFormField label="Model" required class="w-full">
+              <UInput
+                v-model="llmForm.model"
+                class="w-full"
+                placeholder="e.g. llama3.2 or gpt-4.1-mini"
+              />
+            </UFormField>
+
+            <UFormField
+              label="Base URL"
+              required
+              description="For vLLM and OpenAI-compatible servers, include the /v1 path."
+              class="w-full lg:col-span-2"
+            >
+              <UInput
+                v-model="llmForm.baseUrl"
+                class="w-full"
+                placeholder="http://127.0.0.1:11434"
+              />
+            </UFormField>
+
+            <UFormField
+              label="API key"
+              :description="llmApiKeyDescription"
+              class="w-full lg:col-span-2"
+            >
+              <UInput
+                v-model="llmForm.apiKey"
+                type="password"
+                autocomplete="new-password"
+                class="w-full"
+                placeholder="Optional for local servers"
+              />
+            </UFormField>
+
+            <UCheckbox
+              v-if="llmSettings?.api_key_configured"
+              v-model="llmForm.clearApiKey"
+              label="Remove the saved API key"
+              class="lg:col-span-2"
+            />
+
+            <div class="flex flex-wrap items-center gap-3 lg:col-span-2">
+              <UButton
+                type="button"
+                color="warning"
+                variant="ghost"
+                icon="i-lucide-plug-zap"
+                :loading="llmTesting"
+                @click="testLlmSettings"
+              >
+                Test
+              </UButton>
+              <UButton type="submit" icon="i-lucide-save" :loading="llmSaving">
+                Save LLM settings
+              </UButton>
+              <UButton
+                v-if="llmConfigured"
+                type="button"
+                color="error"
+                variant="ghost"
+                icon="i-lucide-trash-2"
+                @click="llmDeleteOpen = true"
+              >
+                Delete
+              </UButton>
+            </div>
+          </form>
+        </UPageCard>
+
+        <UPageCard
           title="Webhooks"
           description="Register the Discord, Slack, or Microsoft Teams webhooks used by RSS execution"
           :ui="{ body: 'space-y-5' }"
@@ -153,6 +247,15 @@
           @confirm="confirmDeleteWebhook"
         />
 
+        <DeleteConfirmModal
+          v-model:open="llmDeleteOpen"
+          title="Delete LLM settings"
+          subject="the saved LLM connection"
+          confirm-label="Delete settings"
+          :loading="llmDeleting"
+          @confirm="deleteLlmSettings"
+        />
+
       </div>
     </template>
   </UDashboardPanel>
@@ -161,6 +264,9 @@
 <script setup lang="ts">
 import type { TabsItem } from "@nuxt/ui";
 import type {
+  LLMProvider,
+  LLMSettingsResponse,
+  LLMSettingsTestResponse,
   SettingsWebhookListResponse,
   SettingsWebhookPingResponse,
   SettingsWebhookResponse,
@@ -197,6 +303,150 @@ const webhookForm = reactive({ name: "", webhookUrl: "" });
 const webhookSummaryEnabled = ref(true);
 const webhookSummaryLoading = ref(false);
 const webhookSummarySaving = ref(false);
+const llmSettings = ref<LLMSettingsResponse | null>(null);
+const llmLoading = ref(false);
+const llmSaving = ref(false);
+const llmTesting = ref(false);
+const llmDeleting = ref(false);
+const llmDeleteOpen = ref(false);
+const llmForm = reactive({
+  provider: "ollama" as LLMProvider,
+  baseUrl: "http://127.0.0.1:11434",
+  model: "",
+  apiKey: "",
+  clearApiKey: false,
+});
+const llmProviderOptions = [
+  { label: "Ollama", value: "ollama" as const },
+  { label: "vLLM", value: "vllm" as const },
+  { label: "OpenAI-compatible", value: "openai" as const },
+];
+const llmConfigured = computed(() => llmSettings.value !== null);
+const llmApiKeyDescription = computed(() =>
+  llmSettings.value?.api_key_configured
+    ? "An API key is saved. Leave this blank to keep it unchanged."
+    : "Optional for local servers that do not require authentication.",
+);
+
+const loadLlmSettings = async () => {
+  llmLoading.value = true;
+  try {
+    const response = await request<LLMSettingsResponse>("/settings/llm");
+    llmSettings.value = response;
+    llmForm.provider = response.provider as LLMProvider;
+    llmForm.baseUrl = response.base_url;
+    llmForm.model = response.model;
+    llmForm.apiKey = "";
+    llmForm.clearApiKey = false;
+  } catch (err) {
+    if (!(err instanceof Error) || !err.message.includes("not configured")) {
+      toast.show({
+        title: "Failed to load LLM settings.",
+        description: err instanceof Error ? err.message : undefined,
+        color: "error",
+        icon: "i-lucide-circle-alert",
+      });
+    }
+    llmSettings.value = null;
+  } finally {
+    llmLoading.value = false;
+  }
+};
+
+const buildLlmBody = () => ({
+  provider: llmForm.provider,
+  base_url: llmForm.baseUrl.trim(),
+  model: llmForm.model.trim(),
+  ...(llmForm.apiKey.trim() ? { api_key: llmForm.apiKey.trim() } : {}),
+  clear_api_key: llmForm.clearApiKey,
+});
+
+const validateLlmForm = () => {
+  if (llmForm.baseUrl.trim() && llmForm.model.trim()) return true;
+  toast.show({
+    title: "Base URL and model are required.",
+    color: "error",
+    icon: "i-lucide-circle-alert",
+  });
+  return false;
+};
+
+const testLlmSettings = async () => {
+  if (!validateLlmForm()) return;
+  llmTesting.value = true;
+  try {
+    await request<LLMSettingsTestResponse>("/settings/llm/test", {
+      method: "POST",
+      body: JSON.stringify(buildLlmBody()),
+    });
+    toast.show({
+      title: "LLM connection is working.",
+      color: "success",
+      icon: "i-lucide-check",
+    });
+  } catch (err) {
+    toast.show({
+      title: "LLM connection test failed.",
+      description: err instanceof Error ? err.message : undefined,
+      color: "error",
+      icon: "i-lucide-circle-alert",
+    });
+  } finally {
+    llmTesting.value = false;
+  }
+};
+
+const saveLlmSettings = async () => {
+  if (!validateLlmForm()) return;
+  llmSaving.value = true;
+  try {
+    llmSettings.value = await request<LLMSettingsResponse>("/settings/llm", {
+      method: "PUT",
+      body: JSON.stringify(buildLlmBody()),
+    });
+    llmForm.apiKey = "";
+    llmForm.clearApiKey = false;
+    toast.show({
+      title: "LLM settings tested and saved.",
+      color: "success",
+      icon: "i-lucide-check",
+    });
+  } catch (err) {
+    toast.show({
+      title: "Failed to save LLM settings.",
+      description: err instanceof Error ? err.message : undefined,
+      color: "error",
+      icon: "i-lucide-circle-alert",
+    });
+  } finally {
+    llmSaving.value = false;
+  }
+};
+
+const deleteLlmSettings = async () => {
+  llmDeleting.value = true;
+  try {
+    await request("/settings/llm", { method: "DELETE" });
+    llmSettings.value = null;
+    llmForm.apiKey = "";
+    llmForm.clearApiKey = false;
+    llmDeleteOpen.value = false;
+    toast.show({
+      title: "LLM settings deleted.",
+      color: "success",
+      icon: "i-lucide-check",
+    });
+  } catch (err) {
+    toast.show({
+      title: "Failed to delete LLM settings.",
+      description: err instanceof Error ? err.message : undefined,
+      color: "error",
+      icon: "i-lucide-circle-alert",
+    });
+  } finally {
+    llmDeleting.value = false;
+  }
+};
 
 const loadWebhooks = async () => {
   webhookLoading.value = true;
@@ -417,6 +667,6 @@ const confirmDeleteWebhook = async () => {
 };
 
 onMounted(async () => {
-  await Promise.all([loadWebhooks(), loadWebhookSummary()]);
+  await Promise.all([loadLlmSettings(), loadWebhooks(), loadWebhookSummary()]);
 });
 </script>

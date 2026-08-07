@@ -7,9 +7,6 @@ DROP TABLE IF EXISTS tags;
 DROP TABLE IF EXISTS bookmarks;
 DROP TABLE IF EXISTS folders;
 
-DELETE FROM app_settings
-WHERE key IN ('llm_provider', 'llm_base_url', 'llm_api_key', 'llm_model');
-
 -- migrate:down
 CREATE TABLE IF NOT EXISTS folders (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

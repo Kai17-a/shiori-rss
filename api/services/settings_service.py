@@ -5,6 +5,10 @@ from fastapi import HTTPException
 
 from api.database import get_db
 from api.model.models import (
+    LLMSettingsResponse,
+    LLMSettingsTestRequest,
+    LLMSettingsTestResponse,
+    LLMSettingsUpdate,
     SettingsRssExecutionResponse,
     SettingsRssExecutionUpdate,
     SettingsRssWebhookNotificationResponse,
@@ -20,6 +24,13 @@ from api.model.models import (
 )
 from api.repositories.settings_repo import SettingsRepository
 from api.repositories.webhook_endpoint_repo import WebhookEndpointRepository
+from api.services.llm_service import (
+    LLM_SETTING_KEYS,
+    LLMConfig,
+    load_llm_config,
+    save_llm_config,
+    test_llm_connection,
+)
 from api.services.webhook_service import (
     build_webhook_payload,
     detect_webhook_service,
@@ -118,6 +129,85 @@ class SettingsService:
             )
 
         return SettingsWebhookPingResponse(pong=True)
+
+    def _to_llm_settings_response(self, config: LLMConfig) -> LLMSettingsResponse:
+        return LLMSettingsResponse(
+            provider=config.provider,
+            base_url=config.base_url,
+            api_key_configured=bool(config.api_key),
+            model=config.model,
+        )
+
+    def get_llm_settings(self) -> LLMSettingsResponse:
+        with get_db() as conn:
+            config = load_llm_config(SettingsRepository(conn))
+            if config is None:
+                raise HTTPException(
+                    status_code=404, detail="LLM settings are not configured"
+                )
+            return self._to_llm_settings_response(config)
+
+    def set_llm_settings(self, data: LLMSettingsUpdate) -> LLMSettingsResponse:
+        with get_db() as conn:
+            saved = load_llm_config(SettingsRepository(conn))
+        api_key = (
+            None
+            if data.clear_api_key
+            else data.api_key or (saved.api_key if saved is not None else None)
+        )
+        config = LLMConfig(
+            provider=data.provider,
+            base_url=str(data.base_url),
+            api_key=api_key,
+            model=data.model,
+        )
+        test_llm_connection(config)
+        with get_db() as conn:
+            save_llm_config(SettingsRepository(conn), config)
+        return self._to_llm_settings_response(config)
+
+    def delete_llm_settings(self) -> None:
+        with get_db() as conn:
+            repo = SettingsRepository(conn)
+            for key in LLM_SETTING_KEYS:
+                repo.delete(key)
+
+    def test_llm_settings(
+        self, data: LLMSettingsTestRequest
+    ) -> LLMSettingsTestResponse:
+        with get_db() as conn:
+            saved = load_llm_config(SettingsRepository(conn))
+        config = self._merge_llm_config(saved, data)
+        if config is None:
+            raise HTTPException(
+                status_code=400, detail="LLM settings are not configured"
+            )
+        reply = test_llm_connection(config)
+        return LLMSettingsTestResponse(ok=True, reply=reply)
+
+    def _merge_llm_config(
+        self, saved: LLMConfig | None, data: LLMSettingsTestRequest
+    ) -> LLMConfig | None:
+        provider = data.provider or (saved.provider if saved else None)
+        base_url = (
+            str(data.base_url) if data.base_url else (saved.base_url if saved else None)
+        )
+        model = data.model.strip() if data.model else (saved.model if saved else None)
+        if not provider or not base_url or not model:
+            return None
+        api_key = (
+            None
+            if data.clear_api_key
+            else data.api_key
+            if data.api_key is not None
+            else (saved.api_key if saved else None)
+        )
+        return LLMConfig(
+            provider=provider,
+            base_url=base_url,
+            api_key=api_key,
+            model=model,
+        )
 
     def get_rss_execution(self) -> SettingsRssExecutionResponse:
         with get_db() as conn:

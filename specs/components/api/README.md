@@ -4,6 +4,7 @@ FastAPI は `/health`、`/rss-feeds`、`/settings` のルートだけを公開�
 
 - RSS feed: 作成、一覧、詳細、更新、削除、記事履歴、手動実行
 - Settings: Webhook CRUD・疎通確認、定期実行、定期通知、記事概要の設定
+- LLM settings: 接続情報の取得、実接続テスト後の保存、削除、保存前テスト
 - エラー: `{"detail": ...}`。入力不正は 422、未検出は 404、重複は 409、外部通知失敗は 502 とする。
 - 一覧: `items`, `total`, `page`, `per_page`, `total_pages` を返す。
 

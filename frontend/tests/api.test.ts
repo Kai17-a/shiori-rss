@@ -35,7 +35,12 @@ describe("API helpers", () => {
 
     const baseUrl = ref("/api/");
     const { request } = createHttpFetcher(() => baseUrl.value);
-    for (const path of ["/health", "/rss-feeds", "/settings/webhooks"]) {
+    for (const path of [
+      "/health",
+      "/rss-feeds",
+      "/settings/webhooks",
+      "/settings/llm",
+    ]) {
       await expect(request(path)).resolves.toEqual({ ok: true });
     }
     expect(fetchMock).toHaveBeenCalledWith("/api/rss-feeds", expect.any(Object));

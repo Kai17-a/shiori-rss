@@ -9,6 +9,8 @@ from pydantic import ValidationError
 
 from api.database import initialize_database
 from api.model.models import (
+    LLMSettingsTestRequest,
+    LLMSettingsUpdate,
     RSSFeedCreate,
     RSSFeedUpdate,
     SettingsRssExecutionUpdate,
@@ -98,6 +100,17 @@ class CompatTestClient:
 
     def _settings_response(self, method: str, path: str, json):
         service = SettingsService()
+        if method == "GET" and path == "/settings/llm":
+            return self._ok(service.get_llm_settings().model_dump())
+        if method == "PUT" and path == "/settings/llm":
+            body = LLMSettingsUpdate(**(json or {}))
+            return self._ok(service.set_llm_settings(body).model_dump())
+        if method == "DELETE" and path == "/settings/llm":
+            service.delete_llm_settings()
+            return self._ok(None, 204)
+        if method == "POST" and path == "/settings/llm/test":
+            body = LLMSettingsTestRequest(**(json or {}))
+            return self._ok(service.test_llm_settings(body).model_dump())
         if method == "GET" and path == "/settings/webhooks":
             return self._ok(service.list_webhooks().model_dump())
         if method == "POST" and path == "/settings/webhooks":
