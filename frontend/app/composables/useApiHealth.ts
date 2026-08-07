@@ -6,7 +6,7 @@ import {
 
 export const useApiHealth = () => {
   const state = useState<ApiHealthState>("api-health", createApiHealthState);
-  const { request } = useBookmarkApi();
+  const { request } = useApi();
   const checking = ref(false);
   let loadPromise: Promise<boolean> | null = null;
 

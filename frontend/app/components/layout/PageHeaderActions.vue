@@ -3,20 +3,6 @@
     <template #leading>
       <UDashboardSidebarCollapse />
     </template>
-
-    <!-- <template #right>
-      <UButton
-        to="https://github.com/Kai17-a/browser-bookmark-manager"
-        target="_blank"
-        rel="noopener noreferrer"
-        icon="i-simple-icons-github"
-        label="GitHub"
-        color="neutral"
-        variant="ghost"
-        size="sm"
-      />
-      <slot name="actions" />
-    </template> -->
   </UDashboardNavbar>
 </template>
 

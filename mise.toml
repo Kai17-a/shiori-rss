@@ -74,26 +74,6 @@ run = "cargo fmt --manifest-path batch/Cargo.toml --check"
 description = "Test the batch application"
 run = "cargo test --manifest-path batch/Cargo.toml"
 
-[tasks.extension-dev]
-description = "Start Chrome extension development mode"
-run = "bun --cwd browser_extension run dev"
-
-[tasks.extension-install]
-description = "Install the browser extension dependencies"
-run = "bun --cwd browser_extension install --frozen-lockfile"
-
-[tasks.extension-build]
-description = "Build the Chrome extension"
-run = "bun --cwd browser_extension run build"
-
-[tasks.extension-test]
-description = "Test the browser extension"
-run = "bun --cwd browser_extension run test"
-
-[tasks.extension-typecheck]
-description = "Type-check the browser extension"
-run = "bun --cwd browser_extension run compile"
-
 [tasks.db-up]
 description = "Apply SQLite migrations to data/data.db"
 run = "mise x -- dbmate -u sqlite:data/data.db up"
@@ -109,10 +89,6 @@ run = "docker compose up --build"
 [tasks.docker-down]
 description = "Stop the Docker Compose development environment"
 run = "docker compose down"
-
-[tasks.check-popup-api-contract]
-description = "Check the browser extension popup API contract"
-run = "./scripts/check-browser-extension-popup-api-contract.sh"
 
 [tasks.act-pr]
 description = "Run the pull request workflow locally with act"

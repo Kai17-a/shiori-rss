@@ -44,7 +44,7 @@
           <div class="flex items-center justify-between gap-3">
             <div>
               <h2 class="text-lg font-semibold text-default">RSS feeds</h2>
-              <p class="text-sm text-muted">Manage external feed links separately from bookmarks</p>
+              <p class="text-sm text-muted">Manage the RSS and Atom feeds you follow</p>
             </div>
             <div class="flex flex-wrap items-center gap-2">
               <RefreshButton :loading="loading" @click="refreshFeeds" />
@@ -122,61 +122,6 @@
           </div>
         </UPageCard>
 
-        <UPageCard :ui="{ body: 'space-y-4' }">
-          <div class="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 class="text-lg font-semibold text-default">Custom news sites</h2>
-              <p class="text-sm text-muted">
-                Scrape news pages that do not publish RSS or Atom feeds
-              </p>
-            </div>
-            <div class="flex items-center gap-2">
-              <RefreshButton :loading="newsLoading" @click="loadNewsSites(true)" />
-              <UButton
-                label="Register custom site"
-                icon="i-lucide-wand-sparkles"
-                size="sm"
-                :disabled="!llmConfigured"
-                @click="openNewsCreateModal"
-              />
-            </div>
-          </div>
-
-          <UAlert
-            v-if="!llmConfigured"
-            title="Configure an LLM before registering a custom site"
-            description="The LLM analyzes the site's HTML and creates a tested scraping configuration."
-            color="warning"
-            variant="soft"
-          >
-            <template #actions>
-              <UButton to="/settings" size="xs" color="warning" variant="soft">
-                Open settings
-              </UButton>
-            </template>
-          </UAlert>
-
-          <div v-if="newsSites.length" class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            <NewsSiteCard
-              v-for="site in newsSites"
-              :key="site.id"
-              :site="site"
-              :running="executingNewsSiteId === site.id"
-              @edit="openNewsEditModal"
-              @execute="executeNewsSite"
-              @toggle-webhook="toggleNewsWebhookNotification"
-              @remove="askDeleteNewsSite"
-            />
-          </div>
-          <div
-            v-else
-            class="rounded-2xl border border-dashed border-default p-6 text-sm text-muted"
-          >
-            <p v-if="newsLoading">Loading custom news sites...</p>
-            <p v-else>No custom news sites yet.</p>
-          </div>
-        </UPageCard>
-
         <RSSFeedEditorModal
           v-model:open="modalOpen"
           :form="feedForm"
@@ -191,17 +136,6 @@
           @save="saveFeed"
         />
 
-        <NewsSiteEditorModal
-          v-model:open="newsModalOpen"
-          :form="newsForm"
-          :webhooks="webhooks"
-          :title="newsForm.id ? 'Edit custom news site' : 'Register custom news site'"
-          :description="newsForm.id ? 'Update the selected custom source.' : 'Analyze the site HTML and save a tested scraping configuration.'"
-          :saving="newsSaving"
-          :error="newsSaveError"
-          @save="saveNewsSite"
-        />
-
         <DeleteConfirmModal
           v-model:open="deleteOpen"
           title="Delete RSS feed"
@@ -212,15 +146,6 @@
           @confirm="confirmDelete"
         />
 
-        <DeleteConfirmModal
-          v-model:open="newsDeleteOpen"
-          title="Delete custom news site"
-          :subject="pendingNewsSite?.title"
-          confirm-label="Delete site"
-          :loading="newsDeleting"
-          @cancel="pendingNewsSite = null"
-          @confirm="confirmDeleteNewsSite"
-        />
       </div>
     </template>
   </UDashboardPanel>
@@ -228,10 +153,6 @@
 
 <script setup lang="ts">
 import type {
-  LLMSettingsResponse,
-  NewsSiteExecuteResponse,
-  NewsSiteListResponse,
-  NewsSiteResponse,
   RSSFeedExecuteResponse,
   RSSFeedListResponse,
   RSSFeedResponse,
@@ -243,7 +164,7 @@ import type {
 
 type PaginationItem = { type: "page"; label: string; value: number } | { type: "ellipsis" };
 
-const { request } = useBookmarkApi();
+const { request } = useApi();
 const toast = useSingleToast();
 const { refresh: refreshSidebarCatalog } = useSidebarCatalog();
 
@@ -259,16 +180,6 @@ const loadError = ref("");
 const modalOpen = ref(false);
 const deleteOpen = ref(false);
 const pendingFeed = ref<RSSFeedResponse | null>(null);
-const newsLoading = ref(false);
-const newsSaving = ref(false);
-const newsSaveError = ref("");
-const newsDeleting = ref(false);
-const newsModalOpen = ref(false);
-const newsDeleteOpen = ref(false);
-const executingNewsSiteId = ref<number | null>(null);
-const pendingNewsSite = ref<NewsSiteResponse | null>(null);
-const newsSites = ref<NewsSiteResponse[]>([]);
-const llmConfigured = ref(false);
 const feedList = ref<RSSFeedListResponse>({
   items: [],
   total: 0,
@@ -284,14 +195,6 @@ const feedForm = reactive({
   url: "",
   description: "",
   webhookIds: [] as number[],
-});
-const newsForm = reactive({
-  id: "",
-  title: "",
-  url: "",
-  description: "",
-  webhookIds: [] as number[],
-  reanalyze: false,
 });
 const rssExecutionEnabled = ref(false);
 const rssWebhookNotificationEnabled = ref(false);
@@ -353,199 +256,6 @@ const loadWebhooks = async () => {
       color: "error",
       icon: "i-lucide-circle-alert",
     });
-  }
-};
-
-const loadLlmStatus = async () => {
-  try {
-    await request<LLMSettingsResponse>("/settings/llm");
-    llmConfigured.value = true;
-  } catch {
-    llmConfigured.value = false;
-  }
-};
-
-const loadNewsSites = async (showToast = false) => {
-  newsLoading.value = true;
-  try {
-    const response = await request<NewsSiteListResponse>("/news-sites?per_page=100");
-    newsSites.value = response.items;
-    if (showToast) {
-      toast.show({
-        title: "Custom news sites refreshed.",
-        color: "success",
-        icon: "i-lucide-check",
-      });
-    }
-  } catch (err) {
-    toast.show({
-      title: "Failed to load custom news sites.",
-      description: err instanceof Error ? err.message : undefined,
-      color: "error",
-      icon: "i-lucide-circle-alert",
-    });
-  } finally {
-    newsLoading.value = false;
-  }
-};
-
-const resetNewsForm = () => {
-  newsForm.id = "";
-  newsForm.title = "";
-  newsForm.url = "";
-  newsForm.description = "";
-  newsForm.webhookIds = [];
-  newsForm.reanalyze = false;
-};
-
-const openNewsCreateModal = () => {
-  resetNewsForm();
-  newsSaveError.value = "";
-  newsModalOpen.value = true;
-};
-
-const openNewsEditModal = (site: NewsSiteResponse) => {
-  newsSaveError.value = "";
-  newsForm.id = String(site.id);
-  newsForm.title = site.title;
-  newsForm.url = site.url;
-  newsForm.description = site.description || "";
-  newsForm.webhookIds = [...site.webhook_ids];
-  newsForm.reanalyze = false;
-  newsModalOpen.value = true;
-};
-
-const saveNewsSite = async () => {
-  const url = newsForm.url.trim();
-  const title = newsForm.title.trim();
-  if (!url || (newsForm.id && !title)) {
-    newsSaveError.value = newsForm.id ? "URL and title are required." : "URL is required.";
-    toast.show({
-      title: newsForm.id ? "URL and title are required." : "URL is required.",
-      color: "error",
-      icon: "i-lucide-circle-alert",
-    });
-    return;
-  }
-  newsSaveError.value = "";
-  newsSaving.value = true;
-  try {
-    const body = {
-      url,
-      ...(title ? { title } : {}),
-      description: newsForm.description.trim() || null,
-      webhook_ids: newsForm.webhookIds,
-      ...(newsForm.id ? { reanalyze: newsForm.reanalyze } : {}),
-    };
-    await request(newsForm.id ? `/news-sites/${newsForm.id}` : "/news-sites", {
-      method: newsForm.id ? "PATCH" : "POST",
-      body: JSON.stringify(body),
-    });
-    const wasEditing = Boolean(newsForm.id);
-    newsSaveError.value = "";
-    newsModalOpen.value = false;
-    resetNewsForm();
-    await Promise.all([loadNewsSites(), refreshSidebarCatalog(true)]);
-    toast.show({
-      title: wasEditing
-        ? "Custom news site updated."
-        : "Custom news site analyzed, tested, and registered.",
-      color: "success",
-      icon: "i-lucide-check",
-    });
-  } catch (err) {
-    newsSaveError.value =
-      err instanceof Error ? err.message : "The custom news site could not be analyzed.";
-    toast.show({
-      title: newsForm.id
-        ? "Failed to update custom news site."
-        : "Failed to register custom news site.",
-      description: newsSaveError.value,
-      color: "error",
-      icon: "i-lucide-circle-alert",
-    });
-  } finally {
-    newsSaving.value = false;
-  }
-};
-
-const executeNewsSite = async (site: NewsSiteResponse) => {
-  executingNewsSiteId.value = site.id;
-  try {
-    const result = await request<NewsSiteExecuteResponse>(`/news-sites/${site.id}/execute`, {
-      method: "POST",
-    });
-    toast.show({
-      title: "Custom news site executed.",
-      description: result.message ?? `Delivered to ${result.delivered_count} webhook(s).`,
-      color: "success",
-      icon: "i-lucide-check",
-    });
-  } catch (err) {
-    toast.show({
-      title: "Failed to execute custom news site.",
-      description: err instanceof Error ? err.message : undefined,
-      color: "error",
-      icon: "i-lucide-circle-alert",
-    });
-  } finally {
-    executingNewsSiteId.value = null;
-  }
-};
-
-const toggleNewsWebhookNotification = async (site: NewsSiteResponse) => {
-  try {
-    const updated = await request<NewsSiteResponse>(`/news-sites/${site.id}`, {
-      method: "PATCH",
-      body: JSON.stringify({
-        notify_webhook_enabled: !site.notify_webhook_enabled,
-      }),
-    });
-    newsSites.value = newsSites.value.map((item) => (item.id === updated.id ? updated : item));
-    toast.show({
-      title: updated.notify_webhook_enabled
-        ? "Custom-site notifications enabled."
-        : "Custom-site notifications disabled.",
-      color: "success",
-      icon: "i-lucide-check",
-    });
-  } catch (err) {
-    toast.show({
-      title: "Failed to update custom-site notifications.",
-      description: err instanceof Error ? err.message : undefined,
-      color: "error",
-      icon: "i-lucide-circle-alert",
-    });
-  }
-};
-
-const askDeleteNewsSite = (site: NewsSiteResponse) => {
-  pendingNewsSite.value = site;
-  newsDeleteOpen.value = true;
-};
-
-const confirmDeleteNewsSite = async () => {
-  if (!pendingNewsSite.value) return;
-  newsDeleting.value = true;
-  try {
-    await request(`/news-sites/${pendingNewsSite.value.id}`, { method: "DELETE" });
-    pendingNewsSite.value = null;
-    newsDeleteOpen.value = false;
-    await Promise.all([loadNewsSites(), refreshSidebarCatalog(true)]);
-    toast.show({
-      title: "Custom news site deleted.",
-      color: "success",
-      icon: "i-lucide-check",
-    });
-  } catch (err) {
-    toast.show({
-      title: "Failed to delete custom news site.",
-      description: err instanceof Error ? err.message : undefined,
-      color: "error",
-      icon: "i-lucide-circle-alert",
-    });
-  } finally {
-    newsDeleting.value = false;
   }
 };
 
@@ -828,8 +538,6 @@ onMounted(async () => {
     loadWebhooks(),
     loadRssExecution(),
     loadRssWebhookNotification(),
-    loadLlmStatus(),
-    loadNewsSites(),
   ]);
 });
 </script>

@@ -32,10 +32,10 @@
 ## 望ましいコミット例
 
 ```text
-feat(api): add bookmark tag attachment endpoint
+feat(api): add RSS feed execution endpoint
 fix(frontend): handle empty settings response
-docs(specs): update api traceability for bookmark routes
-revert: feat(api): add bookmark tag attachment endpoint
+docs(specs): update API traceability for RSS routes
+revert: feat(api): add RSS feed execution endpoint
 ```
 
 ## 巻き戻し時の確認

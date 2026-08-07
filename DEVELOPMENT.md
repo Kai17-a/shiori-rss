@@ -112,10 +112,10 @@ GitHub Packages の Docker image 公開機能を使う場合は、別途ワー�
 
 ### コミット例
 
-- `feat(frontend): add tag filter`
-- `fix(api): prevent duplicate bookmark creation`
-- `perf(frontend): reduce bookmark list rerenders`
-- `revert(api): restore folder delete behavior`
+- `feat(frontend): add RSS article filter`
+- `fix(api): prevent duplicate feed creation`
+- `perf(frontend): reduce feed list rerenders`
+- `revert(api): restore feed delete behavior`
 - `docs(specs): sync extension flow`
 - `chore(deps): update frontend packages`
 
@@ -134,7 +134,7 @@ GitHub Packages の Docker image 公開機能を使う場合は、別途ワー�
 ## [1.2.3] - 2026-04-19
 
 ### Features
-- *(frontend)* Add tag filter
+- *(frontend)* Add RSS article filter
 ```
 
 - `fix`, `perf`, `revert` も同じ形式で載る

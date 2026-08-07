@@ -60,7 +60,6 @@ fn create_in_memory_test_db() -> Connection {
 
 #[test]
 fn build_payload_matches_expected_shape() {
-    let _send_news = webhook::send_news_webhook;
     let payload = serde_json::json!({
         "username": "Shiori Keeper",
         "content": "**Example Feed** - **New articles** (1 items)",

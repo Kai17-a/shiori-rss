@@ -35,25 +35,3 @@ export interface SettingsRssWebhookNotificationResponse {
 export interface SettingsWebhookSummaryResponse {
   enabled: boolean;
 }
-
-export type LLMProvider = "vllm" | "ollama" | "openai";
-
-export interface LLMSettingsResponse {
-  provider: LLMProvider;
-  base_url: string;
-  api_key_configured: boolean;
-  model: string;
-}
-
-export interface LLMSettingsUpdateRequest {
-  provider: LLMProvider;
-  base_url: string;
-  api_key?: string | null;
-  clear_api_key?: boolean;
-  model: string;
-}
-
-export interface LLMSettingsTestResponse {
-  ok: boolean;
-  reply: string | null;
-}

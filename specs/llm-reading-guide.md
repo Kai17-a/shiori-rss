@@ -10,11 +10,8 @@ Nuxt、Python、Nuxt UI、TypeScript の実装方針を短く集約し、参照�
 1. [要件定義](./product/requirements.md)
 1. [技術設計](./architecture/system-design.md)
 1. [DB 定義](./architecture/data-model.md)
-1. [Chrome 拡張機能仕様](./components/browser-extension/README.md)
-1. [フロントエンド概要](./components/frontend/overview.md)
-1. [フロントエンド制約](./components/frontend/constraints.md)
-1. [API概要](./components/api/overview.md)
-1. [APIデータと制約](./components/api/data-and-constraints.md)
+1. [フロントエンド仕様](./components/frontend/README.md)
+1. [API仕様](./components/api/README.md)
 1. [Batch 仕様](./components/batch/README.md)
 1. 公式 LLM 参照資料
    - https://nuxt.com/modules/llms
@@ -60,13 +57,6 @@ Nuxt、Python、Nuxt UI、TypeScript の実装方針を短く集約し、参照�
 - DB は SQLite を使用し、外部キー制約とエラー処理を明示的に扱う
 - テストは `pytest` と `hypothesis` を中心に見る
 
-### Chrome Extension
-
-- 拡張機能は `browser_extension/` 配下にある Manifest V3 のブラウザ拡張である
-- ポップアップ UI から現在タブのタイトルと URL を取り込み、API サーバーへブックマークを送信する
-- API 接続確認、既存ブックマークの読み込み、削除もポップアップから行える
-- 設計や申請文面を更新する場合は、拡張機能の仕様も `specs/components/browser-extension/` に反映する
-
 ### Batch
 
 - `batch/` は Rust 製の RSS 定期巡回プロセスである
@@ -86,16 +76,6 @@ Nuxt、Python、Nuxt UI、TypeScript の実装方針を短く集約し、参照�
 - [Composable](../frontend/app/composables/)
 - [ユーティリティ](../frontend/app/utils/)
 - [型定義](../frontend/app/types/)
-
-### Chrome Extension
-
-- [拡張機能仕様](./components/browser-extension/README.md)
-- [Manifest 設定](../browser_extension/wxt.config.ts)
-- [ポップアップ UI](../browser_extension/entrypoints/popup/App.vue)
-- [ポップアップエントリ](../browser_extension/entrypoints/popup/main.ts)
-- [ポップアップスタイル](../browser_extension/entrypoints/popup/style.css)
-- [Background](../browser_extension/entrypoints/background.ts)
-- [Content Script](../browser_extension/entrypoints/content.ts)
 
 ### Batch
 

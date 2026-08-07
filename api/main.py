@@ -9,13 +9,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from api.routers.bookmarks import router as bookmarks_router
-from api.routers.folders import router as folders_router
-from api.routers.metrics import router as metrics_router
-from api.routers.news_sites import router as news_sites_router
 from api.routers.rss_feeds import router as rss_feeds_router
 from api.routers.settings import router as settings_router
-from api.routers.tags import router as tags_router
 from api.database import initialize_database
 
 logging.basicConfig(
@@ -33,7 +28,7 @@ async def lifespan(app: FastAPI):
 logger = logging.getLogger(__name__)
 
 
-app = FastAPI(title="Shiori Keeper API", lifespan=lifespan)
+app = FastAPI(title="Shiori Keeper RSS API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -67,13 +62,8 @@ def health_check():
     return {"status": "ok"}
 
 
-app.include_router(bookmarks_router)
-app.include_router(folders_router)
-app.include_router(metrics_router)
-app.include_router(news_sites_router)
 app.include_router(rss_feeds_router)
 app.include_router(settings_router)
-app.include_router(tags_router)
 
 
 def dev() -> None:

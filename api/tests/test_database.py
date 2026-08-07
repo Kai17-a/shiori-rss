@@ -20,18 +20,18 @@ def test_build_test_db_creates_all_tables():
         tables = {row[0] for row in cursor.fetchall()}
         conn.close()
 
-        assert "bookmarks" in tables
-        assert "folders" in tables
-        assert "tags" in tables
-        assert "bookmark_tags" in tables
+        assert "bookmarks" not in tables
+        assert "folders" not in tables
+        assert "tags" not in tables
+        assert "bookmark_tags" not in tables
         assert "rss_feeds" in tables
         assert "rss_feed_articles" in tables
         assert "app_settings" in tables
         assert "webhook_endpoints" in tables
         assert "rss_feed_webhooks" in tables
-        assert "news_sites" in tables
-        assert "news_site_articles" in tables
-        assert "news_site_webhooks" in tables
+        assert "news_sites" not in tables
+        assert "news_site_articles" not in tables
+        assert "news_site_webhooks" not in tables
         assert "schema_migrations" in tables
     finally:
         import os
@@ -74,6 +74,7 @@ def test_initialize_database_applies_every_migration_idempotently(tmp_path):
         "202608021200",
         "202608021300",
         "202608041600",
+        "202608081200",
     }
     assert "published" in article_columns
     assert "notify_webhook_enabled" in feed_columns
@@ -81,13 +82,13 @@ def test_initialize_database_applies_every_migration_idempotently(tmp_path):
 
 
 def test_db_error_returns_500(tmp_path, monkeypatch):
-    """When DB operation fails, API should return 500 (Requirement 8.4)."""
+    """Database errors from RSS operations are mapped to HTTP 500."""
     from fastapi.testclient import TestClient
 
     # Mock a DB operation that raises sqlite3.Error
-    import api.repositories.bookmark_repo as br_module
+    import api.repositories.rss_feed_repo as repo_module
     import api.database as db_module
-    import api.services.bookmark_service as bs_module
+    import api.services.rss_feed_service as service_module
     from api.main import app
 
     db_path = str(tmp_path / "test.db")
@@ -110,13 +111,17 @@ def test_db_error_returns_500(tmp_path, monkeypatch):
     def mock_insert(*args, **kwargs):
         raise sqlite3.Error("Simulated DB error")
 
-    monkeypatch.setattr(br_module.BookmarkRepository, "insert", mock_insert)
+    monkeypatch.setattr(repo_module.RSSFeedRepository, "insert", mock_insert)
     monkeypatch.setattr(db_module, "get_db", patched_get_db)
-    monkeypatch.setattr(bs_module, "get_db", patched_get_db)
+    monkeypatch.setattr(service_module, "get_db", patched_get_db)
+    monkeypatch.setattr(
+        service_module.RSSFeedService, "_validate_rss_feed_url", lambda *_: None
+    )
 
     client = TestClient(app)
     response = client.post(
-        "/bookmarks", json={"url": "https://db-error.example", "title": "Test"}
+        "/rss-feeds",
+        json={"url": "https://example.com/feed.xml", "title": "Test"},
     )
 
     assert response.status_code == 500

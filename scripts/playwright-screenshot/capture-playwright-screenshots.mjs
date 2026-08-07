@@ -9,11 +9,6 @@ const screenshotDir = process.env.PLAYWRIGHT_SCREENSHOT_DIR ?? "docs/app-images"
 const frontendBaseUrl = process.env.PLAYWRIGHT_FRONTEND_BASE_URL ?? "http://127.0.0.1:3001";
 
 const pages = [
-  { path: "/", name: "dashboard" },
-  { path: "/bookmarks", name: "bookmarks" },
-  { path: "/favorites", name: "favorites" },
-  { path: "/folders", name: "folders" },
-  { path: "/tags", name: "tags" },
   { path: "/rss", name: "rss" },
   { path: "/settings", name: "settings" },
 ];

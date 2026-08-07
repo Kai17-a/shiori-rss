@@ -258,7 +258,6 @@ def test_rss_execution_setting_can_toggle_true_and_false(client):
     assert last.status_code == 200
     assert last.json()["enabled"] is False
 
-
 def test_rss_webhook_notification_setting_can_toggle_true_and_false(client):
     first = client.get("/settings/rss-webhook-notification")
     assert first.status_code == 200
@@ -289,80 +288,3 @@ def test_webhook_summary_setting_defaults_to_true_and_can_toggle(client):
     last = client.get("/settings/webhook-summary")
     assert last.status_code == 200
     assert last.json()["enabled"] is False
-
-
-def test_llm_settings_are_tested_before_save_and_do_not_expose_api_key(
-    client, monkeypatch
-):
-    import api.services.settings_service as settings_module
-
-    tested = []
-    monkeypatch.setattr(
-        settings_module,
-        "test_llm_connection",
-        lambda config: tested.append(config) or "pong",
-    )
-
-    saved = client.put(
-        "/settings/llm",
-        json={
-            "provider": "openai",
-            "base_url": "https://llm.example.com/v1",
-            "api_key": "secret-token",
-            "model": "example-model",
-        },
-    )
-
-    assert saved.status_code == 200
-    assert saved.json() == {
-        "provider": "openai",
-        "base_url": "https://llm.example.com/v1",
-        "api_key_configured": True,
-        "model": "example-model",
-    }
-    assert tested[0].api_key == "secret-token"
-    assert client.get("/settings/llm").json() == saved.json()
-
-
-def test_llm_settings_are_not_saved_when_connection_test_fails(client, monkeypatch):
-    from fastapi import HTTPException
-    import api.services.settings_service as settings_module
-
-    def fail(_config):
-        raise HTTPException(status_code=502, detail="Failed to reach LLM server")
-
-    monkeypatch.setattr(settings_module, "test_llm_connection", fail)
-    failed = client.put(
-        "/settings/llm",
-        json={
-            "provider": "ollama",
-            "base_url": "http://127.0.0.1:11434",
-            "model": "llama3.2",
-        },
-    )
-
-    assert failed.status_code == 502
-    assert client.get("/settings/llm").status_code == 404
-
-
-def test_llm_test_can_use_saved_settings_and_settings_can_be_deleted(
-    client, monkeypatch
-):
-    import api.services.settings_service as settings_module
-
-    monkeypatch.setattr(settings_module, "test_llm_connection", lambda _config: "pong")
-    client.put(
-        "/settings/llm",
-        json={
-            "provider": "vllm",
-            "base_url": "http://127.0.0.1:8000/v1",
-            "model": "local-model",
-        },
-    )
-
-    tested = client.post("/settings/llm/test", json={})
-    assert tested.status_code == 200
-    assert tested.json() == {"ok": True, "reply": "pong"}
-
-    assert client.delete("/settings/llm").status_code == 204
-    assert client.get("/settings/llm").status_code == 404

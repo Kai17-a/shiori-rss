@@ -12,7 +12,6 @@ This directory is organized by documentation responsibility, not by when a docum
    - [API](./components/api/README.md)
    - [Frontend](./components/frontend/README.md)
    - [Batch](./components/batch/README.md)
-   - [Browser extension](./components/browser-extension/README.md)
 6. [Quality observations](./quality/observations/README.md)
 
 ## Directory Roles
@@ -22,6 +21,6 @@ This directory is organized by documentation responsibility, not by when a docum
 | `product/` | Product requirements and user-facing behavior |
 | `architecture/` | Cross-cutting system design and runtime boundaries |
 | `components/` | Implementation-facing specs for each runtime area |
-| `quality/` | Test strategy, coverage notes, and observations |
+| `quality/` | Historical quality observations |
 
 Keep implementation-specific route, schema, flow, and constraint details in the relevant `components/<area>/` directory.

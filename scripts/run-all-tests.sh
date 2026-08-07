@@ -17,13 +17,13 @@ trap cleanup EXIT INT TERM
 sh "$repo_root/scripts/test-scheduler-config.sh"
 
 start_api_server() {
-    uv run --directory "$repo_root/api" uvicorn api.main:app --app-dir "$repo_root" --host 127.0.0.1 --port 8000 > /tmp/bookmark-manager-api.log 2>&1 &
+    uv run --directory "$repo_root/api" uvicorn api.main:app --app-dir "$repo_root" --host 127.0.0.1 --port 8000 > /tmp/rss-feeder-api.log 2>&1 &
     api_pid=$!
 }
 
 start_frontend_server() {
     cd "$repo_root/frontend"
-    bunx nuxt dev --host 0.0.0.0 --port 3000 > /tmp/bookmark-manager-frontend.log 2>&1 &
+    bunx nuxt dev --host 0.0.0.0 --port 3000 > /tmp/rss-feeder-frontend.log 2>&1 &
     frontend_pid=$!
 }
 
@@ -41,11 +41,6 @@ cd "$repo_root/frontend"
 bun run typecheck
 bun run test
 bun run generate
-
-cd "$repo_root/browser_extension"
-bun run compile
-bun run test
-bun run build
 
 # This is idempotent and installs the exact browser revision required by the
 # current Playwright package, even when an older revision is already cached.
@@ -68,5 +63,3 @@ cd "$repo_root/frontend"
 PLAYWRIGHT_API_BASE_URL=http://127.0.0.1:8000 \
 PLAYWRIGHT_FRONTEND_BASE_URL=http://127.0.0.1:3000 \
 bunx playwright test
-
-sh "$repo_root/scripts/check-browser-extension-popup-api-contract.sh" http://127.0.0.1:8000

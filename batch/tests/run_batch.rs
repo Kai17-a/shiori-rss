@@ -1,6 +1,6 @@
 use rusqlite::Connection;
 use shiori_keeper_batch::{
-    fetch_news_sites, fetch_rss_feeds, fetch_webhook_endpoints, rss_periodic_execution_enabled,
+    fetch_rss_feeds, fetch_webhook_endpoints, rss_periodic_execution_enabled,
     rss_webhook_notification_enabled, run_batch, webhook_summary_enabled,
 };
 
@@ -215,36 +215,4 @@ fn fetch_rss_feeds_without_selection_returns_empty_webhook_ids() {
     let feeds = fetch_rss_feeds(&conn).expect("read rss feeds");
     assert_eq!(feeds.len(), 1);
     assert!(feeds[0].webhook_ids.is_empty());
-}
-
-#[test]
-fn fetch_news_sites_loads_scrape_config_and_selected_webhooks() {
-    let conn = create_in_memory_test_db(1);
-    conn.execute_batch(
-        r#"
-        CREATE TABLE news_sites (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          url TEXT NOT NULL,
-          title TEXT NOT NULL,
-          scrape_config TEXT NOT NULL,
-          notify_webhook_enabled INTEGER NOT NULL DEFAULT 1
-        );
-        CREATE TABLE news_site_webhooks (
-          site_id INTEGER NOT NULL,
-          webhook_id INTEGER NOT NULL,
-          PRIMARY KEY (site_id, webhook_id)
-        );
-        INSERT INTO news_sites (id, url, title, scrape_config)
-        VALUES (1, 'https://example.com/news', 'Example News', '{"item_selector":"article"}');
-        INSERT INTO news_site_webhooks (site_id, webhook_id) VALUES (1, 1);
-        "#,
-    )
-    .expect("create news schema");
-
-    let sites = fetch_news_sites(&conn).expect("read news sites");
-
-    assert_eq!(sites.len(), 1);
-    assert_eq!(sites[0].title, "Example News");
-    assert_eq!(sites[0].webhook_ids, vec![1]);
-    assert!(sites[0].scrape_config.contains("item_selector"));
 }

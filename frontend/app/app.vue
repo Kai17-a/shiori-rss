@@ -29,7 +29,7 @@ useHead({
 });
 
 const title = "Shiori Keeper";
-const description = "At-a-glance view of your bookmark system.";
+const description = "A focused RSS reader and webhook delivery app.";
 
 useSeoMeta({
   title,

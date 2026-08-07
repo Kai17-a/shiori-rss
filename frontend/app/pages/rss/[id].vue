@@ -239,7 +239,7 @@ type PaginationItem = { type: "page"; label: string; value: number } | { type: "
 
 const route = useRoute();
 const router = useRouter();
-const { request } = useBookmarkApi();
+const { request } = useApi();
 const toast = useSingleToast();
 const { refresh: refreshSidebarCatalog } = useSidebarCatalog();
 

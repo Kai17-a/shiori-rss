@@ -216,26 +216,6 @@ pub async fn send_rss_webhook(
     .await
 }
 
-pub async fn send_news_webhook(
-    webhook_url: &str,
-    site_title: &str,
-    site_url: &str,
-    embeds: &[Embed<'_>],
-    articles: &[Article<'_>],
-    include_summary: bool,
-) -> Result<(), Box<dyn Error>> {
-    send_article_webhook(
-        webhook_url,
-        site_title,
-        site_url,
-        "news site",
-        embeds,
-        articles,
-        include_summary,
-    )
-    .await
-}
-
 async fn send_article_webhook(
     webhook_url: &str,
     source_title: &str,

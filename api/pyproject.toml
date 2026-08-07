@@ -1,7 +1,7 @@
 [project]
 name = "shiori-keeper"
 version = "0.2.2"
-description = "Keep borowser bookmarks"
+description = "Manage RSS feeds and webhook delivery"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.13"

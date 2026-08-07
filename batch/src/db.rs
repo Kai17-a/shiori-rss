@@ -23,16 +23,6 @@ pub struct RSSFeed {
     pub updated_at: String,
 }
 
-#[derive(Debug)]
-pub struct NewsSite {
-    pub id: u32,
-    pub url: String,
-    pub title: String,
-    pub scrape_config: String,
-    pub notify_webhook_enabled: i64,
-    pub webhook_ids: Vec<u32>,
-}
-
 fn has_column(conn: &Connection, table: &str, column: &str) -> Result<bool> {
     let mut stmt = conn.prepare(&format!("PRAGMA table_info({})", table))?;
     let rows = stmt.query_map([], |row| Ok(row.get::<_, String>(1)?))?;
@@ -140,34 +130,4 @@ pub fn fetch_rss_feeds(conn: &Connection) -> Result<Vec<RSSFeed>> {
         }
     }
     Ok(feeds)
-}
-
-pub fn fetch_news_sites(conn: &Connection) -> Result<Vec<NewsSite>> {
-    if !has_table(conn, "news_sites")? {
-        return Ok(Vec::new());
-    }
-    let mut stmt = conn.prepare(
-        "SELECT id, url, title, scrape_config, notify_webhook_enabled FROM news_sites WHERE notify_webhook_enabled = 1",
-    )?;
-    let site_iter = stmt.query_map([], |row| {
-        Ok(NewsSite {
-            id: row.get(0)?,
-            url: row.get(1)?,
-            title: row.get(2)?,
-            scrape_config: row.get(3)?,
-            notify_webhook_enabled: row.get(4)?,
-            webhook_ids: Vec::new(),
-        })
-    })?;
-    let mut sites = site_iter.collect::<Result<Vec<_>>>()?;
-    if has_table(conn, "news_site_webhooks")? {
-        for site in &mut sites {
-            let mut link_stmt = conn.prepare(
-                "SELECT webhook_id FROM news_site_webhooks WHERE site_id = ? ORDER BY webhook_id ASC",
-            )?;
-            let link_iter = link_stmt.query_map([site.id], |row| row.get::<_, u32>(0))?;
-            site.webhook_ids = link_iter.collect::<Result<Vec<_>>>()?;
-        }
-    }
-    Ok(sites)
 }

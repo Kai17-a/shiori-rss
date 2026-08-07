@@ -6,7 +6,7 @@ script_dir=$(cd "$(dirname "$0")" && pwd)
 
 frontend_port=${FRONTEND_PORT:-3001}
 api_port=${API_PORT:-8001}
-database_path=${DATABASE_URL:-/tmp/bookmark-manager-playwright-screenshots/data.db}
+database_path=${DATABASE_URL:-/tmp/rss-feeder-playwright-screenshots/data.db}
 artifact_dir=${PLAYWRIGHT_SCREENSHOT_DIR:-"$repo_root/docs/app-images"}
 
 cleanup() {
@@ -41,14 +41,14 @@ start_api_server() {
     UV_CACHE_DIR=${UV_CACHE_DIR:-/tmp/uv-cache} mise x -- dbmate -u "sqlite:$database_path" up
     UV_CACHE_DIR=${UV_CACHE_DIR:-/tmp/uv-cache} \
     DATABASE_URL="$database_path" \
-        uv run --directory "$repo_root/api" uvicorn api.main:app --app-dir "$repo_root" --host 127.0.0.1 --port "$api_port" > /tmp/bookmark-manager-api-playwright.log 2>&1 &
+        uv run --directory "$repo_root/api" uvicorn api.main:app --app-dir "$repo_root" --host 127.0.0.1 --port "$api_port" > /tmp/rss-feeder-api-playwright.log 2>&1 &
     api_pid=$!
 }
 
 start_frontend_server() {
     cd "$repo_root/frontend"
     PLAYWRIGHT_API_BASE_URL="http://127.0.0.1:$api_port" \
-        bunx nuxt dev --host 0.0.0.0 --port "$frontend_port" --strictPort > /tmp/bookmark-manager-frontend-playwright.log 2>&1 &
+        bunx nuxt dev --host 0.0.0.0 --port "$frontend_port" --strictPort > /tmp/rss-feeder-frontend-playwright.log 2>&1 &
     frontend_pid=$!
 }
 
