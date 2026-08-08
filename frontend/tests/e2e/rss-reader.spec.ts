@@ -7,7 +7,8 @@ test("opens the RSS feed manager as the app home", async ({ page }) => {
   await expect(page.getByText("Follow the web on your terms.")).toHaveCount(0);
   await expect(page.getByText("Your signal, uninterrupted")).toHaveCount(0);
   await expect(page.getByText("Automation", { exact: true })).toHaveCount(0);
-  await expect(page.getByText("Custom news sites")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Custom RSS" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add custom RSS" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Bookmarks" })).toHaveCount(0);
 });
 
@@ -23,7 +24,7 @@ test("does not expose the former RSS screen route", async ({ page }) => {
   await expect(page.getByText("404")).toBeVisible();
 });
 
-test("shows LLM connection settings without restoring custom news", async ({ page }) => {
+test("shows the LLM connection settings used by custom RSS", async ({ page }) => {
   await page.goto("/settings");
 
   await expect(page.getByText("Tune your feed workflow.")).toHaveCount(0);
@@ -31,7 +32,6 @@ test("shows LLM connection settings without restoring custom news", async ({ pag
   await page.getByRole("tab", { name: "LLM" }).click();
   await expect(page.getByText("LLM connection", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Provider")).toBeVisible();
-  await expect(page.getByText("Custom news sites")).toHaveCount(0);
 });
 
 test("groups automation controls under the settings tabs", async ({ page }) => {

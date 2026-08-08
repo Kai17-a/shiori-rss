@@ -29,9 +29,9 @@ def test_build_test_db_creates_all_tables():
         assert "app_settings" in tables
         assert "webhook_endpoints" in tables
         assert "rss_feed_webhooks" in tables
-        assert "news_sites" not in tables
-        assert "news_site_articles" not in tables
-        assert "news_site_webhooks" not in tables
+        assert "news_sites" in tables
+        assert "news_site_articles" in tables
+        assert "news_site_webhooks" in tables
         assert "schema_migrations" in tables
     finally:
         import os
@@ -76,6 +76,7 @@ def test_initialize_database_applies_every_migration_idempotently(tmp_path):
         "202608041600",
         "202608081200",
         "202608081300",
+        "202608081400",
     }
     assert "published" in article_columns
     assert "summary" in article_columns

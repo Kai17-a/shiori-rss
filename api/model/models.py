@@ -1,8 +1,24 @@
 from datetime import datetime
 from typing import ClassVar, Literal
 
-from pydantic import AnyHttpUrl, BaseModel, Field as PydField, field_validator, model_validator
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, String, Text, text
+from pydantic import (
+    AnyHttpUrl,
+    BaseModel,
+    Field as PydField,
+    field_validator,
+    model_validator,
+)
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    text,
+)
 from sqlmodel import Field, SQLModel
 
 
@@ -22,10 +38,14 @@ class RSSFeed(SQLModel, table=True):
         sa_column=Column(Boolean, nullable=False, server_default=text("1")),
     )
     created_at: datetime = Field(
-        sa_column=Column(DateTime, nullable=False, server_default=text("(datetime('now'))"))
+        sa_column=Column(
+            DateTime, nullable=False, server_default=text("(datetime('now'))")
+        )
     )
     updated_at: datetime = Field(
-        sa_column=Column(DateTime, nullable=False, server_default=text("(datetime('now'))"))
+        sa_column=Column(
+            DateTime, nullable=False, server_default=text("(datetime('now'))")
+        )
     )
 
 
@@ -53,7 +73,67 @@ class RSSFeedArticle(SQLModel, table=True):
         sa_column=Column(Boolean, nullable=False, server_default=text("0")),
     )
     created_at: datetime = Field(
-        sa_column=Column(DateTime, nullable=False, server_default=text("(datetime('now'))"))
+        sa_column=Column(
+            DateTime, nullable=False, server_default=text("(datetime('now'))")
+        )
+    )
+
+
+class NewsSite(SQLModel, table=True):
+    __tablename__: ClassVar[str] = "news_sites"
+    __table_args__ = (
+        Index("idx_news_sites_url_unique", "url", unique=True),
+        Index("idx_news_sites_title_id", "title", "id"),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    url: str = Field(sa_column=Column(String, nullable=False))
+    title: str = Field(sa_column=Column(String, nullable=False))
+    description: str | None = Field(default=None, sa_column=Column(Text))
+    scrape_config: str = Field(sa_column=Column(Text, nullable=False))
+    notify_webhook_enabled: bool = Field(
+        default=True,
+        sa_column=Column(Boolean, nullable=False, server_default=text("1")),
+    )
+    created_at: datetime = Field(
+        sa_column=Column(
+            DateTime, nullable=False, server_default=text("(datetime('now'))")
+        )
+    )
+    updated_at: datetime = Field(
+        sa_column=Column(
+            DateTime, nullable=False, server_default=text("(datetime('now'))")
+        )
+    )
+
+
+class NewsSiteArticle(SQLModel, table=True):
+    __tablename__: ClassVar[str] = "news_site_articles"
+    __table_args__ = (
+        Index("idx_news_site_articles_site_url_unique", "site_id", "url", unique=True),
+        Index("idx_news_site_articles_site_published_id", "site_id", "published", "id"),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    site_id: int = Field(
+        sa_column=Column(
+            Integer,
+            ForeignKey("news_sites.id", ondelete="CASCADE"),
+            nullable=False,
+        )
+    )
+    url: str = Field(sa_column=Column(String, nullable=False))
+    title: str | None = Field(default=None, sa_column=Column(String))
+    summary: str | None = Field(default=None, sa_column=Column(Text))
+    published: datetime | None = Field(default=None, sa_column=Column(DateTime))
+    webhook_notified: bool = Field(
+        default=False,
+        sa_column=Column(Boolean, nullable=False, server_default=text("0")),
+    )
+    created_at: datetime = Field(
+        sa_column=Column(
+            DateTime, nullable=False, server_default=text("(datetime('now'))")
+        )
     )
 
 
@@ -63,7 +143,9 @@ class AppSetting(SQLModel, table=True):
     key: str = Field(primary_key=True)
     value: str = Field(sa_column=Column(Text, nullable=False))
     updated_at: datetime = Field(
-        sa_column=Column(DateTime, nullable=False, server_default=text("(datetime('now'))"))
+        sa_column=Column(
+            DateTime, nullable=False, server_default=text("(datetime('now'))")
+        )
     )
 
 
@@ -82,10 +164,14 @@ class WebhookEndpoint(SQLModel, table=True):
         sa_column=Column(Boolean, nullable=False, server_default=text("1")),
     )
     created_at: datetime = Field(
-        sa_column=Column(DateTime, nullable=False, server_default=text("(datetime('now'))"))
+        sa_column=Column(
+            DateTime, nullable=False, server_default=text("(datetime('now'))")
+        )
     )
     updated_at: datetime = Field(
-        sa_column=Column(DateTime, nullable=False, server_default=text("(datetime('now'))"))
+        sa_column=Column(
+            DateTime, nullable=False, server_default=text("(datetime('now'))")
+        )
     )
 
 
@@ -139,7 +225,10 @@ class RSSFeedUpdate(BaseModel):
     @model_validator(mode="after")
     def reject_null_non_nullable_fields(self) -> "RSSFeedUpdate":
         for field_name in ("url", "title", "notify_webhook_enabled", "webhook_ids"):
-            if field_name in self.model_fields_set and getattr(self, field_name) is None:
+            if (
+                field_name in self.model_fields_set
+                and getattr(self, field_name) is None
+            ):
                 raise ValueError(f"{field_name} cannot be null")
         return self
 
@@ -184,6 +273,109 @@ class RSSFeedListResponse(BaseModel):
 
 class RSSFeedExecuteResponse(BaseModel):
     feed_id: int
+    title: str
+    delivered: bool
+    delivered_count: int
+    message: str | None = None
+
+
+def _reject_duplicate_ids(value: list[int] | None) -> list[int] | None:
+    if value is not None and len(value) != len(set(value)):
+        raise ValueError("IDs must not contain duplicates")
+    return value
+
+
+class NewsSiteCreate(BaseModel):
+    url: AnyHttpUrl
+    title: str | None = PydField(default=None, min_length=1)
+    description: str | None = None
+    webhook_ids: list[int] | None = None
+
+    @field_validator("title")
+    @classmethod
+    def normalize_title(cls, value: str | None) -> str | None:
+        return value.strip() or None if value is not None else None
+
+    @field_validator("webhook_ids")
+    @classmethod
+    def validate_webhook_ids(cls, value: list[int] | None) -> list[int] | None:
+        return _reject_duplicate_ids(value)
+
+
+class NewsSiteUpdate(BaseModel):
+    url: AnyHttpUrl | None = None
+    title: str | None = PydField(default=None, min_length=1)
+    description: str | None = None
+    notify_webhook_enabled: bool | None = None
+    webhook_ids: list[int] | None = None
+    reanalyze: bool = False
+
+    @field_validator("title")
+    @classmethod
+    def normalize_title(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        value = value.strip()
+        if not value:
+            raise ValueError("Title cannot be empty")
+        return value
+
+    @field_validator("webhook_ids")
+    @classmethod
+    def validate_webhook_ids(cls, value: list[int] | None) -> list[int] | None:
+        return _reject_duplicate_ids(value)
+
+    @model_validator(mode="after")
+    def reject_null_non_nullable_fields(self) -> "NewsSiteUpdate":
+        for field_name in ("url", "title", "notify_webhook_enabled", "webhook_ids"):
+            if (
+                field_name in self.model_fields_set
+                and getattr(self, field_name) is None
+            ):
+                raise ValueError(f"{field_name} cannot be null")
+        return self
+
+
+class NewsSiteResponse(BaseModel):
+    id: int
+    url: str
+    title: str
+    description: str | None
+    notify_webhook_enabled: bool
+    webhook_ids: list[int]
+    created_at: datetime
+    updated_at: datetime
+
+
+class NewsSiteListResponse(BaseModel):
+    items: list[NewsSiteResponse]
+    total: int
+    page: int
+    per_page: int
+    total_pages: int
+
+
+class NewsSiteArticleResponse(BaseModel):
+    id: int
+    site_id: int
+    url: str
+    title: str | None
+    summary: str | None = None
+    published: datetime | None
+    webhook_notified: bool = False
+    created_at: datetime
+
+
+class NewsSiteArticleListResponse(BaseModel):
+    items: list[NewsSiteArticleResponse]
+    total: int
+    page: int
+    per_page: int
+    total_pages: int
+
+
+class NewsSiteExecuteResponse(BaseModel):
+    site_id: int
     title: str
     delivered: bool
     delivered_count: int

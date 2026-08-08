@@ -92,6 +92,8 @@
           </div>
         </UPageCard>
 
+        <CustomFeedsPanel :webhooks="webhooks" />
+
         <RSSFeedEditorModal
           v-model:open="modalOpen"
           :form="feedForm"

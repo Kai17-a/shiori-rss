@@ -11,6 +11,8 @@ from api.database import initialize_database
 from api.model.models import (
     LLMSettingsTestRequest,
     LLMSettingsUpdate,
+    NewsSiteCreate,
+    NewsSiteUpdate,
     RSSFeedCreate,
     RSSFeedUpdate,
     SettingsRssExecutionUpdate,
@@ -21,6 +23,7 @@ from api.model.models import (
     SettingsWebhookUpdate,
 )
 from api.services.rss_feed_service import RSSFeedService
+from api.services.news_site_service import NewsSiteService
 from api.services.settings_service import SettingsService
 
 
@@ -63,7 +66,9 @@ class CompatTestClient:
     def _rss_response(self, method: str, path: str, query, json):
         service = RSSFeedService()
         if method == "POST" and path == "/rss-feeds":
-            return self._ok(service.create(RSSFeedCreate(**(json or {}))).model_dump(), 201)
+            return self._ok(
+                service.create(RSSFeedCreate(**(json or {}))).model_dump(), 201
+            )
         if method == "GET" and path == "/rss-feeds":
             payload = service.list(
                 q=query.get("q", [None])[0],
@@ -92,9 +97,53 @@ class CompatTestClient:
         if method == "GET":
             return self._ok(service.get(feed_id).model_dump())
         if method == "PATCH":
-            return self._ok(service.update(feed_id, RSSFeedUpdate(**(json or {}))).model_dump())
+            return self._ok(
+                service.update(feed_id, RSSFeedUpdate(**(json or {}))).model_dump()
+            )
         if method == "DELETE":
             service.delete(feed_id)
+            return self._ok(None, 204)
+        return None
+
+    def _news_site_response(self, method: str, path: str, query, json):
+        service = NewsSiteService()
+        if method == "POST" and path == "/news-sites":
+            return self._ok(
+                service.create(NewsSiteCreate(**(json or {}))).model_dump(), 201
+            )
+        if method == "GET" and path == "/news-sites":
+            payload = service.list(
+                q=query.get("q", [None])[0],
+                page=int(query.get("page", [1])[0]),
+                per_page=int(query.get("per_page", [20])[0]),
+            ).model_dump()
+            return self._ok(payload)
+        if not path.startswith("/news-sites/"):
+            return None
+        parts = path.strip("/").split("/")
+        site_id = int(parts[1])
+        if len(parts) == 3 and parts[2] == "articles" and method == "GET":
+            payload = service.list_articles(
+                site_id,
+                q=query.get("q", [None])[0],
+                page=int(query.get("page", [1])[0]),
+                per_page=int(query.get("per_page", [20])[0]),
+                published_from=query.get("published_from", [None])[0],
+                published_to=query.get("published_to", [None])[0],
+            ).model_dump()
+            return self._ok(payload)
+        if len(parts) == 3 and parts[2] == "execute" and method == "POST":
+            return self._ok(service.execute(site_id).model_dump())
+        if len(parts) != 2:
+            return None
+        if method == "GET":
+            return self._ok(service.get(site_id).model_dump())
+        if method == "PATCH":
+            return self._ok(
+                service.update(site_id, NewsSiteUpdate(**(json or {}))).model_dump()
+            )
+        if method == "DELETE":
+            service.delete(site_id)
             return self._ok(None, 204)
         return None
 
@@ -114,16 +163,29 @@ class CompatTestClient:
         if method == "GET" and path == "/settings/webhooks":
             return self._ok(service.list_webhooks().model_dump())
         if method == "POST" and path == "/settings/webhooks":
-            return self._ok(service.create_webhook(SettingsWebhookCreate(**(json or {}))).model_dump(), 201)
+            return self._ok(
+                service.create_webhook(
+                    SettingsWebhookCreate(**(json or {}))
+                ).model_dump(),
+                201,
+            )
         if path.startswith("/settings/webhooks/"):
             webhook_id = int(path.rsplit("/", 1)[1])
             if method == "PATCH":
-                return self._ok(service.update_webhook(webhook_id, SettingsWebhookUpdate(**(json or {}))).model_dump())
+                return self._ok(
+                    service.update_webhook(
+                        webhook_id, SettingsWebhookUpdate(**(json or {}))
+                    ).model_dump()
+                )
             if method == "DELETE":
                 service.delete_webhook(webhook_id)
                 return self._ok(None, 204)
         if method == "POST" and path == "/settings/webhook/ping":
-            return self._ok(service.ping_webhook(SettingsWebhookPingRequest(**(json or {}))).model_dump())
+            return self._ok(
+                service.ping_webhook(
+                    SettingsWebhookPingRequest(**(json or {}))
+                ).model_dump()
+            )
 
         setting_routes = {
             "/settings/rss-execution": (
@@ -159,6 +221,9 @@ class CompatTestClient:
             if method == "GET" and parsed.path == "/health":
                 return self._ok({"status": "ok"})
             response = self._rss_response(method, parsed.path, query, json)
+            if response is not None:
+                return response
+            response = self._news_site_response(method, parsed.path, query, json)
             if response is not None:
                 return response
             response = self._settings_response(method, parsed.path, json)

@@ -18,6 +18,7 @@ docker run --rm -p 3000:3000 -p 8000:8000 \
 ## Features
 
 - RSS / Atom フィードの登録、編集、削除
+- LLMによる記事一覧ページ解析とカスタムRSSの登録、再解析
 - フィードごとの記事履歴、タイトル検索、公開日絞り込み
 - フィードの手動実行と cron による定期実行
 - Webhook未登録時の記事保存と、登録後の未通知記事配信
@@ -28,8 +29,9 @@ docker run --rm -p 3000:3000 -p 8000:8000 \
 
 ## Screens
 
-- `/`: フィードライブラリ、手動取得
+- `/`: 通常フィードとカスタムRSSのライブラリ、手動取得
 - `/feeds/{id}`: フィードごとの記事一覧と検索
+- `/custom-feeds/{id}`: LLMカスタムRSSの記事一覧と検索
 - `/settings`: General、Automation、Webhooks、LLMのタブ別設定
 
 データは SQLite に保存されます。フィード URL と Webhook URL は重複登録できません。

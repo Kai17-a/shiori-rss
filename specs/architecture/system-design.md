@@ -2,12 +2,12 @@
 
 ## 構成
 
-- `frontend/`: Nuxt 4 SPA。RSS フィード、記事履歴、Webhook 設定を提供する。
-- `api/`: FastAPI。RSS、Webhook、LLM接続設定の REST API を提供する。
+- `frontend/`: Nuxt 4 SPA。RSS フィード、LLMカスタムRSS、記事履歴、Webhook 設定を提供する。
+- `api/`: FastAPI。RSS、LLMカスタムRSS、Webhook、LLM接続設定の REST API を提供する。
 - `batch/`: Rust。SQLite から有効な RSS フィードを読み、定期巡回と Webhook 通知を行う。
 - `db/`: dbmate の migration と現在の SQLite schema を管理する。
 
-ブラウザ拡張、ブックマーク管理、HTML スクレイピングは構成に含めない。
+ブラウザ拡張とブックマーク管理は構成に含めない。HTML取得はLLMカスタムRSSのセレクタ生成・記事抽出に限定する。
 
 ## API
 
@@ -18,6 +18,10 @@
 | GET/PATCH/DELETE | `/rss-feeds/{id}` | フィード詳細・更新・削除 |
 | GET | `/rss-feeds/{id}/articles` | 記事履歴 |
 | POST | `/rss-feeds/{id}/execute` | 手動実行 |
+| POST/GET | `/news-sites` | LLMカスタムRSS作成・一覧 |
+| GET/PATCH/DELETE | `/news-sites/{id}` | カスタムRSS詳細・更新・削除 |
+| GET | `/news-sites/{id}/articles` | カスタムRSS記事履歴 |
+| POST | `/news-sites/{id}/execute` | カスタムRSS手動取得 |
 | GET/POST | `/settings/webhooks` | Webhook 一覧・作成 |
 | PATCH/DELETE | `/settings/webhooks/{id}` | Webhook 有効化・削除 |
 | POST | `/settings/webhook/ping` | 疎通確認 |
