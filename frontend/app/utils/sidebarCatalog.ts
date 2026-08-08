@@ -1,20 +1,24 @@
-import type { RSSFeedResponse } from "~/types";
+import type { NewsSiteResponse, RSSFeedResponse } from "~/types";
 
 export type SidebarCatalogState = {
   rssFeeds: RSSFeedResponse[];
+  customFeeds: NewsSiteResponse[];
   loaded: boolean;
 };
 
 export const createSidebarCatalogState = (): SidebarCatalogState => ({
   rssFeeds: [],
+  customFeeds: [],
   loaded: false,
 });
 
 export const applySidebarCatalogResults = (
   state: SidebarCatalogState,
   rssFeeds: RSSFeedResponse[],
+  customFeeds: NewsSiteResponse[],
 ) => {
   state.rssFeeds = rssFeeds;
+  state.customFeeds = customFeeds;
   state.loaded = true;
   return state;
 };

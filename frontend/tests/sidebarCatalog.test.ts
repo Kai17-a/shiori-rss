@@ -8,7 +8,11 @@ import {
 
 describe("sidebarCatalog helpers", () => {
   it("creates an empty RSS catalog", () => {
-    expect(createSidebarCatalogState()).toEqual({ rssFeeds: [], loaded: false });
+    expect(createSidebarCatalogState()).toEqual({
+      rssFeeds: [],
+      customFeeds: [],
+      loaded: false,
+    });
   });
 
   it("applies loaded RSS feeds", () => {
@@ -23,9 +27,19 @@ describe("sidebarCatalog helpers", () => {
       created_at: "2026-04-10T00:00:00Z",
       updated_at: "2026-04-10T00:00:00Z",
     }];
+    const customFeeds = [{
+      id: 7,
+      title: "LLM Daily",
+      url: "https://example.com/news",
+      description: null,
+      notify_webhook_enabled: true,
+      webhook_ids: [],
+      created_at: "2026-04-10T00:00:00Z",
+      updated_at: "2026-04-10T00:00:00Z",
+    }];
 
-    expect(applySidebarCatalogResults(state, rssFeeds)).toBe(state);
-    expect(state).toEqual({ rssFeeds, loaded: true });
+    expect(applySidebarCatalogResults(state, rssFeeds, customFeeds)).toBe(state);
+    expect(state).toEqual({ rssFeeds, customFeeds, loaded: true });
   });
 
   it("contains initial catalog failures and supports forced retry", async () => {

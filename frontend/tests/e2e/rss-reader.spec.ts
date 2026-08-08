@@ -15,6 +15,37 @@ test("opens the RSS feed manager as the app home", async ({ page }) => {
   await expect(page.getByRole("link", { name: "Bookmarks" })).toHaveCount(0);
 });
 
+test("lists custom RSS sources in the sidebar", async ({ page }) => {
+  await page.route("**/news-sites?per_page=100", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        items: [{
+          id: 7,
+          title: "LLM Daily",
+          url: "https://example.com/news",
+          description: null,
+          notify_webhook_enabled: true,
+          webhook_ids: [],
+          created_at: "2026-08-08T00:00:00Z",
+          updated_at: "2026-08-08T00:00:00Z",
+        }],
+        total: 1,
+        page: 1,
+        per_page: 100,
+        total_pages: 1,
+      }),
+    });
+  });
+
+  await page.goto("/");
+
+  await expect(page.getByRole("link", { name: "LLM Daily" })).toHaveAttribute(
+    "href",
+    "/custom-feeds/7",
+  );
+});
+
 test("does not expose the former feed library route", async ({ page }) => {
   await page.goto("/feeds");
   await expect(page).toHaveURL(/\/feeds$/);

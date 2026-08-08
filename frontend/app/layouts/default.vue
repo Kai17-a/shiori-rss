@@ -70,7 +70,7 @@ import type { NavigationMenuItem } from "@nuxt/ui";
 import { refreshSidebarCatalogSafely } from "~/utils/sidebarCatalog";
 
 const route = useRoute();
-const { rssFeeds, refresh } = useSidebarCatalog();
+const { rssFeeds, customFeeds, refresh } = useSidebarCatalog();
 const {
   checked: healthChecked,
   ok: healthOk,
@@ -100,7 +100,9 @@ const retryApiConnection = async () => {
 const isActive = (path: string) => route.path === path;
 const isActivePrefix = (path: string) => route.path === path || route.path.startsWith(`${path}/`);
 const sidebarOpenItems = computed(() => [
-  ...(isActive("/") || isActivePrefix("/feeds") ? ["feeds"] : []),
+  ...(isActive("/") || isActivePrefix("/feeds") || isActivePrefix("/custom-feeds")
+    ? ["feeds"]
+    : []),
 ]);
 
 const primaryLinks = computed<NavigationMenuItem[]>(() => [
@@ -109,15 +111,25 @@ const primaryLinks = computed<NavigationMenuItem[]>(() => [
     icon: "i-lucide-radio-tower",
     to: "/",
     value: "feeds",
-    active: isActive("/") || isActivePrefix("/feeds"),
+    active: isActive("/") || isActivePrefix("/feeds") || isActivePrefix("/custom-feeds"),
     defaultOpen: false,
     children: rssFeeds.value.map((feed) => ({
       label: feed.title,
+      icon: "i-lucide-rss",
       to: `/feeds/${feed.id}`,
       exact: true,
       active: isActive(`/feeds/${feed.id}`),
       onSelect: closeSidebar,
-    })),
+    })).concat(
+      customFeeds.value.map((feed) => ({
+        label: feed.title,
+        icon: "i-lucide-wand-sparkles",
+        to: `/custom-feeds/${feed.id}`,
+        exact: true,
+        active: isActive(`/custom-feeds/${feed.id}`),
+        onSelect: closeSidebar,
+      })),
+    ),
   },
 ]);
 
