@@ -1,4 +1,4 @@
-# Shiori Keeper RSS
+# Shiori RSS
 
 RSS / Atom フィードの購読、記事履歴、Webhook 通知に特化したセルフホストアプリです。
 
@@ -27,9 +27,9 @@ docker run --rm -p 3000:3000 -p 8000:8000 \
 
 ## Screens
 
-- `RSS`: フィード管理、定期実行設定、手動実行
-- `RSS detail`: 記事履歴
-- `Settings`: テーマ、Webhook、LLM接続の管理
+- `/feeds`: フィードライブラリ、定期実行設定、手動取得
+- `/feeds/{id}`: フィードごとの記事一覧と検索
+- `/settings`: テーマ、Webhook、LLM接続の管理
 
 データは SQLite に保存されます。フィード URL と Webhook URL は重複登録できません。
 
@@ -43,7 +43,7 @@ docker run --rm -p 3000:3000 -p 8000:8000 \
 
 ## Screenshots
 
-![RSS light](docs/app-images/rss-light.png)
+![Feeds light](docs/app-images/feeds-light.png)
 ![Settings light](docs/app-images/settings-light.png)
-![RSS dark](docs/app-images/rss-dark.png)
+![Feeds dark](docs/app-images/feeds-dark.png)
 ![Settings dark](docs/app-images/settings-dark.png)

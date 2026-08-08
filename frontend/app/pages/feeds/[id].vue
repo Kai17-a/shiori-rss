@@ -1,12 +1,12 @@
 <template>
-  <UDashboardPanel id="rss-detail">
+  <UDashboardPanel id="feed-detail">
     <template #header>
-      <PageHeaderActions title="RSS" />
+      <PageHeaderActions title="Feed" />
     </template>
 
     <template #body>
-      <div class="space-y-6">
-        <UPageCard>
+      <div class="mx-auto w-full max-w-6xl space-y-6 pb-10">
+        <UPageCard class="overflow-hidden" :ui="{ body: 'feed-detail-hero' }">
           <UAlert
             v-if="state === 'error'"
             title="Failed to load RSS feed"
@@ -23,38 +23,50 @@
             variant="soft"
           />
 
-          <div v-else-if="feed" class="space-y-3">
+          <div v-else-if="feed" class="space-y-5">
             <DetailPageHeader>
               <template #title>
-                <h1 class="text-2xl font-semibold text-default">
-                  {{ feed.title }}
-                </h1>
+                <div class="flex items-center gap-3">
+                  <span class="grid size-12 shrink-0 place-items-center rounded-2xl bg-primary text-inverted shadow-sm">
+                    <UIcon name="i-lucide-rss" class="size-6" />
+                  </span>
+                  <div>
+                    <p class="text-xs font-semibold uppercase tracking-[0.16em] text-primary">Feed channel</p>
+                    <h1 class="mt-1 text-3xl font-bold tracking-tight text-highlighted">{{ feed.title }}</h1>
+                  </div>
+                </div>
               </template>
 
               <template #description>
-                <p v-if="feed.description" class="text-sm leading-6 text-default/90">
+                <p v-if="feed.description" class="max-w-2xl text-sm leading-6 text-muted">
                   {{ feed.description }}
                 </p>
                 <p v-else class="text-sm text-muted">No description provided.</p>
               </template>
 
-              <div class="space-y-1 pt-1">
-                <p class="text-xs font-medium uppercase tracking-wide text-muted">URL</p>
+              <div class="flex flex-wrap items-center gap-3 pt-2">
                 <a
                   :href="feed.url"
                   target="_blank"
                   rel="noreferrer"
-                  class="break-all text-sm text-primary hover:underline"
+                  class="inline-flex max-w-full items-center gap-2 rounded-full bg-elevated px-3 py-1.5 text-xs text-muted hover:text-primary"
                 >
-                  {{ feed.url }}
+                  <UIcon name="i-lucide-external-link" class="size-3.5 shrink-0" />
+                  <span class="truncate">{{ feed.url }}</span>
                 </a>
+                <UBadge
+                  :color="feed.notify_webhook_enabled ? 'success' : 'neutral'"
+                  variant="soft"
+                  :icon="feed.notify_webhook_enabled ? 'i-lucide-bell-ring' : 'i-lucide-bell-off'"
+                  :label="feed.notify_webhook_enabled ? 'Delivery enabled' : 'Delivery muted'"
+                />
               </div>
 
               <template #actions>
                 <IconButton
                   size="sm"
-                  label="Run"
-                  icon="i-lucide-play"
+                  label="Fetch now"
+                  icon="i-lucide-refresh-cw"
                   color="primary"
                   variant="soft"
                   :loading="executing"
@@ -81,7 +93,7 @@
           </div>
         </UPageCard>
 
-        <UPageCard title="Search articles" description="Filter articles by title or published date" :ui="{ body: 'space-y-4' }">
+        <UPageCard title="Find an article" description="Search this feed by title or published date" icon="i-lucide-search" :ui="{ body: 'space-y-4' }">
           <form class="grid gap-3 lg:grid-cols-[4fr_1fr]">
             <UInput v-model="searchTitle" placeholder="Search article title" />
             <UInputDate ref="inputDate" v-model="selectedPublishedRange" range>
@@ -113,8 +125,9 @@
         <UPageCard :ui="{ body: 'space-y-3' }">
           <div class="flex items-center justify-between gap-3">
             <div>
-              <h2 class="text-lg font-semibold text-default">Articles</h2>
-              <p class="text-sm text-muted">Stored article links associated with this feed</p>
+              <p class="text-xs font-semibold uppercase tracking-[0.16em] text-primary">Reading queue</p>
+              <h2 class="mt-1 text-2xl font-bold tracking-tight text-highlighted">Articles</h2>
+              <p class="mt-1 text-sm text-muted">The latest entries discovered from this feed.</p>
             </div>
             <div class="flex items-center gap-2">
               <RefreshButton :loading="articlesLoading" @click="loadArticles(true)" />
@@ -165,23 +178,30 @@
             </div>
           </div>
 
-          <div v-if="articleList.items.length" class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div v-if="articleList.items.length" class="divide-y divide-default overflow-hidden rounded-2xl border border-default bg-default">
             <article
               v-for="article in articleList.items"
               :key="article.id"
-              class="rounded-2xl border border-default p-4 space-y-2"
+              class="group flex items-start gap-4 p-5 transition hover:bg-elevated/50"
             >
+              <span class="mt-0.5 grid size-9 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+                <UIcon name="i-lucide-newspaper" class="size-4" />
+              </span>
+              <div class="min-w-0 flex-1 space-y-1.5">
               <a
                 :href="article.url"
                 target="_blank"
                 rel="noreferrer"
-                class="block text-base font-semibold text-default hover:underline"
+                class="block text-base font-semibold leading-6 text-highlighted group-hover:text-primary"
               >
                 {{ article.title || article.url }}
               </a>
-              <p class="text-xs text-muted">
+              <p class="flex items-center gap-1.5 text-xs text-muted">
+                <UIcon name="i-lucide-clock-3" class="size-3.5" />
                 Published {{ formatDateTime(article.published || article.created_at) }}
               </p>
+              </div>
+              <UIcon name="i-lucide-arrow-up-right" class="mt-1 size-4 shrink-0 text-dimmed transition group-hover:text-primary" />
             </article>
           </div>
           <div
@@ -505,7 +525,7 @@ const confirmDelete = async () => {
       color: "success",
       icon: "i-lucide-check",
     });
-    await router.push("/rss");
+    await router.push("/feeds");
   } catch (err) {
     toast.show({
       title: "Failed to delete RSS feed.",

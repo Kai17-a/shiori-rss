@@ -28,8 +28,8 @@ useHead({
   },
 });
 
-const title = "Shiori Keeper";
-const description = "A focused RSS reader and webhook delivery app.";
+const title = "Shiori RSS";
+const description = "A calm, self-hosted RSS and Atom reader with webhook delivery.";
 
 useSeoMeta({
   title,

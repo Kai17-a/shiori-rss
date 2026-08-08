@@ -9,7 +9,7 @@ const screenshotDir = process.env.PLAYWRIGHT_SCREENSHOT_DIR ?? "docs/app-images"
 const frontendBaseUrl = process.env.PLAYWRIGHT_FRONTEND_BASE_URL ?? "http://127.0.0.1:3001";
 
 const pages = [
-  { path: "/rss", name: "rss" },
+  { path: "/feeds", name: "feeds" },
   { path: "/settings", name: "settings" },
 ];
 const themes = [

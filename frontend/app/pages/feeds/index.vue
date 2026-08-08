@@ -1,35 +1,66 @@
 <template>
-  <UDashboardPanel id="rss">
+  <UDashboardPanel id="feeds">
     <template #header>
-      <PageHeaderActions title="RSS" />
+      <PageHeaderActions title="Feeds" />
     </template>
 
     <template #body>
-      <div class="space-y-6">
+      <div class="mx-auto w-full max-w-7xl space-y-6 pb-10">
+        <section class="feed-hero overflow-hidden rounded-3xl border border-primary/20 p-6 sm:p-8">
+          <div class="relative z-10 flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
+            <div class="max-w-2xl space-y-4">
+              <UBadge color="primary" variant="soft" icon="i-lucide-radio" label="RSS & Atom reader" />
+              <div class="space-y-2">
+                <h1 class="text-3xl font-bold tracking-tight text-highlighted sm:text-4xl">
+                  Follow the web on your terms.
+                </h1>
+                <p class="max-w-xl text-sm leading-6 text-muted sm:text-base">
+                  Keep every feed in one quiet place, check new articles, and deliver updates to the channels that matter.
+                </p>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <UButton label="Add a feed" icon="i-lucide-plus" size="lg" @click="openCreateModal" />
+                <UButton to="/settings" label="Delivery settings" icon="i-lucide-sliders-horizontal" color="neutral" variant="soft" size="lg" />
+              </div>
+            </div>
+
+            <div class="grid grid-cols-3 gap-2 sm:gap-3">
+              <div class="signal-stat">
+                <span class="signal-stat-value">{{ feedList.total }}</span>
+                <span class="signal-stat-label">Feeds</span>
+              </div>
+              <div class="signal-stat">
+                <UIcon :name="rssExecutionEnabled ? 'i-lucide-clock-3' : 'i-lucide-pause'" class="size-5 text-primary" />
+                <span class="signal-stat-label">{{ rssExecutionEnabled ? 'Scheduled' : 'Paused' }}</span>
+              </div>
+              <div class="signal-stat">
+                <UIcon :name="rssWebhookNotificationEnabled ? 'i-lucide-send' : 'i-lucide-bell-off'" class="size-5 text-primary" />
+                <span class="signal-stat-label">{{ rssWebhookNotificationEnabled ? 'Delivering' : 'Muted' }}</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <UPageCard
-          title="RSS periodic execution"
-          description="Enable or disable the scheduled RSS batch process"
-          :ui="{ body: 'space-y-4' }"
+          title="Automation"
+          description="Control how Shiori checks and delivers your feeds"
+          icon="i-lucide-zap"
+          :ui="{ body: 'grid gap-3 md:grid-cols-2' }"
         >
-          <div class="space-y-4">
-            <div class="flex items-start justify-between gap-4">
+            <div class="flex items-start justify-between gap-4 rounded-2xl bg-elevated/60 p-4">
               <div class="space-y-1">
-                <p class="text-sm font-medium text-default">Run on schedule</p>
+                <p class="text-sm font-semibold text-default">Scheduled refresh</p>
                 <p class="text-sm text-muted">
-                  When enabled, the batch process runs RSS delivery jobs on the schedule
-                  configured for the container.
+                  Check enabled feeds on the server schedule.
                 </p>
               </div>
               <USwitch v-model="rssExecutionEnabled" :loading="rssExecutionLoading" />
             </div>
-
-            <div class="h-px bg-border/60" />
-
-            <div class="flex items-start justify-between gap-4">
+            <div class="flex items-start justify-between gap-4 rounded-2xl bg-elevated/60 p-4">
               <div class="space-y-1">
-                <p class="text-sm font-medium text-default">Send webhook notifications</p>
+                <p class="text-sm font-semibold text-default">Webhook delivery</p>
                 <p class="text-sm text-muted">
-                  When disabled, the batch process still runs but skips webhook delivery.
+                  Send newly discovered articles to your channels.
                 </p>
               </div>
               <USwitch
@@ -37,18 +68,18 @@
                 :loading="rssWebhookNotificationLoading"
               />
             </div>
-          </div>
         </UPageCard>
 
-        <UPageCard :ui="{ body: 'space-y-4' }">
-          <div class="flex items-center justify-between gap-3">
+        <UPageCard :ui="{ body: 'space-y-5' }">
+          <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
             <div>
-              <h2 class="text-lg font-semibold text-default">RSS feeds</h2>
-              <p class="text-sm text-muted">Manage the RSS and Atom feeds you follow</p>
+              <p class="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Library</p>
+              <h2 class="mt-1 text-2xl font-bold tracking-tight text-highlighted">Your feeds</h2>
+              <p class="mt-1 text-sm text-muted">Every source you follow, ready when you are.</p>
             </div>
             <div class="flex flex-wrap items-center gap-2">
               <RefreshButton :loading="loading" @click="refreshFeeds" />
-              <UButton label="Register" icon="i-lucide-plus" size="sm" @click="openCreateModal" />
+              <UButton label="Add feed" icon="i-lucide-plus" @click="openCreateModal" />
             </div>
           </div>
 
@@ -96,12 +127,12 @@
             </div>
           </div>
 
-          <div v-if="feedList.items.length" class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div v-if="feedList.items.length" class="grid gap-4 lg:grid-cols-2">
             <RSSFeedCard
               v-for="feed in feedList.items"
               :key="feed.id"
               :feed="feed"
-              :to="`/rss/${feed.id}`"
+              :to="`/feeds/${feed.id}`"
               :running="executingFeedId === feed.id"
               @edit="openEditModal"
               @execute="executeFeed"
@@ -112,13 +143,16 @@
 
           <div
             v-else
-            class="rounded-2xl border border-dashed border-default p-6 text-sm text-muted"
+            class="grid min-h-64 place-items-center rounded-3xl border border-dashed border-default bg-elevated/20 p-8 text-center"
           >
-            <p v-if="loading">Loading RSS feeds...</p>
-            <p v-else-if="loadError">
-              {{ loadError }}
-            </p>
-            <p v-else>No RSS feeds yet.</p>
+            <div class="max-w-sm space-y-3">
+              <span class="mx-auto grid size-12 place-items-center rounded-2xl bg-primary/10 text-primary">
+                <UIcon :name="loading ? 'i-lucide-loader-circle' : 'i-lucide-radio-tower'" class="size-6" :class="{ 'animate-spin': loading }" />
+              </span>
+              <p class="font-semibold text-default">{{ loading ? 'Tuning in…' : loadError ? 'Could not load feeds' : 'Your feed library is empty' }}</p>
+              <p class="text-sm text-muted">{{ loadError || 'Add an RSS or Atom URL to start following the web.' }}</p>
+              <UButton v-if="!loading && !loadError" label="Add your first feed" icon="i-lucide-plus" @click="openCreateModal" />
+            </div>
           </div>
         </UPageCard>
 
@@ -358,7 +392,7 @@ watch(rssWebhookNotificationEnabled, async (enabled, previous) => {
 
 type LoadToastKind = "loaded" | "refreshed";
 
-const loadFeeds = async (showToast = true, toastKind: LoadToastKind = "loaded") => {
+const loadFeeds = async (showToast = false, toastKind: LoadToastKind = "loaded") => {
   loading.value = true;
   loadError.value = "";
   try {

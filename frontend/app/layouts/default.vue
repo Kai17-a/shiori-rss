@@ -7,6 +7,22 @@
       class="bg-elevated/25 lg:sticky lg:top-0 lg:h-dvh"
       :ui="{ footer: 'lg:border-t lg:border-default' }"
     >
+      <template #header="{ collapsed }">
+        <NuxtLink
+          to="/feeds"
+          class="flex items-center gap-3 px-1 py-2"
+          aria-label="Shiori RSS home"
+          @click="closeSidebar"
+        >
+          <span class="grid size-9 shrink-0 place-items-center rounded-xl bg-primary text-inverted shadow-sm">
+            <UIcon name="i-lucide-radio" class="size-5" />
+          </span>
+          <span v-if="!collapsed" class="min-w-0">
+            <span class="block text-sm font-bold tracking-tight text-highlighted">Shiori RSS</span>
+            <span class="block text-[11px] text-muted">Your signal, uninterrupted</span>
+          </span>
+        </NuxtLink>
+      </template>
       <template #default="{ collapsed }">
         <SidebarNav
           :collapsed="collapsed"
@@ -85,22 +101,22 @@ const retryApiConnection = async () => {
 const isActive = (path: string) => route.path === path;
 const isActivePrefix = (path: string) => route.path === path || route.path.startsWith(`${path}/`);
 const sidebarOpenItems = computed(() => [
-  ...(isActivePrefix("/rss") ? ["rss"] : []),
+  ...(isActivePrefix("/feeds") ? ["feeds"] : []),
 ]);
 
 const primaryLinks = computed<NavigationMenuItem[]>(() => [
   {
-    label: "RSS",
-    icon: "i-lucide-rss",
-    to: "/rss",
-    value: "rss",
-    active: isActivePrefix("/rss"),
+    label: "All feeds",
+    icon: "i-lucide-radio-tower",
+    to: "/feeds",
+    value: "feeds",
+    active: isActivePrefix("/feeds"),
     defaultOpen: false,
     children: rssFeeds.value.map((feed) => ({
       label: feed.title,
-      to: `/rss/${feed.id}`,
+      to: `/feeds/${feed.id}`,
       exact: true,
-      active: isActive(`/rss/${feed.id}`),
+      active: isActive(`/feeds/${feed.id}`),
       onSelect: closeSidebar,
     })),
   },
@@ -108,8 +124,8 @@ const primaryLinks = computed<NavigationMenuItem[]>(() => [
 
 const secondaryLinks = computed<NavigationMenuItem[]>(() => [
   {
-    label: "Settings",
-    icon: "i-lucide-settings",
+    label: "Preferences",
+    icon: "i-lucide-sliders-horizontal",
     to: "/settings",
     active: isActive("/settings"),
     onSelect: closeSidebar,

@@ -24,5 +24,32 @@
 
   body {
     @apply min-h-dvh bg-default text-default font-sans antialiased;
+    background-image:
+      radial-gradient(circle at 12% 0%, color-mix(in srgb, var(--ui-primary) 8%, transparent) 0, transparent 28rem),
+      radial-gradient(circle at 92% 18%, color-mix(in srgb, var(--ui-primary) 5%, transparent) 0, transparent 24rem);
+    background-attachment: fixed;
+  }
+}
+
+@layer components {
+  .feed-hero {
+    background:
+      linear-gradient(135deg, color-mix(in srgb, var(--ui-primary) 10%, var(--ui-bg)) 0%, var(--ui-bg) 55%, color-mix(in srgb, var(--ui-primary) 5%, var(--ui-bg)) 100%);
+  }
+
+  .signal-stat {
+    @apply flex min-h-24 min-w-24 flex-col justify-between rounded-2xl border border-default bg-default/75 p-3 shadow-sm backdrop-blur;
+  }
+
+  .signal-stat-value {
+    @apply text-2xl font-bold tracking-tight text-highlighted;
+  }
+
+  .signal-stat-label {
+    @apply text-[11px] font-semibold uppercase tracking-wide text-muted;
+  }
+
+  .feed-detail-hero {
+    background: linear-gradient(135deg, color-mix(in srgb, var(--ui-primary) 7%, var(--ui-bg)) 0%, var(--ui-bg) 70%);
   }
 }

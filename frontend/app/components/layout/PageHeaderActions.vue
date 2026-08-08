@@ -1,5 +1,5 @@
 <template>
-  <UDashboardNavbar :title="title" :ui="{ right: 'gap-3' }">
+  <UDashboardNavbar :title="title" class="border-b border-default/70 bg-default/80 backdrop-blur" :ui="{ right: 'gap-3' }">
     <template #leading>
       <UDashboardSidebarCollapse />
     </template>

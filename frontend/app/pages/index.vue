@@ -1,5 +1,5 @@
 <script setup lang="ts">
-await navigateTo("/rss", { replace: true });
+await navigateTo("/feeds", { replace: true });
 </script>
 
 <template>

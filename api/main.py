@@ -28,7 +28,7 @@ async def lifespan(app: FastAPI):
 logger = logging.getLogger(__name__)
 
 
-app = FastAPI(title="Shiori Keeper RSS API", lifespan=lifespan)
+app = FastAPI(title="Shiori RSS API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
