@@ -4,6 +4,7 @@ test("opens the daily news summary as the app home", async ({ page }) => {
   await page.goto("/");
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole("heading", { name: "Today’s news" })).toBeVisible();
+  await expect(page.getByText(/^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday), /)).toBeVisible();
   await expect(page.getByText("Today’s articles", { exact: true })).toBeVisible();
   await expect(page.getByText("Follow the web on your terms.")).toHaveCount(0);
   await expect(page.getByText("Your signal, uninterrupted")).toHaveCount(0);

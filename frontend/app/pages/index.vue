@@ -127,7 +127,7 @@ const accessDateValue = [
   String(accessDate.getMonth() + 1).padStart(2, "0"),
   String(accessDate.getDate()).padStart(2, "0"),
 ].join("-");
-const accessDateLabel = new Intl.DateTimeFormat(undefined, {
+const accessDateLabel = new Intl.DateTimeFormat("en-US", {
   dateStyle: "full",
 }).format(accessDate);
 const dashboard = ref<DashboardResponse>({
