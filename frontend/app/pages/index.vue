@@ -6,41 +6,6 @@
 
     <template #body>
       <div class="mx-auto w-full max-w-7xl space-y-6 pb-10">
-        <section class="feed-hero overflow-hidden rounded-3xl border border-primary/20 p-6 sm:p-8">
-          <div class="relative z-10 flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
-            <div class="max-w-2xl space-y-4">
-              <UBadge color="primary" variant="soft" icon="i-lucide-radio" label="RSS & Atom reader" />
-              <div class="space-y-2">
-                <h1 class="text-3xl font-bold tracking-tight text-highlighted sm:text-4xl">
-                  Follow the web on your terms.
-                </h1>
-                <p class="max-w-xl text-sm leading-6 text-muted sm:text-base">
-                  Keep every feed in one quiet place, check new articles, and deliver updates to the channels that matter.
-                </p>
-              </div>
-              <div class="flex flex-wrap gap-2">
-                <UButton label="Add a feed" icon="i-lucide-plus" size="lg" @click="openCreateModal" />
-                <UButton to="/settings?tab=automation" label="Delivery settings" icon="i-lucide-sliders-horizontal" color="neutral" variant="soft" size="lg" />
-              </div>
-            </div>
-
-            <div class="grid grid-cols-3 gap-2 sm:gap-3">
-              <div class="signal-stat">
-                <span class="signal-stat-value">{{ feedList.total }}</span>
-                <span class="signal-stat-label">Feeds</span>
-              </div>
-              <div class="signal-stat">
-                <UIcon name="i-lucide-rss" class="size-5 text-primary" />
-                <span class="signal-stat-label">RSS & Atom</span>
-              </div>
-              <div class="signal-stat">
-                <UIcon name="i-lucide-shield-check" class="size-5 text-primary" />
-                <span class="signal-stat-label">Self-hosted</span>
-              </div>
-            </div>
-          </div>
-        </section>
-
         <UPageCard :ui="{ body: 'space-y-5' }">
           <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
             <div>

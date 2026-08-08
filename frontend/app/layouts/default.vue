@@ -19,7 +19,6 @@
           </span>
           <span v-if="!collapsed" class="min-w-0">
             <span class="block text-sm font-bold tracking-tight text-highlighted">Shiori RSS</span>
-            <span class="block text-[11px] text-muted">Your signal, uninterrupted</span>
           </span>
         </NuxtLink>
       </template>

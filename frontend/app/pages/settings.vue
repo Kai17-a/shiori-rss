@@ -6,21 +6,6 @@
 
     <template #body>
       <div class="mx-auto w-full max-w-5xl space-y-6 pb-10">
-        <section class="rounded-3xl border border-default bg-elevated/35 p-6 sm:p-8">
-          <div class="flex items-start gap-4">
-            <span class="grid size-12 shrink-0 place-items-center rounded-2xl bg-primary text-inverted">
-              <UIcon name="i-lucide-sliders-horizontal" class="size-6" />
-            </span>
-            <div>
-              <p class="text-xs font-semibold uppercase tracking-[0.16em] text-primary">Preferences</p>
-              <h1 class="mt-1 text-3xl font-bold tracking-tight text-highlighted">Tune your feed workflow.</h1>
-              <p class="mt-2 max-w-2xl text-sm leading-6 text-muted">
-                Choose how Shiori looks, where new articles are delivered, and which LLM connection is available to the app.
-              </p>
-            </div>
-          </div>
-        </section>
-
         <UTabs
           v-model="activeCategory"
           :items="settingsCategories"
