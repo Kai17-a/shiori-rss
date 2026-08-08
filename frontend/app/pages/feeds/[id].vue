@@ -525,7 +525,7 @@ const confirmDelete = async () => {
       color: "success",
       icon: "i-lucide-check",
     });
-    await router.push("/feeds");
+    await router.push("/");
   } catch (err) {
     toast.show({
       title: "Failed to delete RSS feed.",

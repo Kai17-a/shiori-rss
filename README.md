@@ -27,7 +27,7 @@ docker run --rm -p 3000:3000 -p 8000:8000 \
 
 ## Screens
 
-- `/feeds`: フィードライブラリ、手動取得
+- `/`: フィードライブラリ、手動取得
 - `/feeds/{id}`: フィードごとの記事一覧と検索
 - `/settings`: General、Automation、Webhooks、LLMのタブ別設定
 

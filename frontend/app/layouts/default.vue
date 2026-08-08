@@ -9,7 +9,7 @@
     >
       <template #header="{ collapsed }">
         <NuxtLink
-          to="/feeds"
+          to="/"
           class="flex items-center gap-3 px-1 py-2"
           aria-label="Shiori RSS home"
           @click="closeSidebar"
@@ -101,16 +101,16 @@ const retryApiConnection = async () => {
 const isActive = (path: string) => route.path === path;
 const isActivePrefix = (path: string) => route.path === path || route.path.startsWith(`${path}/`);
 const sidebarOpenItems = computed(() => [
-  ...(isActivePrefix("/feeds") ? ["feeds"] : []),
+  ...(isActive("/") || isActivePrefix("/feeds") ? ["feeds"] : []),
 ]);
 
 const primaryLinks = computed<NavigationMenuItem[]>(() => [
   {
     label: "All feeds",
     icon: "i-lucide-radio-tower",
-    to: "/feeds",
+    to: "/",
     value: "feeds",
-    active: isActivePrefix("/feeds"),
+    active: isActive("/") || isActivePrefix("/feeds"),
     defaultOpen: false,
     children: rssFeeds.value.map((feed) => ({
       label: feed.title,

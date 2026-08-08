@@ -29,8 +29,8 @@
           variant="link"
           :content="false"
           :ui="{
-            list: 'w-full overflow-x-auto border-b border-default',
-            trigger: 'min-w-max px-4 py-3',
+            list: 'w-full border-b border-default',
+            trigger: 'min-w-0 flex-1 px-2 py-3 sm:px-4',
           }"
         />
 
