@@ -28,6 +28,7 @@
           :primary-links="primaryLinks"
           :secondary-links="secondaryLinks"
           v-model:primary-model-value="sidebarOpenItems"
+          @primary-toggle="openFeedLibrary"
           @navigate="closeSidebar"
         />
       </template>
@@ -85,6 +86,11 @@ const closeSidebar = () => {
   open.value = false;
 };
 
+const openFeedLibrary = (section: string) => {
+  if (section === "rss-feeds") void navigateTo("/feeds");
+  if (section === "custom-feeds") void navigateTo("/custom-feeds");
+};
+
 const retryApiConnection = async () => {
   const reachable = await checkApiHealth(true);
   if (!reachable) return;
@@ -127,50 +133,34 @@ const primaryLinks = computed<NavigationMenuItem[]>(() => [
   {
     label: "RSS feeds",
     icon: "i-lucide-rss",
+    to: "/feeds",
     value: "rss-feeds",
     type: "trigger",
     active: isActivePrefix("/feeds"),
     defaultOpen: false,
-    children: [
-      {
-        label: "All RSS feeds",
-        to: "/feeds",
-        exact: true,
-        active: isActive("/feeds"),
-        onSelect: closeSidebar,
-      },
-      ...rssFeeds.value.map((feed) => ({
-          label: feed.title,
-          to: `/feeds/${feed.id}`,
-          exact: true,
-          active: isActive(`/feeds/${feed.id}`),
-          onSelect: closeSidebar,
-        })),
-    ],
+    children: rssFeeds.value.map((feed) => ({
+      label: feed.title,
+      to: `/feeds/${feed.id}`,
+      exact: true,
+      active: isActive(`/feeds/${feed.id}`),
+      onSelect: closeSidebar,
+    })),
   },
   {
     label: "Custom RSS",
     icon: "i-lucide-wand-sparkles",
+    to: "/custom-feeds",
     value: "custom-feeds",
     type: "trigger",
     active: isActivePrefix("/custom-feeds"),
     defaultOpen: false,
-    children: [
-      {
-        label: "All custom RSS",
-        to: "/custom-feeds",
-        exact: true,
-        active: isActive("/custom-feeds"),
-        onSelect: closeSidebar,
-      },
-      ...customFeeds.value.map((feed) => ({
-          label: feed.title,
-          to: `/custom-feeds/${feed.id}`,
-          exact: true,
-          active: isActive(`/custom-feeds/${feed.id}`),
-          onSelect: closeSidebar,
-        })),
-    ],
+    children: customFeeds.value.map((feed) => ({
+      label: feed.title,
+      to: `/custom-feeds/${feed.id}`,
+      exact: true,
+      active: isActive(`/custom-feeds/${feed.id}`),
+      onSelect: closeSidebar,
+    })),
   },
 ]);
 

@@ -38,6 +38,8 @@ test("lists custom RSS sources in the sidebar", async ({ page }) => {
   await page.goto("/");
 
   await page.getByRole("button", { name: "Custom RSS", exact: true }).click();
+  await expect(page).toHaveURL(/\/custom-feeds$/);
+  await expect(page.getByRole("link", { name: "All custom RSS" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "LLM Daily" })).toHaveAttribute(
     "href",
     "/custom-feeds/7",

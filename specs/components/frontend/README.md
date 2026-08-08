@@ -7,7 +7,7 @@ Nuxt 4 SPA は RSS 専用 UI を提供する。
 - `/feeds/{id}` はフィード詳細と記事履歴を提供する。
 - `/custom-feeds` はLLM解析で作るカスタムRSSの一覧、作成・更新・削除、手動取得を提供する。
 - `/custom-feeds/{id}` はカスタムRSSの詳細と抽出済み記事を提供する。
-- サイドメニューは Home、通常RSS、カスタムRSS、Preferencesで構成し、通常RSSとカスタムRSSは折り畳み配下から詳細画面へ直接移動できる。
+- サイドメニューは Home、通常RSS、カスタムRSS、Preferencesで構成する。通常RSSとカスタムRSSの見出しクリックは折り畳みを切り替えながら各一覧ルートへ移動し、配下から詳細画面へ直接移動できる。
 - `/settings` は General、Automation、Webhooks、LLM のカテゴリタブを持ち、テーマ、定期取得、全体通知、Webhook、LLM接続設定を提供する。
 - 一覧と設定画面は宣伝的なヒーローやキャッチコピーを置かず、操作対象を先頭に表示する。
 - サイドバーには Home、RSS feeds、Custom RSS、Preferencesを表示する。
