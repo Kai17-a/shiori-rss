@@ -30,7 +30,9 @@ export interface RSSFeedArticleResponse {
   feed_id: number;
   url: string;
   title: string | null;
+  summary: string | null;
   published: string | null;
+  webhook_notified: boolean;
   created_at: string;
 }
 

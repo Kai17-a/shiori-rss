@@ -187,14 +187,23 @@ class RSSFeedService:
         ).fetchall()
         return {str(row["url"]) for row in rows}
 
-    def _record_sent_articles(
+    def _record_articles(
         self, conn, feed_id: int, articles: list[dict[str, object]]
     ) -> None:
         has_published = RSSFeedRepository(conn)._has_column(
             "rss_feed_articles", "published"
         )
+        has_notification_state = RSSFeedRepository(conn)._has_column(
+            "rss_feed_articles", "webhook_notified"
+        )
         insert_query = (
             """
+                INSERT OR IGNORE INTO rss_feed_articles
+                    (feed_id, url, title, summary, published, webhook_notified)
+                VALUES (?, ?, ?, ?, ?, 0)
+                """
+            if has_published and has_notification_state
+            else """
                 INSERT OR IGNORE INTO rss_feed_articles (feed_id, url, title, published)
                 VALUES (?, ?, ?, ?)
                 """
@@ -215,12 +224,39 @@ class RSSFeedService:
                 feed_id,
                 article["url"],
                 article.get("title"),
+                article.get("summary"),
                 published_value,
             )
-            conn.execute(
-                insert_query,
-                params if has_published else params[:3],
-            )
+            if has_published and has_notification_state:
+                insert_params = params
+            elif has_published:
+                insert_params = (params[0], params[1], params[2], params[4])
+            else:
+                insert_params = params[:3]
+            conn.execute(insert_query, insert_params)
+
+    def _load_pending_articles(self, conn, feed_id: int) -> list[dict[str, object]]:
+        rows = conn.execute(
+            """
+            SELECT url, title, summary, published
+            FROM rss_feed_articles
+            WHERE feed_id = ? AND webhook_notified = 0
+            ORDER BY id ASC
+            """,
+            (feed_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def _mark_articles_notified(
+        self, conn, feed_id: int, articles: list[dict[str, object]]
+    ) -> None:
+        conn.executemany(
+            """
+            UPDATE rss_feed_articles SET webhook_notified = 1
+            WHERE feed_id = ? AND url = ?
+            """,
+            [(feed_id, article["url"]) for article in articles],
+        )
 
     def _verify_webhook_endpoints(self, conn, webhook_ids: list[int]) -> None:
         repo = WebhookEndpointRepository(conn)
@@ -425,11 +461,6 @@ class RSSFeedService:
             include_summary = SettingsRepository(conn).get_bool(
                 "webhook_include_summary_enabled", default=True
             )
-            if not webhook_urls:
-                raise HTTPException(
-                    status_code=400, detail="Webhook URL is not configured"
-                )
-
             try:
                 response = httpx.get(row["url"], timeout=5.0, follow_redirects=True)
             except httpx.HTTPError as exc:
@@ -460,7 +491,26 @@ class RSSFeedService:
                     }
                 )
 
-            if not articles:
+            self._record_articles(conn, feed_id, articles)
+            # Fetch persistence must survive a later webhook failure so pending
+            # articles can be delivered by a future execution.
+            conn.commit()
+            pending_articles = self._load_pending_articles(conn, feed_id)
+
+            if not webhook_urls:
+                return RSSFeedExecuteResponse(
+                    feed_id=feed_id,
+                    title=row["title"],
+                    delivered=False,
+                    delivered_count=0,
+                    message=(
+                        f"Saved {len(articles)} new article(s) without webhook notification."
+                        if articles
+                        else "No new articles found. Pending articles remain unnotified."
+                    ),
+                )
+
+            if not pending_articles:
                 return RSSFeedExecuteResponse(
                     feed_id=feed_id,
                     title=row["title"],
@@ -469,7 +519,7 @@ class RSSFeedService:
                     message="No new articles found.",
                 )
 
-            article_chunks = self._chunk_embeds(articles) or [[]]
+            article_chunks = self._chunk_embeds(pending_articles) or [[]]
             delivered_count = 0
             last_failed_service: str | None = None
             last_failed_response: httpx.Response | None = None
@@ -482,7 +532,7 @@ class RSSFeedService:
                             webhook_service,
                             feed_title=feed_title,
                             articles=chunk,
-                            total_articles=len(articles),
+                            total_articles=len(pending_articles),
                             chunk_index=index,
                             chunk_count=len(article_chunks),
                             include_summary=include_summary,
@@ -506,12 +556,12 @@ class RSSFeedService:
                     last_failed_service or "webhook", last_failed_response
                 )
 
-            self._record_sent_articles(conn, feed_id, articles)
+            self._mark_articles_notified(conn, feed_id, pending_articles)
 
             return RSSFeedExecuteResponse(
                 feed_id=feed_id,
                 title=row["title"],
                 delivered=True,
                 delivered_count=delivered_count,
-                message=f"Posted {len(articles)} new article(s).",
+                message=f"Posted {len(pending_articles)} pending article(s).",
             )

@@ -40,8 +40,10 @@ fn create_in_memory_test_db(enabled: i64) -> Connection {
             feed_id INTEGER NOT NULL REFERENCES rss_feeds(id) ON DELETE CASCADE,
             url TEXT NOT NULL,
             title TEXT,
+            summary TEXT,
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
-            published DATETIME
+            published DATETIME,
+            webhook_notified INTEGER NOT NULL DEFAULT 0
         );
         "#,
     )

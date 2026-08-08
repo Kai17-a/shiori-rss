@@ -65,25 +65,16 @@ pub async fn run_batch(conn: &Connection) -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
-    if !rss_webhook_notification_enabled(conn)? {
-        return Ok(());
-    }
+    let notification_enabled = rss_webhook_notification_enabled(conn)?;
     let include_summary = webhook_summary_enabled(conn)?;
 
     let webhook_endpoints = fetch_webhook_endpoints(conn)?;
-    if webhook_endpoints.is_empty() {
-        eprintln!("Not setting webhook URL");
-        return Ok(());
-    }
 
     let http_client = reqwest::Client::builder()
         .timeout(Duration::from_secs(10))
         .build()?;
 
     for rss_feed in rss_feeds {
-        if rss_feed.notify_webhook_enabled == 0 {
-            continue;
-        }
         let url = match Url::parse(&rss_feed.url) {
             Ok(url) => url,
             Err(err) => {
@@ -120,7 +111,7 @@ pub async fn run_batch(conn: &Connection) -> Result<(), Box<dyn Error>> {
                 continue;
             }
         };
-        let sent_urls: HashSet<String> = match webhook::load_sent_article_urls(conn, rss_feed.id) {
+        let fetched_urls: HashSet<String> = match webhook::load_article_urls(conn, rss_feed.id) {
             Ok(urls) => urls,
             Err(err) => {
                 eprintln!(
@@ -131,29 +122,62 @@ pub async fn run_batch(conn: &Connection) -> Result<(), Box<dyn Error>> {
             }
         };
 
-        let mut articles = Vec::new();
-        let mut embeds = Vec::new();
+        let mut new_articles = Vec::new();
         for item in &feed_articles {
-            if sent_urls.contains(&item.link) {
+            if fetched_urls.contains(&item.link) {
                 continue;
             }
-
-            embeds.push(webhook::Embed {
-                title: &item.title,
-                link: &item.link,
-                published: &item.published,
-                summary: &item.summary,
-            });
-            articles.push(webhook::Article {
-                url: &item.link,
-                title: &item.title,
-                published: &item.published,
+            new_articles.push(webhook::StoredArticle {
+                url: item.link.clone(),
+                title: item.title.clone(),
+                published: item.published.clone(),
+                summary: item.summary.clone(),
             });
         }
 
-        if embeds.is_empty() {
+        if let Err(err) = webhook::record_pending_articles(conn, rss_feed.id, &new_articles) {
+            eprintln!(
+                "Skipping RSS feed {}: failed to record articles: {}",
+                rss_feed.url, err
+            );
             continue;
         }
+
+        if !notification_enabled || rss_feed.notify_webhook_enabled == 0 {
+            continue;
+        }
+
+        let pending_articles = match webhook::load_pending_articles(conn, rss_feed.id) {
+            Ok(articles) => articles,
+            Err(err) => {
+                eprintln!(
+                    "Skipping RSS feed {}: failed to load pending articles: {}",
+                    rss_feed.url, err
+                );
+                continue;
+            }
+        };
+        if pending_articles.is_empty() {
+            continue;
+        }
+
+        let embeds: Vec<webhook::Embed<'_>> = pending_articles
+            .iter()
+            .map(|article| webhook::Embed {
+                title: &article.title,
+                link: &article.url,
+                published: &article.published,
+                summary: &article.summary,
+            })
+            .collect();
+        let articles: Vec<webhook::Article<'_>> = pending_articles
+            .iter()
+            .map(|article| webhook::Article {
+                url: &article.url,
+                title: &article.title,
+                published: &article.published,
+            })
+            .collect();
 
         let targets: Vec<&crate::WebhookEndpoint> = if rss_feed.webhook_ids.is_empty() {
             webhook_endpoints.iter().collect()
@@ -193,9 +217,9 @@ pub async fn run_batch(conn: &Connection) -> Result<(), Box<dyn Error>> {
             continue;
         }
 
-        if let Err(err) = webhook::record_sent_articles(conn, rss_feed.id, &articles) {
+        if let Err(err) = webhook::mark_articles_notified(conn, rss_feed.id, &pending_articles) {
             eprintln!(
-                "Skipping RSS feed {}: failed to record sent articles: {}",
+                "Skipping RSS feed {}: failed to mark articles notified: {}",
                 rss_feed.url, err
             );
             continue;

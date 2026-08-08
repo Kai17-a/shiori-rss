@@ -399,7 +399,7 @@ def test_execute_rss_feed_still_sends_when_webhook_notification_disabled(client,
     resp = client.post(f"/rss-feeds/{feed_id}/execute")
     assert resp.status_code == 200
     assert resp.json()["delivered"] is True
-    assert resp.json()["message"] == "Posted 2 new article(s)."
+    assert resp.json()["message"] == "Posted 2 pending article(s)."
     assert called["url"] == "https://hooks.slack.com/services/xxx/yyy/zzz"
     assert called["json"]["blocks"][0]["type"] == "header"
 
@@ -857,7 +857,7 @@ def test_execute_rss_feed_returns_discord_error_detail(client, monkeypatch):
     assert resp.json()["detail"] == "Failed to notify webhook"
 
 
-def test_execute_rss_feed_does_not_record_articles_when_webhook_fails(client, monkeypatch):
+def test_execute_rss_feed_keeps_articles_pending_when_webhook_fails(client, monkeypatch):
     import api.services.webhook_service as webhook_module
 
     client.post(
@@ -889,7 +889,8 @@ def test_execute_rss_feed_does_not_record_articles_when_webhook_fails(client, mo
 
     articles_resp = client.get(f"/rss-feeds/{feed_id}/articles")
     assert articles_resp.status_code == 200
-    assert articles_resp.json()["items"] == []
+    assert articles_resp.json()["items"]
+    assert all(not item["webhook_notified"] for item in articles_resp.json()["items"])
 
 
 def test_execute_rss_feed_skips_already_sent_articles(client, monkeypatch):
@@ -999,7 +1000,7 @@ def test_execute_rss_feed_returns_message_when_no_new_articles(client, monkeypat
     second = client.post(f"/rss-feeds/{feed_id}/execute")
 
     assert first.status_code == 200
-    assert first.json()["message"] == "Posted 1 new article(s)."
+    assert first.json()["message"] == "Posted 1 pending article(s)."
     assert second.status_code == 200
     assert second.json()["message"] == "No new articles found."
     assert len(payloads) == 1
@@ -1122,10 +1123,42 @@ def test_execute_rss_feed_notifies_only_selected_webhooks(client, monkeypatch):
     assert notified_urls == ["https://discord.com/api/webhooks/1/token"]
 
 
-def test_execute_rss_feed_without_webhook_returns_400(client):
+def test_execute_rss_feed_without_webhook_saves_and_later_notifies_pending_articles(
+    client, monkeypatch
+):
+    import api.services.webhook_service as webhook_module
+
     feed_id = create_feed(client).json()["id"]
     resp = client.post(f"/rss-feeds/{feed_id}/execute")
-    assert resp.status_code == 400
+    assert resp.status_code == 200
+    assert resp.json()["delivered"] is False
+    assert resp.json()["delivered_count"] == 0
+    articles = client.get(f"/rss-feeds/{feed_id}/articles").json()["items"]
+    assert articles
+    assert all(not item["webhook_notified"] for item in articles)
+
+    delivered_payloads = []
+
+    def fake_post(url, json, timeout=5.0):
+        delivered_payloads.append(json)
+
+        class Response:
+            status_code = 204
+
+        return Response()
+
+    monkeypatch.setattr(webhook_module.httpx, "post", fake_post)
+    client.post(
+        "/settings/webhooks",
+        json={"name": "Later", "webhook_url": "https://discord.com/api/webhooks/1/token"},
+    )
+    notified = client.post(f"/rss-feeds/{feed_id}/execute")
+
+    assert notified.status_code == 200
+    assert notified.json()["delivered_count"] == 1
+    assert len(delivered_payloads) == 1
+    articles = client.get(f"/rss-feeds/{feed_id}/articles").json()["items"]
+    assert all(item["webhook_notified"] for item in articles)
 
 
 def test_execute_rss_feed_delivers_to_all_registered_webhooks(client, monkeypatch):

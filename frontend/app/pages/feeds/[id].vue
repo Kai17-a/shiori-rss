@@ -196,10 +196,20 @@
               >
                 {{ article.title || article.url }}
               </a>
-              <p class="flex items-center gap-1.5 text-xs text-muted">
-                <UIcon name="i-lucide-clock-3" class="size-3.5" />
-                Published {{ formatDateTime(article.published || article.created_at) }}
-              </p>
+              <div class="flex flex-wrap items-center gap-2">
+                <p class="flex items-center gap-1.5 text-xs text-muted">
+                  <UIcon name="i-lucide-clock-3" class="size-3.5" />
+                  Published {{ formatDateTime(article.published || article.created_at) }}
+                </p>
+                <UBadge
+                  v-if="!article.webhook_notified"
+                  label="Webhook pending"
+                  icon="i-lucide-clock-arrow-up"
+                  color="warning"
+                  variant="soft"
+                  size="sm"
+                />
+              </div>
               </div>
               <UIcon name="i-lucide-arrow-up-right" class="mt-1 size-4 shrink-0 text-dimmed transition group-hover:text-primary" />
             </article>

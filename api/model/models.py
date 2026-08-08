@@ -46,7 +46,12 @@ class RSSFeedArticle(SQLModel, table=True):
     )
     url: str = Field(sa_column=Column(String, nullable=False))
     title: str | None = Field(default=None, sa_column=Column(String))
+    summary: str | None = Field(default=None, sa_column=Column(Text))
     published: datetime | None = Field(default=None, sa_column=Column(DateTime))
+    webhook_notified: bool = Field(
+        default=False,
+        sa_column=Column(Boolean, nullable=False, server_default=text("0")),
+    )
     created_at: datetime = Field(
         sa_column=Column(DateTime, nullable=False, server_default=text("(datetime('now'))"))
     )
@@ -155,7 +160,9 @@ class RSSFeedArticleResponse(BaseModel):
     feed_id: int
     url: str
     title: str | None = None
+    summary: str | None = None
     published: datetime | None = None
+    webhook_notified: bool
     created_at: datetime
 
 

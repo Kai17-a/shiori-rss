@@ -14,7 +14,7 @@ CREATE TABLE rss_feed_articles (
   url TEXT NOT NULL,
   title TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
-, published DATETIME);
+, published DATETIME, summary TEXT, webhook_notified INTEGER NOT NULL DEFAULT 0);
 CREATE UNIQUE INDEX idx_rss_feed_articles_feed_url_unique
   ON rss_feed_articles(feed_id, url);
 CREATE TABLE app_settings (
@@ -41,6 +41,8 @@ CREATE TABLE rss_feed_webhooks (
   webhook_id INTEGER NOT NULL REFERENCES webhook_endpoints(id) ON DELETE CASCADE,
   PRIMARY KEY (feed_id, webhook_id)
 );
+CREATE INDEX idx_rss_feed_articles_pending_notification
+  ON rss_feed_articles(feed_id, webhook_notified, id);
 -- Dbmate schema migrations
 INSERT INTO "schema_migrations" (version) VALUES
   ('010'),
@@ -54,4 +56,5 @@ INSERT INTO "schema_migrations" (version) VALUES
   ('202608021200'),
   ('202608021300'),
   ('202608041600'),
-  ('202608081200');
+  ('202608081200'),
+  ('202608081300');

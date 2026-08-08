@@ -101,7 +101,7 @@ pub fn webhook_summary_enabled(conn: &Connection) -> Result<bool> {
 pub fn fetch_rss_feeds(conn: &Connection) -> Result<Vec<RSSFeed>> {
     let has_notify_webhook_enabled = has_column(conn, "rss_feeds", "notify_webhook_enabled")?;
     let query = if has_notify_webhook_enabled {
-        "SELECT id, url, title, description, notify_webhook_enabled, created_at, updated_at FROM rss_feeds WHERE notify_webhook_enabled = 1"
+        "SELECT id, url, title, description, notify_webhook_enabled, created_at, updated_at FROM rss_feeds"
     } else {
         "SELECT id, url, title, description, 1 AS notify_webhook_enabled, created_at, updated_at FROM rss_feeds"
     };

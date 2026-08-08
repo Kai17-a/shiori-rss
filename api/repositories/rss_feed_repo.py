@@ -107,8 +107,12 @@ class RSSFeedRepository:
     def find_articles_by_feed_id(self, feed_id: int) -> list[dict]:
         has_published = self._has_column("rss_feed_articles", "published")
         published_select = ", published" if has_published else ", NULL AS published"
+        has_summary = self._has_column("rss_feed_articles", "summary")
+        has_notified = self._has_column("rss_feed_articles", "webhook_notified")
+        summary_select = ", summary" if has_summary else ", NULL AS summary"
+        notified_select = ", webhook_notified" if has_notified else ", 1 AS webhook_notified"
         query = f"""
-            SELECT id, feed_id, url, title{published_select}, created_at
+            SELECT id, feed_id, url, title{summary_select}{published_select}{notified_select}, created_at
             FROM rss_feed_articles
             WHERE feed_id = ?
             ORDER BY published IS NULL ASC, published DESC, id DESC

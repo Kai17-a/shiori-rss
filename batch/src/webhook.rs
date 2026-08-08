@@ -34,15 +34,12 @@ pub struct Article<'a> {
     pub published: &'a str,
 }
 
-fn has_published_column(conn: &Connection) -> Result<bool, rusqlite::Error> {
-    let mut stmt = conn.prepare("PRAGMA table_info(rss_feed_articles)")?;
-    let rows = stmt.query_map([], |row| row.get::<_, String>(1))?;
-    for row in rows {
-        if row? == "published" {
-            return Ok(true);
-        }
-    }
-    Ok(false)
+#[derive(Debug)]
+pub struct StoredArticle {
+    pub url: String,
+    pub title: String,
+    pub published: String,
+    pub summary: String,
 }
 
 fn chunk_embeds<'a>(embeds: &'a [Embed<'a>], include_summary: bool) -> Vec<Vec<&'a Embed<'a>>> {
@@ -290,33 +287,32 @@ async fn send_article_webhook(
     Ok(())
 }
 
-pub fn record_sent_articles(
+pub fn record_pending_articles(
     conn: &Connection,
     feed_id: u32,
-    articles: &[Article<'_>],
+    articles: &[StoredArticle],
 ) -> Result<(), rusqlite::Error> {
-    let has_published = has_published_column(conn)?;
-    let insert_query = if has_published {
-        "INSERT OR IGNORE INTO rss_feed_articles (feed_id, url, title, published) VALUES (?, ?, ?, ?)"
-    } else {
-        "INSERT OR IGNORE INTO rss_feed_articles (feed_id, url, title) VALUES (?, ?, ?)"
-    };
-
     for article in articles {
-        if has_published {
-            conn.execute(
-                insert_query,
-                params![feed_id, article.url, article.title, article.published],
-            )?;
-        } else {
-            conn.execute(insert_query, params![feed_id, article.url, article.title])?;
-        }
+        conn.execute(
+            r#"
+            INSERT OR IGNORE INTO rss_feed_articles
+                (feed_id, url, title, summary, published, webhook_notified)
+            VALUES (?, ?, ?, ?, ?, 0)
+            "#,
+            params![
+                feed_id,
+                article.url,
+                article.title,
+                article.summary,
+                article.published
+            ],
+        )?;
     }
 
     Ok(())
 }
 
-pub fn load_sent_article_urls(
+pub fn load_article_urls(
     conn: &Connection,
     feed_id: u32,
 ) -> Result<std::collections::HashSet<String>, rusqlite::Error> {
@@ -329,6 +325,44 @@ pub fn load_sent_article_urls(
     }
 
     Ok(urls)
+}
+
+pub fn load_pending_articles(
+    conn: &Connection,
+    feed_id: u32,
+) -> Result<Vec<StoredArticle>, rusqlite::Error> {
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT url, coalesce(title, '(no title)'), coalesce(published, '(no published date)'),
+               coalesce(summary, '(no summary)')
+        FROM rss_feed_articles
+        WHERE feed_id = ? AND webhook_notified = 0
+        ORDER BY id ASC
+        "#,
+    )?;
+    let rows = stmt.query_map(params![feed_id], |row| {
+        Ok(StoredArticle {
+            url: row.get(0)?,
+            title: row.get(1)?,
+            published: row.get(2)?,
+            summary: row.get(3)?,
+        })
+    })?;
+    rows.collect()
+}
+
+pub fn mark_articles_notified(
+    conn: &Connection,
+    feed_id: u32,
+    articles: &[StoredArticle],
+) -> Result<(), rusqlite::Error> {
+    for article in articles {
+        conn.execute(
+            "UPDATE rss_feed_articles SET webhook_notified = 1 WHERE feed_id = ? AND url = ?",
+            params![feed_id, article.url],
+        )?;
+    }
+    Ok(())
 }
 pub(crate) fn detect_webhook_service(webhook_url: &str) -> Option<&'static str> {
     let parsed = Url::parse(webhook_url).ok()?;

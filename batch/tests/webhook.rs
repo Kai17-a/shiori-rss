@@ -40,8 +40,10 @@ fn create_in_memory_test_db() -> Connection {
             feed_id INTEGER NOT NULL REFERENCES rss_feeds(id) ON DELETE CASCADE,
             url TEXT NOT NULL,
             title TEXT,
+            summary TEXT,
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
-            published DATETIME
+            published DATETIME,
+            webhook_notified INTEGER NOT NULL DEFAULT 0
         );
         ",
     )
@@ -194,22 +196,24 @@ fn detects_supported_microsoft_teams_webhook_urls() {
 }
 
 #[test]
-fn record_sent_articles_inserts_rows() {
+fn record_pending_articles_inserts_unnotified_rows() {
     let conn = create_in_memory_test_db();
     let articles = vec![
-        webhook::Article {
-            url: "https://example.com/article-1",
-            title: "Article 1",
-            published: "Wed, 01 Jan 2025 00:00:00 GMT",
+        webhook::StoredArticle {
+            url: "https://example.com/article-1".to_string(),
+            title: "Article 1".to_string(),
+            published: "Wed, 01 Jan 2025 00:00:00 GMT".to_string(),
+            summary: "Summary 1".to_string(),
         },
-        webhook::Article {
-            url: "https://example.com/article-2",
-            title: "Article 2",
-            published: "Thu, 02 Jan 2025 00:00:00 GMT",
+        webhook::StoredArticle {
+            url: "https://example.com/article-2".to_string(),
+            title: "Article 2".to_string(),
+            published: "Thu, 02 Jan 2025 00:00:00 GMT".to_string(),
+            summary: "Summary 2".to_string(),
         },
     ];
 
-    webhook::record_sent_articles(&conn, 1, &articles).expect("record articles");
+    webhook::record_pending_articles(&conn, 1, &articles).expect("record articles");
 
     let count: i64 = conn
         .query_row(
@@ -220,9 +224,17 @@ fn record_sent_articles_inserts_rows() {
         .expect("count rows");
     assert_eq!(count, 2);
 
-    let urls = webhook::load_sent_article_urls(&conn, 1).expect("load urls");
+    let urls = webhook::load_article_urls(&conn, 1).expect("load urls");
     assert!(urls.contains("https://example.com/article-1"));
     assert!(urls.contains("https://example.com/article-2"));
+    let pending = webhook::load_pending_articles(&conn, 1).expect("load pending articles");
+    assert_eq!(pending.len(), 2);
+    webhook::mark_articles_notified(&conn, 1, &pending).expect("mark notified");
+    assert!(
+        webhook::load_pending_articles(&conn, 1)
+            .expect("reload pending")
+            .is_empty()
+    );
 }
 
 #[tokio::test]
