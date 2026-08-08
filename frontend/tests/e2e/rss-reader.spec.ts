@@ -46,6 +46,12 @@ test("lists custom RSS sources in the sidebar", async ({ page }) => {
   );
   await page.getByRole("button", { name: "Custom RSS", exact: true }).click();
   await expect(page.getByRole("link", { name: "LLM Daily" })).toBeHidden();
+
+  await page.goto("/custom-feeds/7");
+  await expect(page.getByRole("link", { name: "LLM Daily" })).toBeVisible();
+  await page.getByRole("button", { name: "Custom RSS", exact: true }).click();
+  await expect(page).toHaveURL(/\/custom-feeds$/);
+  await expect(page.getByRole("link", { name: "LLM Daily" })).toBeHidden();
 });
 
 test("shows the RSS feed library at its root route", async ({ page }) => {

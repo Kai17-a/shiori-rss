@@ -105,22 +105,12 @@ const retryApiConnection = async () => {
 
 const isActive = (path: string) => route.path === path;
 const isActivePrefix = (path: string) => route.path === path || route.path.startsWith(`${path}/`);
-const sidebarOpenItems = ref<string[]>([]);
-
-watch(
-  () => route.path,
-  () => {
-    const activeSection = isActivePrefix("/feeds")
-      ? "rss-feeds"
-      : isActivePrefix("/custom-feeds")
-        ? "custom-feeds"
-        : null;
-    if (activeSection && !sidebarOpenItems.value.includes(activeSection)) {
-      sidebarOpenItems.value = [...sidebarOpenItems.value, activeSection];
-    }
-  },
-  { immediate: true },
-);
+const initialOpenSection = isActivePrefix("/feeds")
+  ? "rss-feeds"
+  : isActivePrefix("/custom-feeds")
+    ? "custom-feeds"
+    : null;
+const sidebarOpenItems = ref<string[]>(initialOpenSection ? [initialOpenSection] : []);
 
 const primaryLinks = computed<NavigationMenuItem[]>(() => [
   {
