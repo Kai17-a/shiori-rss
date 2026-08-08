@@ -6,7 +6,20 @@
 
     <template #body>
       <div class="mx-auto w-full max-w-7xl space-y-6 pb-10">
-        <UPageCard :ui="{ body: 'space-y-5' }">
+        <UTabs
+          v-model="activeFeedType"
+          :items="feedTypeTabs"
+          class="w-full"
+          color="primary"
+          variant="link"
+          :content="false"
+          :ui="{
+            list: 'w-full border-b border-default',
+            trigger: 'min-w-0 flex-1 px-3 py-3 sm:flex-none sm:px-6',
+          }"
+        />
+
+        <UPageCard v-if="activeFeedType === 'rss'" :ui="{ body: 'space-y-5' }">
           <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
             <div>
               <p class="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Library</p>
@@ -92,7 +105,7 @@
           </div>
         </UPageCard>
 
-        <CustomFeedsPanel :webhooks="webhooks" />
+        <CustomFeedsPanel v-else :webhooks="webhooks" />
 
         <RSSFeedEditorModal
           v-model:open="modalOpen"
@@ -133,10 +146,17 @@ import type {
 } from "~/types";
 
 type PaginationItem = { type: "page"; label: string; value: number } | { type: "ellipsis" };
+type FeedType = "rss" | "custom";
 
 const { request } = useApi();
 const toast = useSingleToast();
 const { refresh: refreshSidebarCatalog } = useSidebarCatalog();
+
+const activeFeedType = ref<FeedType>("rss");
+const feedTypeTabs = [
+  { label: "RSS feeds", value: "rss", icon: "i-lucide-rss" },
+  { label: "Custom RSS", value: "custom", icon: "i-lucide-wand-sparkles" },
+];
 
 const loading = ref(false);
 const saving = ref(false);

@@ -7,6 +7,9 @@ test("opens the RSS feed manager as the app home", async ({ page }) => {
   await expect(page.getByText("Follow the web on your terms.")).toHaveCount(0);
   await expect(page.getByText("Your signal, uninterrupted")).toHaveCount(0);
   await expect(page.getByText("Automation", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Custom RSS" })).toHaveCount(0);
+  await page.getByRole("tab", { name: "Custom RSS" }).click();
+  await expect(page.getByRole("heading", { name: "Your feeds" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Custom RSS" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Add custom RSS" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Bookmarks" })).toHaveCount(0);
