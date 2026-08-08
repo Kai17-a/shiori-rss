@@ -1,5 +1,5 @@
 [project]
-name = "shiori-keeper"
+name = "shiori-feed"
 version = "0.2.2"
 description = "Manage RSS feeds and webhook delivery"
 readme = "README.md"

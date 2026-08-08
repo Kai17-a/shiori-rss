@@ -53,7 +53,7 @@
         <UPageCard
           v-if="activeCategory === 'automation'"
           title="Automation"
-          description="Control how Shiori checks and delivers your feeds"
+          description="Control how Shiori Feed checks and delivers your feeds"
           icon="i-lucide-zap"
           :ui="{ body: 'grid gap-3 md:grid-cols-2' }"
         >

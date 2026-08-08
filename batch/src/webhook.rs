@@ -79,7 +79,7 @@ pub(crate) fn build_payload(
 ) -> serde_json::Value {
     match webhook_service {
         "discord" => serde_json::json!({
-            "username": "Shiori Keeper",
+            "username": "Shiori Feed",
             "content": content,
             "embeds": embeds_payload,
         }),
@@ -109,7 +109,7 @@ pub(crate) fn build_payload(
             }))
             .collect();
             serde_json::json!({
-                "username": "Shiori Keeper",
+                "username": "Shiori Feed",
                 "blocks": blocks,
             })
         }

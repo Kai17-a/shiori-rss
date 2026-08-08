@@ -1,5 +1,5 @@
 use rusqlite::Connection;
-use shiori_keeper_batch::{database_path, run_batch};
+use shiori_feed_batch::{database_path, run_batch};
 use std::error::Error;
 
 #[tokio::main]

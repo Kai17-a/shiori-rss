@@ -18,4 +18,4 @@ if [ "$#" -eq 0 ]; then
   exit 1
 fi
 
-printf '%s shiori-keeper-batch\n' "$schedule"
+printf '%s shiori-feed-batch\n' "$schedule"

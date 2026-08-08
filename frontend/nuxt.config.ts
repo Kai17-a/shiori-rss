@@ -44,7 +44,7 @@ export default defineNuxtConfig({
   },
   app: {
     head: {
-      title: "Shiori Keeper",
+      title: "Shiori Feed",
       meta: [
         {
           name: "viewport",

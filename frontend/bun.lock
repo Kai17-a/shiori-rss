@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "shiori-keeper-frontend",
+      "name": "shiori-feed-frontend",
       "version": "0.2.2",
       "dependencies": {
         "@iconify-json/lucide": "^1.2.100",

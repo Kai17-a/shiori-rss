@@ -1,5 +1,5 @@
 [package]
-name = "shiori-keeper-batch"
+name = "shiori-feed-batch"
 version = "0.2.2"
 edition = "2024"
 

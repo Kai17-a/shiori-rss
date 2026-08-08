@@ -34,7 +34,7 @@ COPY batch/src ./src
 RUN --mount=type=cache,id=cargo-registry-${TARGETPLATFORM},target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,id=cargo-target-${TARGETPLATFORM},target=/app/batch/target,sharing=locked \
     cargo build --release \
-    && cp target/release/shiori-keeper-batch /bin/
+    && cp target/release/shiori-feed-batch /bin/
 
 # Runtime stage
 FROM python:3.14-slim
@@ -79,7 +79,7 @@ COPY api /app/api
 COPY db /app/db
 COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=frontend-build /app/frontend/dist /usr/share/nginx/html
-COPY --from=batch-build /bin/shiori-keeper-batch /usr/local/bin/shiori-keeper-batch
+COPY --from=batch-build /bin/shiori-feed-batch /usr/local/bin/shiori-feed-batch
 
 COPY start.sh render-scheduler.sh /app/
 RUN chmod +x /app/start.sh /app/render-scheduler.sh

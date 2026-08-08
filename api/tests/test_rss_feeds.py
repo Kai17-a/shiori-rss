@@ -277,7 +277,7 @@ def test_ping_webhook_returns_200(client, monkeypatch):
     assert captured == {
         "url": "https://hooks.slack.com/services/xxx/yyy/zzz",
         "json": {
-            "username": "Shiori Keeper",
+            "username": "Shiori Feed",
             "blocks": [
                 {
                     "type": "header",
@@ -754,7 +754,7 @@ def test_execute_rss_feed_uses_feedparser_content(client, monkeypatch):
     assert captured["json"]["content"] == (
         "**Parsed Example** - **New articles** (2 items)"
     )
-    assert captured["json"]["username"] == "Shiori Keeper"
+    assert captured["json"]["username"] == "Shiori Feed"
     assert captured["json"]["embeds"] == [
         {
             "title": "Item 1",

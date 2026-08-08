@@ -1,5 +1,5 @@
 use rusqlite::Connection;
-use shiori_keeper_batch::{
+use shiori_feed_batch::{
     fetch_rss_feeds, fetch_webhook_endpoints, rss_periodic_execution_enabled,
     rss_webhook_notification_enabled, run_batch, webhook_summary_enabled,
 };

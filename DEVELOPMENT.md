@@ -60,8 +60,8 @@ docker compose up --build
 
 ```yaml
 services:
-  shiori-keeper:
-    container_name: shiori-keeper
+  shiori-feed:
+    container_name: shiori-feed
     build:
       context: .
       dockerfile: Dockerfile

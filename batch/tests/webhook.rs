@@ -63,7 +63,7 @@ fn create_in_memory_test_db() -> Connection {
 #[test]
 fn build_payload_matches_expected_shape() {
     let payload = serde_json::json!({
-        "username": "Shiori Keeper",
+        "username": "Shiori Feed",
         "content": "**Example Feed** - **New articles** (1 items)",
         "embeds": [{
             "title": "Example Article",
@@ -85,7 +85,7 @@ fn build_payload_matches_expected_shape() {
     }];
 
     let expected_body = serde_json::json!({
-        "username": "Shiori Keeper",
+        "username": "Shiori Feed",
         "content": "**Example Feed** - **New articles** (1 items)",
         "embeds": [{
             "title": "Example Article",
@@ -124,7 +124,7 @@ fn build_payload_supports_slack_shape() {
     assert_eq!(
         payload,
         serde_json::json!({
-            "username": "Shiori Keeper",
+            "username": "Shiori Feed",
             "blocks": [
                 {
                     "type": "header",

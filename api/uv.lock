@@ -797,7 +797,7 @@ wheels = [
 ]
 
 [[package]]
-name = "shiori-keeper"
+name = "shiori-feed"
 version = "0.2.2"
 source = { editable = "." }
 dependencies = [

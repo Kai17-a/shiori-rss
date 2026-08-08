@@ -1,6 +1,6 @@
 services:
-  shiori-keeper:
-    container_name: shiori-keeper-local
+  shiori-feed:
+    container_name: shiori-feed-local
     build:
       context: .
       dockerfile: Dockerfile

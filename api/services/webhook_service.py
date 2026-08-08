@@ -90,10 +90,10 @@ def _build_teams_card(body: list[dict[str, object]]) -> dict[str, object]:
 
 def build_webhook_payload(webhook_service: str, *, content: str) -> dict[str, object]:
     if webhook_service == "discord":
-        return {"username": "Shiori Keeper", "content": content}
+        return {"username": "Shiori Feed", "content": content}
     if webhook_service == "slack":
         return {
-            "username": "Shiori Keeper",
+            "username": "Shiori Feed",
             "blocks": [
                 {
                     "type": "header",
@@ -142,7 +142,7 @@ def build_rss_notification_payload(
         content = f"**{feed_title}** - **New articles** ({article_count} items)"
         if chunk_count > 1:
             content = f"{content} [{chunk_index}]"
-        return {"username": "Shiori Keeper", "content": content, "embeds": embeds}
+        return {"username": "Shiori Feed", "content": content, "embeds": embeds}
 
     if webhook_service == "slack":
         article_count = total_articles if total_articles is not None else len(articles)
@@ -174,7 +174,7 @@ def build_rss_notification_payload(
                     },
                 }
             )
-        return {"username": "Shiori Keeper", "blocks": blocks}
+        return {"username": "Shiori Feed", "blocks": blocks}
 
     if webhook_service == "teams":
         article_count = total_articles if total_articles is not None else len(articles)

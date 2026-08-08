@@ -1,16 +1,16 @@
-# Shiori RSS
+# Shiori Feed
 
 RSS / Atom フィードの購読、記事履歴、Webhook 通知に特化したセルフホストアプリです。
 
 ## Install
 
 ```bash
-docker pull ghcr.io/kai17-a/shiori-keeper:latest
+docker pull ghcr.io/kai17-a/shiori-feed:latest
 docker run --rm -p 3000:3000 -p 8000:8000 \
   -e DATABASE_URL=/data/data.db \
   -e RSS_CRON_SCHEDULE="0 * * * *" \
   -v "$(pwd)/data:/data" \
-  ghcr.io/kai17-a/shiori-keeper:latest
+  ghcr.io/kai17-a/shiori-feed:latest
 ```
 
 起動後、`http://127.0.0.1:3000` を開きます。`RSS_CRON_SCHEDULE` は cron 式、`TZ` はスケジュールのタイムゾーンです。

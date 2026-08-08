@@ -222,7 +222,7 @@ class NewsSiteService:
             raise HTTPException(
                 status_code=422,
                 detail=(
-                    "Target-site fetch error: Shiori Keeper could not connect to the target "
+                    "Target-site fetch error: Shiori Feed could not connect to the target "
                     "news site. "
                     f"This failed before LLM analysis. Reference ID: {reference_id}."
                 ),
