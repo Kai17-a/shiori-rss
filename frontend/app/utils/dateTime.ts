@@ -5,6 +5,14 @@ export const formatDateTime = (value: string | null | undefined) => {
     return "";
   }
 
+  const sourceDateTime = value.match(
+    /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?/,
+  );
+  if (sourceDateTime) {
+    const [, year, month, day, hour, minute, second = "00"] = sourceDateTime;
+    return `${year}/${month}/${day} ${hour}:${minute}:${second}`;
+  }
+
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
     return value;

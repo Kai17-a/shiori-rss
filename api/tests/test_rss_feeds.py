@@ -435,6 +435,36 @@ def test_list_rss_feed_articles_returns_200(client):
     assert body["items"][0]["url"].startswith("https://example.com/item-")
 
 
+def test_execute_rss_feed_preserves_source_timezone_offset(client, monkeypatch):
+    import api.services.rss_feed_service as rss_module
+
+    feed_id = create_feed(client).json()["id"]
+
+    class ParsedEntry:
+        def get(self, key, default=None):
+            return {
+                "title": "Tokyo article",
+                "link": "https://example.com/tokyo-article",
+                "published": "2026-08-04T14:30:00+09:00",
+            }.get(key, default)
+
+    class ParsedFeed:
+        bozo = False
+        feed = {"title": "Parsed Example"}
+        entries = [ParsedEntry()]
+
+    monkeypatch.setattr(rss_module.feedparser, "parse", lambda content: ParsedFeed())
+
+    execute = client.post(f"/rss-feeds/{feed_id}/execute")
+    assert execute.status_code == 200
+
+    response = client.get(f"/rss-feeds/{feed_id}/articles")
+    assert response.status_code == 200
+    assert response.json()["items"][0]["published"].isoformat() == (
+        "2026-08-04T14:30:00+09:00"
+    )
+
+
 def test_list_rss_feed_articles_orders_by_published_desc(client, monkeypatch):
     import api.services.rss_feed_service as rss_module
 

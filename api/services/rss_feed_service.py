@@ -1,10 +1,10 @@
 import logging
 import sqlite3
+from calendar import timegm
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 import xml.etree.ElementTree as ET
 from typing import cast
-from time import mktime
 
 import feedparser  # type: ignore
 import httpx
@@ -65,8 +65,17 @@ class RSSFeedService:
 
         published_parsed = entry.get("published_parsed")
         if published_parsed is not None:
-            return datetime.fromtimestamp(mktime(cast(tuple, published_parsed)))
+            return datetime.fromtimestamp(
+                timegm(cast(tuple, published_parsed)), tz=timezone.utc
+            )
         return None
+
+    def _serialize_article_published(self, value: object | None) -> object | None:
+        if not isinstance(value, datetime):
+            return value
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value.isoformat()
 
     def _article_published_sort_key(self, row: dict) -> tuple[int, float, int]:
         published = self._parse_article_published(row.get("published"))
@@ -215,11 +224,7 @@ class RSSFeedService:
         )
         for article in articles:
             published = article.get("published")
-            published_value = (
-                published.strftime("%Y-%m-%d %H:%M:%S")
-                if isinstance(published, datetime)
-                else published
-            )
+            published_value = self._serialize_article_published(published)
             params = (
                 feed_id,
                 article["url"],

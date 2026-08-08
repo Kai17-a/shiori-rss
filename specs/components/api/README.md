@@ -3,6 +3,7 @@
 FastAPI は `/health`、`/dashboard`、`/rss-feeds`、`/news-sites`、`/settings` のルートを公開する。
 
 - RSS feed: 作成、一覧、詳細、更新、削除、通知状態付き記事履歴、Webhookなしでも保存できる手動実行
+- RSS記事の公開日時はXMLの `pubDate` / `published` を優先し、元のUTCオフセットを保ったISO 8601形式で保存・返却する。
 - Dashboard: 利用者のアクセス日を受け取り、通常RSS・カスタムRSSの件数、当日記事数、未通知数、当日記事を集約して返す
 - Settings: Webhook CRUD・疎通確認、定期実行、定期通知、記事概要の設定
 - LLM settings: 接続情報の取得、実接続テスト後の保存、削除、保存前テスト

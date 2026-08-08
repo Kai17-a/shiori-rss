@@ -1,4 +1,7 @@
+use chrono::DateTime;
 use feed_rs::parser;
+use quick_xml::Reader;
+use quick_xml::events::Event;
 use reqwest::Url;
 use rusqlite::Connection;
 use std::collections::HashSet;
@@ -18,17 +21,76 @@ struct FeedArticle {
     summary: String,
 }
 
+fn normalize_source_published(value: &str) -> Option<String> {
+    DateTime::parse_from_rfc3339(value)
+        .or_else(|_| DateTime::parse_from_rfc2822(value))
+        .ok()
+        .map(|date| date.to_rfc3339())
+}
+
+fn extract_source_published(content: &[u8]) -> Vec<Option<String>> {
+    let mut reader = Reader::from_reader(content);
+    reader.config_mut().trim_text(true);
+    let mut dates = Vec::new();
+    let mut in_article = false;
+    let mut capture_published = false;
+    let mut capture_updated = false;
+    let mut published = None;
+    let mut updated = None;
+
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(event)) => match event.local_name().as_ref() {
+                b"item" | b"entry" => {
+                    in_article = true;
+                    published = None;
+                    updated = None;
+                }
+                b"pubDate" | b"published" if in_article => capture_published = true,
+                b"updated" if in_article => capture_updated = true,
+                _ => {}
+            },
+            Ok(Event::Text(text)) if capture_published => {
+                published = text.decode().ok().map(|value| value.trim().to_string());
+            }
+            Ok(Event::Text(text)) if capture_updated => {
+                updated = text.decode().ok().map(|value| value.trim().to_string());
+            }
+            Ok(Event::End(event)) => match event.local_name().as_ref() {
+                b"pubDate" | b"published" => capture_published = false,
+                b"updated" => capture_updated = false,
+                b"item" | b"entry" if in_article => {
+                    dates.push(published.take().or_else(|| updated.take()));
+                    in_article = false;
+                }
+                _ => {}
+            },
+            Ok(Event::Eof) | Err(_) => break,
+            _ => {}
+        }
+    }
+
+    dates
+}
+
 fn parse_feed_articles(content: &[u8]) -> Result<Vec<FeedArticle>, parser::ParseFeedError> {
     let feed = parser::parse(content)?;
+    let source_dates = extract_source_published(content);
     Ok(feed
         .entries
         .into_iter()
-        .map(|entry| {
-            let published = entry
+        .enumerate()
+        .map(|(index, entry)| {
+            let parsed_published = entry
                 .published
                 .or(entry.updated)
                 .map(|date| date.to_rfc3339())
                 .unwrap_or_else(|| "(no published date)".to_string());
+            let published = source_dates
+                .get(index)
+                .and_then(|value| value.as_deref())
+                .and_then(normalize_source_published)
+                .unwrap_or(parsed_published);
             FeedArticle {
                 title: entry
                     .title
@@ -282,7 +344,7 @@ mod tests {
         assert_eq!(articles.len(), 1);
         assert_eq!(articles[0].title, "Atom article");
         assert_eq!(articles[0].link, "https://example.com/atom-article");
-        assert_eq!(articles[0].published, "2026-08-04T05:30:00+00:00");
+        assert_eq!(articles[0].published, "2026-08-04T14:30:00+09:00");
         assert_eq!(articles[0].summary, "Atom content");
     }
 }

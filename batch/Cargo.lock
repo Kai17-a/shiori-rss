@@ -1428,6 +1428,7 @@ version = "0.2.2"
 dependencies = [
  "chrono",
  "feed-rs",
+ "quick-xml",
  "reqwest",
  "rusqlite",
  "serde_json",
