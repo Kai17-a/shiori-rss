@@ -29,7 +29,9 @@ docker run --rm -p 3000:3000 -p 8000:8000 \
 
 ## Screens
 
-- `/`: 通常フィードとカスタムRSSのライブラリ、手動取得
+- `/`: フィード数・未通知数のサマリーとアクセス日当日のニュース
+- `/feeds`: 通常フィードのライブラリ、登録・手動取得
+- `/custom-feeds`: LLMカスタムRSSのライブラリ、登録・手動取得
 - `/feeds/{id}`: フィードごとの記事一覧と検索
 - `/custom-feeds/{id}`: LLMカスタムRSSの記事一覧と検索
 - `/settings`: General、Automation、Webhooks、LLMのタブ別設定

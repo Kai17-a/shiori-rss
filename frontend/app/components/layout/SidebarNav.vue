@@ -3,7 +3,7 @@
     <UNavigationMenu
       :collapsed="collapsed"
       :items="primaryLinks"
-      :model-value="primaryModelValue"
+      v-model="primaryModelValue"
       orientation="vertical"
       tooltip
       popover
@@ -21,10 +21,11 @@
 <script setup lang="ts">
 import type { NavigationMenuItem } from "@nuxt/ui";
 
+const primaryModelValue = defineModel<string[]>("primaryModelValue", { required: true });
+
 defineProps<{
   collapsed: boolean;
   primaryLinks: NavigationMenuItem[];
   secondaryLinks: NavigationMenuItem[];
-  primaryModelValue: string[];
 }>();
 </script>

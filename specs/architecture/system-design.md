@@ -14,6 +14,7 @@
 | Method | Path | Purpose |
 | --- | --- | --- |
 | GET | `/health` | ヘルスチェック |
+| GET | `/dashboard` | 指定日のホームサマリーと記事一覧 |
 | POST/GET | `/rss-feeds` | フィード作成・一覧 |
 | GET/PATCH/DELETE | `/rss-feeds/{id}` | フィード詳細・更新・削除 |
 | GET | `/rss-feeds/{id}/articles` | 記事履歴 |

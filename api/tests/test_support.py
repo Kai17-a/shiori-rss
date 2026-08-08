@@ -23,6 +23,7 @@ from api.model.models import (
     SettingsWebhookUpdate,
 )
 from api.services.rss_feed_service import RSSFeedService
+from api.services.dashboard_service import DashboardService
 from api.services.news_site_service import NewsSiteService
 from api.services.settings_service import SettingsService
 
@@ -104,6 +105,24 @@ class CompatTestClient:
             service.delete(feed_id)
             return self._ok(None, 204)
         return None
+
+    def _dashboard_response(self, method: str, path: str, query):
+        if method != "GET" or path != "/dashboard":
+            return None
+        from datetime import date
+
+        date_value = query.get("date", [None])[0]
+        if date_value is None:
+            return self._error(422, "date is required")
+        payload = (
+            DashboardService()
+            .get(
+                date.fromisoformat(date_value),
+                limit=int(query.get("limit", [100])[0]),
+            )
+            .model_dump(mode="json")
+        )
+        return self._ok(payload)
 
     def _news_site_response(self, method: str, path: str, query, json):
         service = NewsSiteService()
@@ -220,6 +239,9 @@ class CompatTestClient:
         try:
             if method == "GET" and parsed.path == "/health":
                 return self._ok({"status": "ok"})
+            response = self._dashboard_response(method, parsed.path, query)
+            if response is not None:
+                return response
             response = self._rss_response(method, parsed.path, query, json)
             if response is not None:
                 return response

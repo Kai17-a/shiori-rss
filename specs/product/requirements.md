@@ -32,16 +32,17 @@
 
 ## UI
 
-1. `/` はリダイレクトせずRSS専用ホームを表示する。
-2. ナビゲーションは All feeds 配下に登録済みの通常フィードとカスタムRSSを表示し、Preferencesを提供する。
-3. `/` では通常フィードとカスタムRSSをタブで切り替え、それぞれの CRUD と手動取得を操作できる。
-4. `/feeds/{id}` でフィード情報と保存済み記事を閲覧・検索できる。
-5. `/custom-feeds/{id}` でカスタムRSS情報と保存済み記事を閲覧・検索できる。
-6. `/settings` は General、Automation、Webhooks、LLM のカテゴリタブで設定を切り替える。
-7. Automation タブで定期実行とRSS Webhook通知の有効・無効を管理できる。
-8. General、Webhooks、LLM タブでテーマ、通知先、LLM接続をそれぞれ管理できる。
-9. 旧 `/feeds`、`/rss`、`/rss/{id}` ルートは提供しない。
-10. 一覧と設定画面にはキャッチコピー用のヒーロー領域を設けず、主要操作を優先して表示する。
+1. `/` はリダイレクトせず、通常フィード数、カスタムRSS数、当日記事数、Webhook未通知数のサマリーと、アクセス日当日の記事を表示する。
+2. ナビゲーションは Home、折り畳み可能な RSS feeds、折り畳み可能な Custom RSS、Preferencesを表示する。
+3. `/feeds` で通常フィードの CRUD と手動取得を操作できる。
+4. `/custom-feeds` でカスタムRSSの CRUD と手動取得を操作できる。
+5. `/feeds/{id}` でフィード情報と保存済み記事を閲覧・検索できる。
+6. `/custom-feeds/{id}` でカスタムRSS情報と保存済み記事を閲覧・検索できる。
+7. `/settings` は General、Automation、Webhooks、LLM のカテゴリタブで設定を切り替える。
+8. Automation タブで定期実行とRSS Webhook通知の有効・無効を管理できる。
+9. General、Webhooks、LLM タブでテーマ、通知先、LLM接続をそれぞれ管理できる。
+10. 旧 `/rss`、`/rss/{id}` ルートは提供しない。
+11. 一覧と設定画面にはキャッチコピー用のヒーロー領域を設けず、主要操作を優先して表示する。
 
 ## LLM 接続
 

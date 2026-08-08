@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import ClassVar, Literal
 
 from pydantic import (
@@ -489,3 +489,28 @@ class LLMSettingsTestResponse(BaseModel):
 
 class ErrorResponse(BaseModel):
     detail: str
+
+
+class DashboardSummary(BaseModel):
+    rss_feed_count: int
+    custom_feed_count: int
+    today_article_count: int
+    pending_notification_count: int
+
+
+class DashboardArticle(BaseModel):
+    source_type: Literal["rss", "custom"]
+    source_id: int
+    source_title: str
+    url: str
+    title: str | None
+    summary: str | None
+    published: datetime | None
+    created_at: datetime
+    webhook_notified: bool
+
+
+class DashboardResponse(BaseModel):
+    date: date
+    summary: DashboardSummary
+    articles: list[DashboardArticle]

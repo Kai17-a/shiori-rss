@@ -1,17 +1,14 @@
 import { expect, test } from "@playwright/test";
 
-test("opens the RSS feed manager as the app home", async ({ page }) => {
+test("opens the daily news summary as the app home", async ({ page }) => {
   await page.goto("/");
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole("heading", { name: "Your feeds" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Today’s news" })).toBeVisible();
+  await expect(page.getByText("Today’s articles", { exact: true })).toBeVisible();
   await expect(page.getByText("Follow the web on your terms.")).toHaveCount(0);
   await expect(page.getByText("Your signal, uninterrupted")).toHaveCount(0);
   await expect(page.getByText("Automation", { exact: true })).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "Custom RSS" })).toHaveCount(0);
-  await page.getByRole("tab", { name: "Custom RSS" }).click();
-  await expect(page.getByRole("heading", { name: "Your feeds" })).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "Custom RSS" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Add custom RSS" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Home", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "Bookmarks" })).toHaveCount(0);
 });
 
@@ -40,30 +37,40 @@ test("lists custom RSS sources in the sidebar", async ({ page }) => {
 
   await page.goto("/");
 
+  await page.getByRole("button", { name: "Custom RSS", exact: true }).click();
   await expect(page.getByRole("link", { name: "LLM Daily" })).toHaveAttribute(
     "href",
     "/custom-feeds/7",
   );
+  await page.getByRole("button", { name: "Custom RSS", exact: true }).click();
+  await expect(page.getByRole("link", { name: "LLM Daily" })).toBeHidden();
 });
 
-test("does not expose the former feed library route", async ({ page }) => {
+test("shows the RSS feed library at its root route", async ({ page }) => {
   await page.goto("/feeds");
   await expect(page).toHaveURL(/\/feeds$/);
-  await expect(page.getByText("404")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Your feeds" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add feed" })).toBeVisible();
+});
+
+test("shows the custom RSS library at its root route", async ({ page }) => {
+  await page.goto("/custom-feeds");
+  await expect(page).toHaveURL(/\/custom-feeds$/);
+  await expect(page.getByRole("heading", { name: "Custom RSS", level: 2 })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add custom RSS" })).toBeVisible();
 });
 
 test("does not expose the former RSS screen route", async ({ page }) => {
   await page.goto("/rss");
   await expect(page).toHaveURL(/\/rss$/);
-  await expect(page.getByText("404")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Your feeds" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Today’s news" })).toHaveCount(0);
 });
 
 test("shows the LLM connection settings used by custom RSS", async ({ page }) => {
-  await page.goto("/settings");
+  await page.goto("/settings?tab=llm");
 
   await expect(page.getByText("Tune your feed workflow.")).toHaveCount(0);
-  await expect(page.getByText("Theme", { exact: true })).toBeVisible();
-  await page.getByRole("tab", { name: "LLM" }).click();
   await expect(page.getByText("LLM connection", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Provider")).toBeVisible();
 });

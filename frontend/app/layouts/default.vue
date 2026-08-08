@@ -27,7 +27,7 @@
           :collapsed="collapsed"
           :primary-links="primaryLinks"
           :secondary-links="secondaryLinks"
-          :primary-model-value="sidebarOpenItems"
+          v-model:primary-model-value="sidebarOpenItems"
           @navigate="closeSidebar"
         />
       </template>
@@ -99,37 +99,78 @@ const retryApiConnection = async () => {
 
 const isActive = (path: string) => route.path === path;
 const isActivePrefix = (path: string) => route.path === path || route.path.startsWith(`${path}/`);
-const sidebarOpenItems = computed(() => [
-  ...(isActive("/") || isActivePrefix("/feeds") || isActivePrefix("/custom-feeds")
-    ? ["feeds"]
-    : []),
-]);
+const sidebarOpenItems = ref<string[]>([]);
+
+watch(
+  () => route.path,
+  () => {
+    const activeSection = isActivePrefix("/feeds")
+      ? "rss-feeds"
+      : isActivePrefix("/custom-feeds")
+        ? "custom-feeds"
+        : null;
+    if (activeSection && !sidebarOpenItems.value.includes(activeSection)) {
+      sidebarOpenItems.value = [...sidebarOpenItems.value, activeSection];
+    }
+  },
+  { immediate: true },
+);
 
 const primaryLinks = computed<NavigationMenuItem[]>(() => [
   {
-    label: "All feeds",
-    icon: "i-lucide-radio-tower",
+    label: "Home",
+    icon: "i-lucide-house",
     to: "/",
-    value: "feeds",
-    active: isActive("/") || isActivePrefix("/feeds") || isActivePrefix("/custom-feeds"),
+    active: isActive("/"),
+    onSelect: closeSidebar,
+  },
+  {
+    label: "RSS feeds",
+    icon: "i-lucide-rss",
+    value: "rss-feeds",
+    type: "trigger",
+    active: isActivePrefix("/feeds"),
     defaultOpen: false,
-    children: rssFeeds.value.map((feed) => ({
-      label: feed.title,
-      icon: "i-lucide-rss",
-      to: `/feeds/${feed.id}`,
-      exact: true,
-      active: isActive(`/feeds/${feed.id}`),
-      onSelect: closeSidebar,
-    })).concat(
-      customFeeds.value.map((feed) => ({
-        label: feed.title,
-        icon: "i-lucide-wand-sparkles",
-        to: `/custom-feeds/${feed.id}`,
+    children: [
+      {
+        label: "All RSS feeds",
+        to: "/feeds",
         exact: true,
-        active: isActive(`/custom-feeds/${feed.id}`),
+        active: isActive("/feeds"),
         onSelect: closeSidebar,
-      })),
-    ),
+      },
+      ...rssFeeds.value.map((feed) => ({
+          label: feed.title,
+          to: `/feeds/${feed.id}`,
+          exact: true,
+          active: isActive(`/feeds/${feed.id}`),
+          onSelect: closeSidebar,
+        })),
+    ],
+  },
+  {
+    label: "Custom RSS",
+    icon: "i-lucide-wand-sparkles",
+    value: "custom-feeds",
+    type: "trigger",
+    active: isActivePrefix("/custom-feeds"),
+    defaultOpen: false,
+    children: [
+      {
+        label: "All custom RSS",
+        to: "/custom-feeds",
+        exact: true,
+        active: isActive("/custom-feeds"),
+        onSelect: closeSidebar,
+      },
+      ...customFeeds.value.map((feed) => ({
+          label: feed.title,
+          to: `/custom-feeds/${feed.id}`,
+          exact: true,
+          active: isActive(`/custom-feeds/${feed.id}`),
+          onSelect: closeSidebar,
+        })),
+    ],
   },
 ]);
 
