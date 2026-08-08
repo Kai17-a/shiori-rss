@@ -20,7 +20,7 @@
               </div>
               <div class="flex flex-wrap gap-2">
                 <UButton label="Add a feed" icon="i-lucide-plus" size="lg" @click="openCreateModal" />
-                <UButton to="/settings" label="Delivery settings" icon="i-lucide-sliders-horizontal" color="neutral" variant="soft" size="lg" />
+                <UButton to="/settings?tab=automation" label="Delivery settings" icon="i-lucide-sliders-horizontal" color="neutral" variant="soft" size="lg" />
               </div>
             </div>
 
@@ -30,45 +30,16 @@
                 <span class="signal-stat-label">Feeds</span>
               </div>
               <div class="signal-stat">
-                <UIcon :name="rssExecutionEnabled ? 'i-lucide-clock-3' : 'i-lucide-pause'" class="size-5 text-primary" />
-                <span class="signal-stat-label">{{ rssExecutionEnabled ? 'Scheduled' : 'Paused' }}</span>
+                <UIcon name="i-lucide-rss" class="size-5 text-primary" />
+                <span class="signal-stat-label">RSS & Atom</span>
               </div>
               <div class="signal-stat">
-                <UIcon :name="rssWebhookNotificationEnabled ? 'i-lucide-send' : 'i-lucide-bell-off'" class="size-5 text-primary" />
-                <span class="signal-stat-label">{{ rssWebhookNotificationEnabled ? 'Delivering' : 'Muted' }}</span>
+                <UIcon name="i-lucide-shield-check" class="size-5 text-primary" />
+                <span class="signal-stat-label">Self-hosted</span>
               </div>
             </div>
           </div>
         </section>
-
-        <UPageCard
-          title="Automation"
-          description="Control how Shiori checks and delivers your feeds"
-          icon="i-lucide-zap"
-          :ui="{ body: 'grid gap-3 md:grid-cols-2' }"
-        >
-            <div class="flex items-start justify-between gap-4 rounded-2xl bg-elevated/60 p-4">
-              <div class="space-y-1">
-                <p class="text-sm font-semibold text-default">Scheduled refresh</p>
-                <p class="text-sm text-muted">
-                  Check enabled feeds on the server schedule.
-                </p>
-              </div>
-              <USwitch v-model="rssExecutionEnabled" :loading="rssExecutionLoading" />
-            </div>
-            <div class="flex items-start justify-between gap-4 rounded-2xl bg-elevated/60 p-4">
-              <div class="space-y-1">
-                <p class="text-sm font-semibold text-default">Webhook delivery</p>
-                <p class="text-sm text-muted">
-                  Send newly discovered articles to your channels.
-                </p>
-              </div>
-              <USwitch
-                v-model="rssWebhookNotificationEnabled"
-                :loading="rssWebhookNotificationLoading"
-              />
-            </div>
-        </UPageCard>
 
         <UPageCard :ui="{ body: 'space-y-5' }">
           <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
@@ -190,8 +161,6 @@ import type {
   RSSFeedExecuteResponse,
   RSSFeedListResponse,
   RSSFeedResponse,
-  SettingsRssExecutionResponse,
-  SettingsRssWebhookNotificationResponse,
   SettingsWebhookListResponse,
   SettingsWebhookResponse,
 } from "~/types";
@@ -205,10 +174,6 @@ const { refresh: refreshSidebarCatalog } = useSidebarCatalog();
 const loading = ref(false);
 const saving = ref(false);
 const deleting = ref(false);
-const rssExecutionLoading = ref(false);
-const rssExecutionSaving = ref(false);
-const rssWebhookNotificationLoading = ref(false);
-const rssWebhookNotificationSaving = ref(false);
 const executingFeedId = ref<number | null>(null);
 const loadError = ref("");
 const modalOpen = ref(false);
@@ -230,8 +195,6 @@ const feedForm = reactive({
   description: "",
   webhookIds: [] as number[],
 });
-const rssExecutionEnabled = ref(false);
-const rssWebhookNotificationEnabled = ref(false);
 
 const pageCount = computed(() => Math.max(feedList.value.total_pages, 1));
 const paginationItems = computed<PaginationItem[]>(() => {
@@ -292,103 +255,6 @@ const loadWebhooks = async () => {
     });
   }
 };
-
-const loadRssExecution = async () => {
-  rssExecutionLoading.value = true;
-  try {
-    const response = await request<SettingsRssExecutionResponse>("/settings/rss-execution");
-    rssExecutionEnabled.value = response.enabled;
-  } catch (err) {
-    toast.show({
-      title: "Failed to load RSS execution setting.",
-      description: err instanceof Error ? err.message : undefined,
-      color: "error",
-      icon: "i-lucide-circle-alert",
-    });
-  } finally {
-    rssExecutionLoading.value = false;
-  }
-};
-
-const loadRssWebhookNotification = async () => {
-  rssWebhookNotificationLoading.value = true;
-  try {
-    const response = await request<SettingsRssWebhookNotificationResponse>(
-      "/settings/rss-webhook-notification",
-    );
-    rssWebhookNotificationEnabled.value = response.enabled;
-  } catch (err) {
-    toast.show({
-      title: "Failed to load RSS webhook notification setting.",
-      description: err instanceof Error ? err.message : undefined,
-      color: "error",
-      icon: "i-lucide-circle-alert",
-    });
-  } finally {
-    rssWebhookNotificationLoading.value = false;
-  }
-};
-
-watch(rssExecutionEnabled, async (enabled, previous) => {
-  if (rssExecutionLoading.value || enabled === previous) return;
-  rssExecutionSaving.value = true;
-  try {
-    const response = await request<SettingsRssExecutionResponse>("/settings/rss-execution", {
-      method: "PUT",
-      body: JSON.stringify({ enabled }),
-    });
-    rssExecutionEnabled.value = response.enabled;
-    toast.show({
-      title: response.enabled
-        ? "RSS periodic execution enabled."
-        : "RSS periodic execution disabled.",
-      color: "success",
-      icon: "i-lucide-check",
-    });
-  } catch (err) {
-    rssExecutionEnabled.value = previous;
-    toast.show({
-      title: "Failed to update RSS execution setting.",
-      description: err instanceof Error ? err.message : undefined,
-      color: "error",
-      icon: "i-lucide-circle-alert",
-    });
-  } finally {
-    rssExecutionSaving.value = false;
-  }
-});
-
-watch(rssWebhookNotificationEnabled, async (enabled, previous) => {
-  if (rssWebhookNotificationLoading.value || enabled === previous) return;
-  rssWebhookNotificationSaving.value = true;
-  try {
-    const response = await request<SettingsRssWebhookNotificationResponse>(
-      "/settings/rss-webhook-notification",
-      {
-        method: "PUT",
-        body: JSON.stringify({ enabled }),
-      },
-    );
-    rssWebhookNotificationEnabled.value = response.enabled;
-    toast.show({
-      title: response.enabled
-        ? "RSS webhook notifications enabled."
-        : "RSS webhook notifications disabled.",
-      color: "success",
-      icon: "i-lucide-check",
-    });
-  } catch (err) {
-    rssWebhookNotificationEnabled.value = previous;
-    toast.show({
-      title: "Failed to update RSS webhook notification setting.",
-      description: err instanceof Error ? err.message : undefined,
-      color: "error",
-      icon: "i-lucide-circle-alert",
-    });
-  } finally {
-    rssWebhookNotificationSaving.value = false;
-  }
-});
 
 type LoadToastKind = "loaded" | "refreshed";
 
@@ -567,11 +433,6 @@ const confirmDelete = async () => {
 };
 
 onMounted(async () => {
-  await Promise.all([
-    loadFeeds(),
-    loadWebhooks(),
-    loadRssExecution(),
-    loadRssWebhookNotification(),
-  ]);
+  await Promise.all([loadFeeds(), loadWebhooks()]);
 });
 </script>

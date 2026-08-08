@@ -20,7 +20,22 @@
             </div>
           </div>
         </section>
+
+        <UTabs
+          v-model="activeCategory"
+          :items="settingsCategories"
+          class="w-full"
+          color="primary"
+          variant="link"
+          :content="false"
+          :ui="{
+            list: 'w-full overflow-x-auto border-b border-default',
+            trigger: 'min-w-max px-4 py-3',
+          }"
+        />
+
         <UPageCard
+          v-if="activeCategory === 'general'"
           title="Theme"
           description="Switch the app appearance between light, dark, and system"
           :ui="{ body: 'space-y-5' }"
@@ -51,6 +66,40 @@
         </UPageCard>
 
         <UPageCard
+          v-if="activeCategory === 'automation'"
+          title="Automation"
+          description="Control how Shiori checks and delivers your feeds"
+          icon="i-lucide-zap"
+          :ui="{ body: 'grid gap-3 md:grid-cols-2' }"
+        >
+          <div class="flex items-start justify-between gap-4 rounded-2xl bg-elevated/60 p-4">
+            <div class="space-y-1">
+              <p class="text-sm font-semibold text-default">Scheduled refresh</p>
+              <p class="text-sm text-muted">Check enabled feeds on the server schedule.</p>
+            </div>
+            <USwitch
+              :model-value="rssExecutionEnabled"
+              :loading="rssExecutionLoading || rssExecutionSaving"
+              aria-label="Scheduled refresh"
+              @update:model-value="setRssExecution"
+            />
+          </div>
+          <div class="flex items-start justify-between gap-4 rounded-2xl bg-elevated/60 p-4">
+            <div class="space-y-1">
+              <p class="text-sm font-semibold text-default">Webhook delivery</p>
+              <p class="text-sm text-muted">Send newly discovered articles to your channels.</p>
+            </div>
+            <USwitch
+              :model-value="rssWebhookNotificationEnabled"
+              :loading="rssWebhookNotificationLoading || rssWebhookNotificationSaving"
+              aria-label="Webhook delivery"
+              @update:model-value="setRssWebhookNotification"
+            />
+          </div>
+        </UPageCard>
+
+        <UPageCard
+          v-if="activeCategory === 'llm'"
           title="LLM connection"
           description="Configure and verify an Ollama, vLLM, or OpenAI-compatible endpoint"
           :ui="{ body: 'space-y-5' }"
@@ -145,6 +194,7 @@
         </UPageCard>
 
         <UPageCard
+          v-if="activeCategory === 'webhooks'"
           title="Webhooks"
           description="Register the Discord, Slack, or Microsoft Teams webhooks used by RSS execution"
           :ui="{ body: 'space-y-5' }"
@@ -285,11 +335,33 @@ import type {
   SettingsWebhookPingResponse,
   SettingsWebhookResponse,
   SettingsWebhookSummaryResponse,
+  SettingsRssExecutionResponse,
+  SettingsRssWebhookNotificationResponse,
 } from "~/types";
 
 const colorMode = useColorMode();
 const { request } = useApi();
 const toast = useSingleToast();
+const route = useRoute();
+const router = useRouter();
+
+type SettingsCategory = "general" | "automation" | "webhooks" | "llm";
+
+const isSettingsCategory = (value: unknown): value is SettingsCategory =>
+  typeof value === "string" && ["general", "automation", "webhooks", "llm"].includes(value);
+const activeCategory = ref<SettingsCategory>(
+  isSettingsCategory(route.query.tab) ? route.query.tab : "general",
+);
+const settingsCategories: TabsItem[] = [
+  { label: "General", value: "general", icon: "i-lucide-palette" },
+  { label: "Automation", value: "automation", icon: "i-lucide-zap" },
+  { label: "Webhooks", value: "webhooks", icon: "i-lucide-webhook" },
+  { label: "LLM", value: "llm", icon: "i-lucide-bot" },
+];
+
+watch(activeCategory, async (category) => {
+  await router.replace({ query: { ...route.query, tab: category === "general" ? undefined : category } });
+});
 
 const themeOptions: TabsItem[] = [
   { label: "System", value: "system", icon: "i-lucide-monitor" },
@@ -317,6 +389,12 @@ const webhookForm = reactive({ name: "", webhookUrl: "" });
 const webhookSummaryEnabled = ref(true);
 const webhookSummaryLoading = ref(false);
 const webhookSummarySaving = ref(false);
+const rssExecutionEnabled = ref(false);
+const rssExecutionLoading = ref(false);
+const rssExecutionSaving = ref(false);
+const rssWebhookNotificationEnabled = ref(false);
+const rssWebhookNotificationLoading = ref(false);
+const rssWebhookNotificationSaving = ref(false);
 const llmSettings = ref<LLMSettingsResponse | null>(null);
 const llmLoading = ref(false);
 const llmSaving = ref(false);
@@ -341,6 +419,100 @@ const llmApiKeyDescription = computed(() =>
     ? "An API key is saved. Leave this blank to keep it unchanged."
     : "Optional for local servers that do not require authentication.",
 );
+
+const loadRssExecution = async () => {
+  rssExecutionLoading.value = true;
+  try {
+    const response = await request<SettingsRssExecutionResponse>("/settings/rss-execution");
+    rssExecutionEnabled.value = response.enabled;
+  } catch (err) {
+    toast.show({
+      title: "Failed to load RSS execution setting.",
+      description: err instanceof Error ? err.message : undefined,
+      color: "error",
+      icon: "i-lucide-circle-alert",
+    });
+  } finally {
+    rssExecutionLoading.value = false;
+  }
+};
+
+const setRssExecution = async (enabled: boolean) => {
+  const previous = rssExecutionEnabled.value;
+  rssExecutionEnabled.value = enabled;
+  rssExecutionSaving.value = true;
+  try {
+    const response = await request<SettingsRssExecutionResponse>("/settings/rss-execution", {
+      method: "PUT",
+      body: JSON.stringify({ enabled }),
+    });
+    rssExecutionEnabled.value = response.enabled;
+    toast.show({
+      title: response.enabled ? "RSS periodic execution enabled." : "RSS periodic execution disabled.",
+      color: "success",
+      icon: "i-lucide-check",
+    });
+  } catch (err) {
+    rssExecutionEnabled.value = previous;
+    toast.show({
+      title: "Failed to update RSS execution setting.",
+      description: err instanceof Error ? err.message : undefined,
+      color: "error",
+      icon: "i-lucide-circle-alert",
+    });
+  } finally {
+    rssExecutionSaving.value = false;
+  }
+};
+
+const loadRssWebhookNotification = async () => {
+  rssWebhookNotificationLoading.value = true;
+  try {
+    const response = await request<SettingsRssWebhookNotificationResponse>(
+      "/settings/rss-webhook-notification",
+    );
+    rssWebhookNotificationEnabled.value = response.enabled;
+  } catch (err) {
+    toast.show({
+      title: "Failed to load RSS webhook notification setting.",
+      description: err instanceof Error ? err.message : undefined,
+      color: "error",
+      icon: "i-lucide-circle-alert",
+    });
+  } finally {
+    rssWebhookNotificationLoading.value = false;
+  }
+};
+
+const setRssWebhookNotification = async (enabled: boolean) => {
+  const previous = rssWebhookNotificationEnabled.value;
+  rssWebhookNotificationEnabled.value = enabled;
+  rssWebhookNotificationSaving.value = true;
+  try {
+    const response = await request<SettingsRssWebhookNotificationResponse>(
+      "/settings/rss-webhook-notification",
+      { method: "PUT", body: JSON.stringify({ enabled }) },
+    );
+    rssWebhookNotificationEnabled.value = response.enabled;
+    toast.show({
+      title: response.enabled
+        ? "RSS webhook notifications enabled."
+        : "RSS webhook notifications disabled.",
+      color: "success",
+      icon: "i-lucide-check",
+    });
+  } catch (err) {
+    rssWebhookNotificationEnabled.value = previous;
+    toast.show({
+      title: "Failed to update RSS webhook notification setting.",
+      description: err instanceof Error ? err.message : undefined,
+      color: "error",
+      icon: "i-lucide-circle-alert",
+    });
+  } finally {
+    rssWebhookNotificationSaving.value = false;
+  }
+};
 
 const loadLlmSettings = async () => {
   llmLoading.value = true;
@@ -681,6 +853,12 @@ const confirmDeleteWebhook = async () => {
 };
 
 onMounted(async () => {
-  await Promise.all([loadLlmSettings(), loadWebhooks(), loadWebhookSummary()]);
+  await Promise.all([
+    loadLlmSettings(),
+    loadWebhooks(),
+    loadWebhookSummary(),
+    loadRssExecution(),
+    loadRssWebhookNotification(),
+  ]);
 });
 </script>

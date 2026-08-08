@@ -27,9 +27,9 @@ docker run --rm -p 3000:3000 -p 8000:8000 \
 
 ## Screens
 
-- `/feeds`: フィードライブラリ、定期実行設定、手動取得
+- `/feeds`: フィードライブラリ、手動取得
 - `/feeds/{id}`: フィードごとの記事一覧と検索
-- `/settings`: テーマ、Webhook、LLM接続の管理
+- `/settings`: General、Automation、Webhooks、LLMのタブ別設定
 
 データは SQLite に保存されます。フィード URL と Webhook URL は重複登録できません。
 

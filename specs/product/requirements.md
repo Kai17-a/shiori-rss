@@ -25,10 +25,12 @@
 
 1. `/` は `/feeds` へ遷移する。
 2. ナビゲーションは All feeds、登録済みフィード、Preferences だけを表示する。
-3. `/feeds` で定期実行設定、通知設定、フィード CRUD、手動取得を操作できる。
+3. `/feeds` でフィード CRUD と手動取得を操作できる。
 4. `/feeds/{id}` でフィード情報と保存済み記事を閲覧・検索できる。
-5. `/settings` でテーマ、Webhook、LLM接続を管理できる。
-6. 旧 `/rss` と `/rss/{id}` ルートは提供しない。
+5. `/settings` は General、Automation、Webhooks、LLM のカテゴリタブで設定を切り替える。
+6. Automation タブで定期実行とRSS Webhook通知の有効・無効を管理できる。
+7. General、Webhooks、LLM タブでテーマ、通知先、LLM接続をそれぞれ管理できる。
+8. 旧 `/rss` と `/rss/{id}` ルートは提供しない。
 
 ## LLM 接続
 
