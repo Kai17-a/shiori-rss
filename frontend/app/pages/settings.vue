@@ -269,7 +269,7 @@
                 color="neutral"
                 variant="soft"
                 icon="i-lucide-play"
-                loading-icon="i-lucide-loader-circle"
+                loading-icon="i-lucide-loader"
                 :loading="aiAnalysisRunning"
                 :disabled="aiAnalysisLoading || aiAnalysisSaving || aiAnalysisRunning || !llmConfigured"
                 @click="runAiAnalysis"
