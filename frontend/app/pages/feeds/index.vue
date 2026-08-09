@@ -10,8 +10,8 @@
           <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
             <div>
               <p class="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Library</p>
-              <h2 class="mt-1 text-2xl font-bold tracking-tight text-highlighted">Your feeds</h2>
-              <p class="mt-1 text-sm text-muted">Every source you follow, ready when you are.</p>
+              <h2 class="mt-1 text-2xl font-bold tracking-tight text-highlighted">RSS feeds</h2>
+              <p class="mt-1 text-sm text-muted">Registered sources and their delivery status.</p>
             </div>
             <div class="flex flex-wrap items-center gap-2">
               <RefreshButton :loading="loading" @click="refreshFeeds" />

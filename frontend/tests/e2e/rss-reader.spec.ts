@@ -100,7 +100,7 @@ test("lists custom RSS sources in the sidebar", async ({ page }) => {
 test("shows the RSS feed library at its root route", async ({ page }) => {
   await page.goto("/feeds");
   await expect(page).toHaveURL(/\/feeds$/);
-  await expect(page.getByRole("heading", { name: "Your feeds" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "RSS feeds", level: 2 })).toBeVisible();
   await expect(page.getByRole("button", { name: "Add feed" })).toBeVisible();
 });
 
@@ -167,7 +167,7 @@ test("shows the custom RSS library at its root route", async ({ page }) => {
 test("does not expose the former RSS screen route", async ({ page }) => {
   await page.goto("/rss");
   await expect(page).toHaveURL(/\/rss$/);
-  await expect(page.getByRole("heading", { name: "Your feeds" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "RSS feeds", level: 2 })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Last 24 hours" })).toHaveCount(0);
 });
 
