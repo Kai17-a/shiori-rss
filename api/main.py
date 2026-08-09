@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from api.routers.ask_ai import router as ask_ai_router
 from api.routers.dashboard import router as dashboard_router
 from api.routers.news_sites import router as news_sites_router
 from api.routers.rss_feeds import router as rss_feeds_router
@@ -65,6 +66,7 @@ def health_check():
 
 
 app.include_router(dashboard_router)
+app.include_router(ask_ai_router)
 app.include_router(news_sites_router)
 app.include_router(rss_feeds_router)
 app.include_router(settings_router)
