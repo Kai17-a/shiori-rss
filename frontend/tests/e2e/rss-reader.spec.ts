@@ -140,6 +140,7 @@ test("shows the LLM connection settings used by custom RSS", async ({ page }) =>
 });
 
 test("runs article analysis manually with a loading state", async ({ page }) => {
+  let executionRequests = 0;
   let releaseAnalysis = () => {};
   const analysisPending = new Promise<void>((resolve) => {
     releaseAnalysis = resolve;
@@ -167,6 +168,7 @@ test("runs article analysis manually with a loading state", async ({ page }) => 
     });
   });
   await page.route(/\/api\/settings\/ai-article-analysis\/execute\/?$/, async (route) => {
+    executionRequests += 1;
     await analysisPending;
     await route.fulfill({
       contentType: "application/json",
@@ -183,10 +185,14 @@ test("runs article analysis manually with a loading state", async ({ page }) => 
   await page.goto("/settings?tab=llm");
   const runButton = page.getByRole("button", { name: "Run analysis now" });
   await expect(runButton).toBeEnabled();
-  await runButton.click();
+  await runButton.evaluate((button: HTMLButtonElement) => {
+    button.click();
+    button.click();
+  });
 
   await expect(runButton).toBeDisabled();
   await expect(runButton.locator(".animate-spin")).toBeVisible();
+  expect(executionRequests).toBe(1);
   releaseAnalysis();
   await expect(page.getByText("Article analysis completed.", { exact: true })).toBeVisible();
   await expect(runButton).toBeEnabled();

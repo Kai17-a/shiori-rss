@@ -271,7 +271,7 @@
                 icon="i-lucide-play"
                 loading-icon="i-lucide-loader-circle"
                 :loading="aiAnalysisRunning"
-                :disabled="aiAnalysisLoading || aiAnalysisSaving || !llmConfigured"
+                :disabled="aiAnalysisLoading || aiAnalysisSaving || aiAnalysisRunning || !llmConfigured"
                 @click="runAiAnalysis"
               >
                 Run analysis now
@@ -792,6 +792,7 @@ const saveAiAnalysisSettings = async () => {
 };
 
 const runAiAnalysis = async () => {
+  if (aiAnalysisRunning.value) return;
   aiAnalysisRunning.value = true;
   try {
     const response = await request<SettingsAIArticleAnalysisRunResponse>(
