@@ -1,7 +1,9 @@
 import json
 import os
+import shutil
 import subprocess
 import threading
+from pathlib import Path
 
 from fastapi import HTTPException
 from pydantic import ValidationError
@@ -9,6 +11,31 @@ from pydantic import ValidationError
 from api.model.models import SettingsAIArticleAnalysisRunResponse
 
 _manual_run_lock = threading.Lock()
+_REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _batch_command() -> list[str]:
+    configured = os.environ.get("SHIORI_FEED_BATCH_BIN")
+    if configured:
+        return [configured, "--article-analysis-only"]
+
+    development_binary = (
+        _REPOSITORY_ROOT / "batch" / "target" / "debug" / "shiori-feed-batch"
+    )
+    if development_binary.is_file() and os.access(development_binary, os.X_OK):
+        return [str(development_binary), "--article-analysis-only"]
+
+    installed = shutil.which("shiori-feed-batch")
+    if installed:
+        return [installed, "--article-analysis-only"]
+
+    raise HTTPException(
+        status_code=503,
+        detail=(
+            "Article analysis runner is not available. "
+            "Run `cargo build --manifest-path batch/Cargo.toml` first."
+        ),
+    )
 
 
 class ArticleAnalysisService:
@@ -18,16 +45,15 @@ class ArticleAnalysisService:
                 status_code=409, detail="Article analysis is already running"
             )
         try:
-            binary = os.environ.get("SHIORI_FEED_BATCH_BIN", "shiori-feed-batch")
             try:
                 result = subprocess.run(
-                    [binary, "--article-analysis-only"],
+                    _batch_command(),
                     capture_output=True,
                     check=False,
                     text=True,
                     timeout=7200,
                 )
-            except FileNotFoundError as exc:
+            except (FileNotFoundError, PermissionError) as exc:
                 raise HTTPException(
                     status_code=503, detail="Article analysis runner is not available"
                 ) from exc

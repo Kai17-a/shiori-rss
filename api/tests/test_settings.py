@@ -352,18 +352,24 @@ def test_ai_article_analysis_can_run_manually_while_schedule_is_disabled(
 ):
     import api.services.article_analysis_service as analysis_module
 
-    monkeypatch.setattr(
-        analysis_module.subprocess,
-        "run",
-        lambda *args, **kwargs: subprocess.CompletedProcess(
-            args[0],
+    monkeypatch.setenv("SHIORI_FEED_BATCH_BIN", "/tmp/mock-shiori-feed-batch")
+
+    def run_batch(command, **kwargs):
+        assert command == ["/tmp/mock-shiori-feed-batch", "--article-analysis-only"]
+        return subprocess.CompletedProcess(
+            command,
             0,
             stdout=(
                 '{"processed":2,"succeeded":2,"failed":0,'
                 '"skipped_current":3,"stopped_by_token_limit":false}\n'
             ),
             stderr="",
-        ),
+        )
+
+    monkeypatch.setattr(
+        analysis_module.subprocess,
+        "run",
+        run_batch,
     )
 
     response = client.post("/settings/ai-article-analysis/execute")

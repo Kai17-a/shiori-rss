@@ -45,6 +45,8 @@ docker run --rm -p 3000:3000 -p 8000:8000 \
 ./scripts/run-all-tests.sh
 ```
 
+`mise run dev` は手動AI解析で使用するRustバッチをビルドしてから、APIとフロントエンドを起動します。
+
 設計資料は [specs](./specs/README.md)、開発・コミット規約は [DEVELOPMENT.md](./DEVELOPMENT.md) を参照してください。
 
 ## Screenshots

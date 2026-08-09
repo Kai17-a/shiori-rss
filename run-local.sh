@@ -5,6 +5,7 @@ repo_root=$(cd "$(dirname "$0")" && pwd)
 api_port=${API_PORT:-8000}
 frontend_port=${FRONTEND_PORT:-3000}
 database_path=${DATABASE_URL:-$repo_root/data/data.db}
+batch_binary="$repo_root/batch/target/debug/shiori-feed-batch"
 
 cleanup() {
     trap - EXIT INT TERM
@@ -24,7 +25,11 @@ terminate() {
 trap cleanup EXIT
 trap terminate INT TERM
 
+echo "Building AI analysis batch..."
+cargo build --manifest-path "$repo_root/batch/Cargo.toml"
+
 DATABASE_URL="$database_path" \
+    SHIORI_FEED_BATCH_BIN="$batch_binary" \
     uv run --directory "$repo_root/api" uvicorn api.main:app \
     --app-dir "$repo_root" --host 127.0.0.1 --port "$api_port" &
 api_pid=$!
