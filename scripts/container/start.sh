@@ -3,9 +3,10 @@ set -eu
 
 export API_PORT="${API_PORT:-8000}"
 export DATABASE_URL="${DATABASE_URL:-/data/data.db}"
+repo_root=$(cd "$(dirname "$0")/../.." && pwd)
 
 mkdir -p "$(dirname "$DATABASE_URL")"
-./dbmate -u "sqlite:$DATABASE_URL" up
+"$repo_root/dbmate" -u "sqlite:$DATABASE_URL" up
 
 cleanup() {
   trap - EXIT INT TERM
@@ -25,14 +26,14 @@ terminate() {
 trap cleanup EXIT
 trap terminate INT TERM
 
-fastapi run api/main.py --port "$API_PORT" &
+fastapi run "$repo_root/api/main.py" --port "$API_PORT" &
 API_PID=$!
 
 nginx -g 'daemon off;' &
 FRONTEND_PID=$!
 
-sh ./render-scheduler.sh > scheduler
-supercronic ./scheduler &
+sh "$repo_root/scripts/container/render-scheduler.sh" > "$repo_root/scheduler"
+supercronic "$repo_root/scheduler" &
 SCHEDULER_PID=$!
 
 while kill -0 "$API_PID" 2>/dev/null \
