@@ -70,4 +70,4 @@ PLAYWRIGHT_API_BASE_URL="http://127.0.0.1:$api_port" \
 PLAYWRIGHT_FRONTEND_BASE_URL="http://127.0.0.1:$frontend_port" \
 PLAYWRIGHT_SCREENSHOT_DIR="$artifact_dir" \
 UV_CACHE_DIR=${UV_CACHE_DIR:-/tmp/uv-cache} \
-sh -c "cd '$repo_root/frontend' && bun '$script_dir/capture-playwright-screenshots.mjs' \"\$@\"" sh "$@"
+sh -c "cd '$repo_root/frontend' && bun '$script_dir/capture-screenshots.mjs' \"\$@\"" sh "$@"

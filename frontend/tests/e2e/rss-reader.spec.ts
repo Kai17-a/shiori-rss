@@ -13,6 +13,48 @@ test("opens the rolling 24-hour news summary as the app home", async ({ page }) 
   await expect(page.getByRole("link", { name: "Bookmarks" })).toHaveCount(0);
 });
 
+test("opens the Ask AI chat modal from the floating launcher", async ({ page }) => {
+  await page.route("**/ai/chat/stream", async (route) => {
+    await route.fulfill({
+      contentType: "application/x-ndjson",
+      body: [
+        JSON.stringify({ type: "delta", delta: "## Highlights\n\n- **Agentic systems** " }),
+        JSON.stringify({ type: "delta", delta: "were the main theme. [S1]\n- Read the `saved summary` for details." }),
+        JSON.stringify({ type: "sources", sources: [{
+          reference: "S1",
+          source_type: "rss",
+          article_id: 12,
+          source_id: 3,
+          source_title: "Tech Feed",
+          title: "Agentic systems",
+          summary: "A saved summary",
+          url: "https://example.com/agentic-systems",
+          published: "2026-08-09T08:00:00Z",
+          created_at: "2026-08-09T08:00:00Z",
+        }] }),
+        JSON.stringify({ type: "done" }),
+      ].join("\n") + "\n",
+    });
+  });
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Open Ask AI chat" }).click();
+  await expect(page.getByRole("dialog", { name: "Ask AI" })).toBeVisible();
+  await expect(page.getByText("Ask about your feed library")).toBeVisible();
+  await page.getByLabel("Ask AI message").fill("Summarize agent news");
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect(page.getByRole("heading", { name: "Highlights" })).toBeVisible();
+  await expect(page.getByRole("listitem").filter({ hasText: "Agentic systems" })).toBeVisible();
+  await expect(page.getByText("saved summary", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Agentic systems/ })).toHaveAttribute(
+    "href",
+    "https://example.com/agentic-systems",
+  );
+
+  await page.getByRole("button", { name: "Close Ask AI" }).click();
+  await expect(page.getByRole("dialog", { name: "Ask AI" })).toBeHidden();
+});
+
 test("lists custom RSS sources in the sidebar", async ({ page }) => {
   await page.route("**/news-sites?per_page=100", async (route) => {
     await route.fulfill({
@@ -130,11 +172,81 @@ test("does not expose the former RSS screen route", async ({ page }) => {
 });
 
 test("shows the LLM connection settings used by custom RSS", async ({ page }) => {
+  await page.route(/\/api\/settings\/llm\/?$/, async (route) => {
+    await route.fulfill({
+      status: 404,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "LLM settings are not configured" }),
+    });
+  });
   await page.goto("/settings?tab=llm");
 
   await expect(page.getByText("Tune your feed workflow.")).toHaveCount(0);
   await expect(page.getByText("LLM connection", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Provider")).toBeVisible();
+  await expect(page.getByText("Article analysis batch", { exact: true })).toBeVisible();
+  await expect(page.getByText("Token usage and content sharing", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Analyze saved articles")).not.toBeChecked();
+  await expect(page.getByLabel("Analyze saved articles")).toBeDisabled();
+});
+
+test("runs article analysis manually with a loading state", async ({ page }) => {
+  let executionRequests = 0;
+  let releaseAnalysis = () => {};
+  const analysisPending = new Promise<void>((resolve) => {
+    releaseAnalysis = resolve;
+  });
+  await page.route(/\/api\/settings\/llm\/?$/, async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        provider: "openai",
+        base_url: "https://llm.example.com/v1",
+        api_key_configured: true,
+        model: "example-model",
+      }),
+    });
+  });
+  await page.route(/\/api\/settings\/ai-article-analysis\/?$/, async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        enabled: false,
+        max_articles_per_run: 20,
+        daily_token_limit: 50000,
+        lookback_days: 30,
+      }),
+    });
+  });
+  await page.route(/\/api\/settings\/ai-article-analysis\/execute\/?$/, async (route) => {
+    executionRequests += 1;
+    await analysisPending;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        processed: 2,
+        succeeded: 2,
+        failed: 0,
+        skipped_current: 3,
+        stopped_by_token_limit: false,
+      }),
+    });
+  });
+
+  await page.goto("/settings?tab=llm");
+  const runButton = page.getByRole("button", { name: "Run analysis now" });
+  await expect(runButton).toBeEnabled();
+  await runButton.evaluate((button: HTMLButtonElement) => {
+    button.click();
+    button.click();
+  });
+
+  await expect(runButton).toBeDisabled();
+  await expect(runButton.locator(".animate-spin")).toBeVisible();
+  expect(executionRequests).toBe(1);
+  releaseAnalysis();
+  await expect(page.getByText("Article analysis completed.", { exact: true })).toBeVisible();
+  await expect(runButton).toBeEnabled();
 });
 
 test("groups automation controls under the settings tabs", async ({ page }) => {

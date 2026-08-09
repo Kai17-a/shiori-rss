@@ -4,6 +4,7 @@
 OSS 利用者向けの案内は [README.md](./README.md) を参照する。
 
 すべての開発コマンドは `mise run <task>` として定義している。利用可能な一覧と説明は `mise tasks` で確認できる。
+スクリプト本体は用途別に [`scripts/`](./scripts/README.md) 配下へまとめている。通常はファイルを直接実行せず、対応する `mise` タスクを使う。
 
 ## ローカル起動
 
@@ -93,7 +94,7 @@ GitHub Packages の Docker image 公開機能を使う場合は、別途ワー�
 ローカルから `git push` する前に同じ検査を走らせるには、次を設定する。
 
 ```bash
-./scripts/setup-repo.sh
+mise run setup-hooks
 ```
 
 この設定を入れると、この workspace の `.git/config` にだけ `core.hooksPath` が記録される。
@@ -163,6 +164,8 @@ mise run frontend-test
 mise run frontend-typecheck
 mise run e2e
 ```
+
+スケジューラー設定だけを検証する場合は `mise run scheduler-test`、README用スクリーンショットを更新する場合は `mise run docs-screenshots` を使う。
 
 `e2e:run` は結果ログを `.artifacts/playwright-e2e.log` に保存する。
 `e2e:headed` はブラウザを開いて実行する。

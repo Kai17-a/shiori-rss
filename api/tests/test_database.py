@@ -32,6 +32,10 @@ def test_build_test_db_creates_all_tables():
         assert "news_sites" in tables
         assert "news_site_articles" in tables
         assert "news_site_webhooks" in tables
+        assert "article_search" in tables
+        assert "article_ai_analyses" in tables
+        assert "article_ai_search" in tables
+        assert "article_ai_analysis_usage" in tables
         assert "schema_migrations" in tables
     finally:
         import os
@@ -77,6 +81,8 @@ def test_initialize_database_applies_every_migration_idempotently(tmp_path):
         "202608081200",
         "202608081300",
         "202608081400",
+        "202608090945",
+        "202608091010",
     }
     assert "published" in article_columns
     assert "summary" in article_columns

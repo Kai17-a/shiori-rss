@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-repo_root=$(cd "$(dirname "$0")/.." && pwd)
+repo_root=$(cd "$(dirname "$0")/../.." && pwd)
 
 cleanup() {
     if [ -n "${api_pid:-}" ]; then
@@ -14,7 +14,7 @@ cleanup() {
 
 trap cleanup EXIT INT TERM
 
-sh "$repo_root/scripts/test-scheduler-config.sh"
+sh "$repo_root/scripts/testing/test-scheduler-config.sh"
 
 start_api_server() {
     uv run --directory "$repo_root/api" uvicorn api.main:app --app-dir "$repo_root" --host 127.0.0.1 --port 8000 > /tmp/rss-feeder-api.log 2>&1 &

@@ -1,12 +1,15 @@
 from fastapi import APIRouter, Depends
 
-from api.dependencies import get_settings_service
+from api.dependencies import get_article_analysis_service, get_settings_service
 from api.model.models import (
     ErrorResponse,
     LLMSettingsResponse,
     LLMSettingsTestRequest,
     LLMSettingsTestResponse,
     LLMSettingsUpdate,
+    SettingsAIArticleAnalysisResponse,
+    SettingsAIArticleAnalysisRunResponse,
+    SettingsAIArticleAnalysisUpdate,
     SettingsRssExecutionResponse,
     SettingsRssExecutionUpdate,
     SettingsRssWebhookNotificationResponse,
@@ -21,8 +24,43 @@ from api.model.models import (
     SettingsWebhookUpdate,
 )
 from api.services.settings_service import SettingsService
+from api.services.article_analysis_service import ArticleAnalysisService
 
 router = APIRouter(prefix="/settings", tags=["settings"])
+
+
+@router.post(
+    "/ai-article-analysis/execute",
+    status_code=200,
+    response_model=SettingsAIArticleAnalysisRunResponse,
+)
+def execute_ai_article_analysis(
+    service: ArticleAnalysisService = Depends(get_article_analysis_service),
+):
+    return service.run_manual()
+
+
+@router.get(
+    "/ai-article-analysis",
+    status_code=200,
+    response_model=SettingsAIArticleAnalysisResponse,
+)
+def get_ai_article_analysis(
+    service: SettingsService = Depends(get_settings_service),
+):
+    return service.get_ai_article_analysis()
+
+
+@router.put(
+    "/ai-article-analysis",
+    status_code=200,
+    response_model=SettingsAIArticleAnalysisResponse,
+)
+def set_ai_article_analysis(
+    body: SettingsAIArticleAnalysisUpdate,
+    service: SettingsService = Depends(get_settings_service),
+):
+    return service.set_ai_article_analysis(body)
 
 
 @router.get("/llm", status_code=200, response_model=LLMSettingsResponse)

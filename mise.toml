@@ -8,11 +8,11 @@ uv = "latest"
 
 [tasks.dev]
 description = "Start the API and frontend development servers"
-run = "./run-local.sh"
+run = "./scripts/development/run-local.sh"
 
 [tasks.setup-hooks]
 description = "Configure repository Git hooks"
-run = "./scripts/setup-repo.sh"
+run = "./scripts/repository/setup-repo.sh"
 
 [tasks.api-install]
 description = "Install the API dependencies"
@@ -56,7 +56,7 @@ run = "bun --cwd frontend run typecheck"
 
 [tasks.e2e]
 description = "Run frontend end-to-end tests"
-run = "./scripts/run-e2e-tests.sh"
+run = "./scripts/testing/run-e2e-tests.sh"
 
 [tasks.batch-check]
 description = "Check the batch application"
@@ -73,6 +73,10 @@ run = "cargo fmt --manifest-path batch/Cargo.toml --check"
 [tasks.batch-test]
 description = "Test the batch application"
 run = "cargo test --manifest-path batch/Cargo.toml"
+
+[tasks.scheduler-test]
+description = "Test scheduler configuration rendering"
+run = "./scripts/testing/test-scheduler-config.sh"
 
 [tasks.db-up]
 description = "Apply SQLite migrations to data/data.db"
@@ -96,4 +100,8 @@ run = "act pull_request -W .github/workflows/pr-tests.yml"
 
 [tasks.test-all]
 description = "Run all repository checks"
-run = "./scripts/run-all-tests.sh"
+run = "./scripts/testing/run-all-tests.sh"
+
+[tasks.docs-screenshots]
+description = "Capture application screenshots with Playwright"
+run = "./scripts/documentation/capture-screenshots.sh"

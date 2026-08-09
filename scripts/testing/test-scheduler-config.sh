@@ -1,8 +1,8 @@
 #!/bin/sh
 set -eu
 
-repo_root=$(cd "$(dirname "$0")/.." && pwd)
-renderer="$repo_root/render-scheduler.sh"
+repo_root=$(cd "$(dirname "$0")/../.." && pwd)
+renderer="$repo_root/scripts/container/render-scheduler.sh"
 
 default_schedule=$(env -u RSS_CRON_SCHEDULE sh "$renderer")
 if [ "$default_schedule" != "0 * * * * shiori-feed-batch" ]; then
