@@ -5,66 +5,76 @@
     </template>
 
     <template #body>
-      <div class="space-y-6">
-        <UPageCard>
-          <UAlert
-            v-if="state === 'error'"
-            title="Failed to load custom RSS feed"
-            :description="loadError"
+      <FeedDetailLayout
+        :state="state"
+        error-title="Failed to load custom RSS feed"
+        :error-description="loadError"
+        not-found-title="Custom RSS feed not found"
+        not-found-description="The requested custom source does not exist."
+      >
+        <template #title>
+          <div class="flex items-center gap-3">
+            <span class="grid size-12 shrink-0 place-items-center rounded-2xl bg-primary text-inverted shadow-sm">
+              <UIcon name="i-lucide-sparkles" class="size-6" />
+            </span>
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-[0.16em] text-primary">Custom feed channel</p>
+              <h1 class="mt-1 text-3xl font-bold tracking-tight text-highlighted">{{ site?.title }}</h1>
+            </div>
+          </div>
+        </template>
+        <template #description>
+          <p v-if="site?.description" class="max-w-2xl text-sm leading-6 text-muted">
+            {{ site.description }}
+          </p>
+          <p v-else class="text-sm text-muted">No description provided.</p>
+        </template>
+        <template #meta>
+          <div class="flex flex-wrap items-center gap-3 pt-2">
+            <a
+              :href="site?.url"
+              target="_blank"
+              rel="noreferrer"
+              class="inline-flex max-w-full items-center gap-2 rounded-full bg-elevated px-3 py-1.5 text-xs text-muted hover:text-primary"
+            >
+              <UIcon name="i-lucide-external-link" class="size-3.5 shrink-0" />
+              <span class="truncate">{{ site?.url }}</span>
+            </a>
+            <UBadge
+              color="info"
+              variant="soft"
+              icon="i-lucide-wand-sparkles"
+              label="LLM-assisted scraping"
+            />
+          </div>
+        </template>
+        <template #actions>
+          <IconButton
+            size="sm"
+            label="Fetch now"
+            icon="i-lucide-refresh-cw"
+            color="primary"
+            variant="soft"
+            :loading="executing"
+            @click="executeSite"
+          />
+          <IconButton
+            size="sm"
+            label="Edit"
+            icon="i-lucide-pencil"
+            color="neutral"
+            variant="soft"
+            @click="openEditModal"
+          />
+          <IconButton
+            size="sm"
+            label="Delete"
+            icon="i-lucide-trash-2"
             color="error"
             variant="soft"
+            @click="deleteOpen = true"
           />
-          <UAlert
-            v-else-if="state === 'not-found'"
-            title="Custom RSS feed not found"
-            description="The requested custom source does not exist."
-            color="warning"
-            variant="soft"
-          />
-          <DetailPageHeader v-else-if="site">
-            <template #title>
-              <div class="flex flex-wrap items-center gap-2">
-                <h1 class="text-2xl font-semibold text-default">{{ site.title }}</h1>
-                <UBadge color="info" variant="soft">LLM-assisted scraping</UBadge>
-              </div>
-            </template>
-            <template #description>
-              <p v-if="site.description" class="text-sm leading-6 text-default/90">
-                {{ site.description }}
-              </p>
-              <p v-else class="text-sm text-muted">No description provided.</p>
-            </template>
-            <div class="space-y-1 pt-1">
-              <p class="text-xs font-medium uppercase tracking-wide text-muted">Site URL</p>
-              <a
-                :href="site.url"
-                target="_blank"
-                rel="noreferrer"
-                class="break-all text-sm text-primary hover:underline"
-              >
-                {{ site.url }}
-              </a>
-            </div>
-            <template #actions>
-              <IconButton
-                label="Run"
-                icon="i-lucide-play"
-                color="primary"
-                variant="soft"
-                :loading="executing"
-                @click="executeSite"
-              />
-              <IconButton label="Edit" icon="i-lucide-pencil" @click="openEditModal" />
-              <IconButton
-                label="Delete"
-                icon="i-lucide-trash-2"
-                color="error"
-                variant="soft"
-                @click="deleteOpen = true"
-              />
-            </template>
-          </DetailPageHeader>
-        </UPageCard>
+        </template>
 
         <ArticleHistoryPanel
           v-model:search-title="searchTitle"
@@ -97,7 +107,7 @@
           :loading="deleting"
           @confirm="deleteSite"
         />
-      </div>
+      </FeedDetailLayout>
     </template>
   </UDashboardPanel>
 </template>

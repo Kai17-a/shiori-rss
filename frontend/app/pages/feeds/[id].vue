@@ -5,93 +5,79 @@
     </template>
 
     <template #body>
-      <div class="mx-auto w-full max-w-6xl space-y-6 pb-10">
-        <UPageCard class="overflow-hidden" :ui="{ body: 'feed-detail-hero' }">
-          <UAlert
-            v-if="state === 'error'"
-            title="Failed to load RSS feed"
-            :description="loadError"
+      <FeedDetailLayout
+        :state="state"
+        error-title="Failed to load RSS feed"
+        :error-description="loadError"
+        not-found-title="RSS feed not found"
+        not-found-description="The requested feed does not exist."
+      >
+        <template #title>
+          <div class="flex items-center gap-3">
+            <span class="grid size-12 shrink-0 place-items-center rounded-2xl bg-primary text-inverted shadow-sm">
+              <UIcon name="i-lucide-rss" class="size-6" />
+            </span>
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-[0.16em] text-primary">Feed channel</p>
+              <h1 class="mt-1 text-3xl font-bold tracking-tight text-highlighted">{{ feed?.title }}</h1>
+            </div>
+          </div>
+        </template>
+
+        <template #description>
+          <p v-if="feed?.description" class="max-w-2xl text-sm leading-6 text-muted">
+            {{ feed.description }}
+          </p>
+          <p v-else class="text-sm text-muted">No description provided.</p>
+        </template>
+
+        <template #meta>
+          <div class="flex flex-wrap items-center gap-3 pt-2">
+            <a
+              :href="feed?.url"
+              target="_blank"
+              rel="noreferrer"
+              class="inline-flex max-w-full items-center gap-2 rounded-full bg-elevated px-3 py-1.5 text-xs text-muted hover:text-primary"
+            >
+              <UIcon name="i-lucide-external-link" class="size-3.5 shrink-0" />
+              <span class="truncate">{{ feed?.url }}</span>
+            </a>
+            <UBadge
+              :color="feed?.notify_webhook_enabled ? 'success' : 'neutral'"
+              variant="soft"
+              :icon="feed?.notify_webhook_enabled ? 'i-lucide-bell-ring' : 'i-lucide-bell-off'"
+              :label="feed?.notify_webhook_enabled ? 'Delivery enabled' : 'Delivery muted'"
+            />
+          </div>
+        </template>
+
+        <template #actions>
+          <IconButton
+            size="sm"
+            label="Fetch now"
+            icon="i-lucide-refresh-cw"
+            color="primary"
+            variant="soft"
+            :loading="executing"
+            @click="executeFeed"
+          />
+          <IconButton
+            size="sm"
+            label="Edit"
+            icon="i-lucide-pencil"
+            color="neutral"
+            variant="soft"
+            @click="openEditModal"
+          />
+          <IconButton
+            size="sm"
+            label="Delete"
+            icon="i-lucide-trash-2"
             color="error"
             variant="soft"
+            @click="deleteOpen = true"
           />
-
-          <UAlert
-            v-else-if="state === 'not-found'"
-            title="RSS feed not found"
-            description="The requested feed does not exist."
-            color="warning"
-            variant="soft"
-          />
-
-          <div v-else-if="feed" class="space-y-5">
-            <DetailPageHeader>
-              <template #title>
-                <div class="flex items-center gap-3">
-                  <span class="grid size-12 shrink-0 place-items-center rounded-2xl bg-primary text-inverted shadow-sm">
-                    <UIcon name="i-lucide-rss" class="size-6" />
-                  </span>
-                  <div>
-                    <p class="text-xs font-semibold uppercase tracking-[0.16em] text-primary">Feed channel</p>
-                    <h1 class="mt-1 text-3xl font-bold tracking-tight text-highlighted">{{ feed.title }}</h1>
-                  </div>
-                </div>
-              </template>
-
-              <template #description>
-                <p v-if="feed.description" class="max-w-2xl text-sm leading-6 text-muted">
-                  {{ feed.description }}
-                </p>
-                <p v-else class="text-sm text-muted">No description provided.</p>
-              </template>
-
-              <div class="flex flex-wrap items-center gap-3 pt-2">
-                <a
-                  :href="feed.url"
-                  target="_blank"
-                  rel="noreferrer"
-                  class="inline-flex max-w-full items-center gap-2 rounded-full bg-elevated px-3 py-1.5 text-xs text-muted hover:text-primary"
-                >
-                  <UIcon name="i-lucide-external-link" class="size-3.5 shrink-0" />
-                  <span class="truncate">{{ feed.url }}</span>
-                </a>
-                <UBadge
-                  :color="feed.notify_webhook_enabled ? 'success' : 'neutral'"
-                  variant="soft"
-                  :icon="feed.notify_webhook_enabled ? 'i-lucide-bell-ring' : 'i-lucide-bell-off'"
-                  :label="feed.notify_webhook_enabled ? 'Delivery enabled' : 'Delivery muted'"
-                />
-              </div>
-
-              <template #actions>
-                <IconButton
-                  size="sm"
-                  label="Fetch now"
-                  icon="i-lucide-refresh-cw"
-                  color="primary"
-                  variant="soft"
-                  :loading="executing"
-                  @click="executeFeed"
-                />
-                <IconButton
-                  size="sm"
-                  label="Edit"
-                  icon="i-lucide-pencil"
-                  color="neutral"
-                  variant="soft"
-                  @click="openEditModal"
-                />
-                <IconButton
-                  size="sm"
-                  label="Delete"
-                  icon="i-lucide-trash-2"
-                  color="error"
-                  variant="soft"
-                  @click="deleteOpen = true"
-                />
-              </template>
-            </DetailPageHeader>
-          </div>
-        </UPageCard>
+        </template>
 
         <ArticleHistoryPanel
           v-model:search-title="searchTitle"
@@ -128,7 +114,7 @@
           @cancel="deleteOpen = false"
           @confirm="confirmDelete"
         />
-      </div>
+      </FeedDetailLayout>
     </template>
   </UDashboardPanel>
 </template>
