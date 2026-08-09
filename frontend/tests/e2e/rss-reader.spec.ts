@@ -62,6 +62,59 @@ test("shows the RSS feed library at its root route", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Add feed" })).toBeVisible();
 });
 
+test("shows loading while updating a feed notification", async ({ page }) => {
+  let releaseUpdate = () => {};
+  const updatePending = new Promise<void>((resolve) => {
+    releaseUpdate = resolve;
+  });
+  const feed = {
+    id: 1,
+    title: "Example feed",
+    url: "https://example.com/feed.xml",
+    description: "Example description",
+    notify_webhook_enabled: true,
+    webhook_ids: [],
+    created_at: "2026-08-08T00:00:00Z",
+    updated_at: "2026-08-08T00:00:00Z",
+  };
+
+  await page.route("**/api/rss-feeds?*", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        items: [feed],
+        total: 1,
+        page: 1,
+        per_page: 20,
+        total_pages: 1,
+      }),
+    });
+  });
+  await page.route("**/api/settings/webhooks", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ items: [] }),
+    });
+  });
+  await page.route("**/api/rss-feeds/1", async (route) => {
+    await updatePending;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ ...feed, notify_webhook_enabled: false }),
+    });
+  });
+
+  await page.goto("/feeds");
+  const button = page.getByRole("button", { name: "Mute feed delivery" });
+  await button.click();
+
+  await expect(button).toBeDisabled();
+  await expect(button.locator(".animate-spin")).toBeVisible();
+
+  releaseUpdate();
+  await expect(page.getByRole("button", { name: "Enable feed delivery" })).toBeEnabled();
+});
+
 test("shows the custom RSS library at its root route", async ({ page }) => {
   await page.goto("/custom-feeds");
   await expect(page).toHaveURL(/\/custom-feeds$/);

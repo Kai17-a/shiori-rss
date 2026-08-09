@@ -20,6 +20,7 @@
         :key="site.id"
         :site="site"
         :running="executingId === site.id"
+        :notification-loading="updatingNotificationId === site.id"
         @edit="openEdit"
         @execute="executeSite"
         @toggle-webhook="toggleWebhook"
@@ -78,6 +79,7 @@ const loading = ref(false);
 const saving = ref(false);
 const deleting = ref(false);
 const executingId = ref<number | null>(null);
+const updatingNotificationId = ref<number | null>(null);
 const modalOpen = ref(false);
 const deleteOpen = ref(false);
 const saveError = ref("");
@@ -201,11 +203,23 @@ const executeSite = async (site: NewsSiteResponse) => {
 };
 
 const toggleWebhook = async (site: NewsSiteResponse) => {
-  const updated = await request<NewsSiteResponse>(`/news-sites/${site.id}`, {
-    method: "PATCH",
-    body: JSON.stringify({ notify_webhook_enabled: !site.notify_webhook_enabled }),
-  });
-  sites.value.items = sites.value.items.map((item) => item.id === updated.id ? updated : item);
+  updatingNotificationId.value = site.id;
+  try {
+    const updated = await request<NewsSiteResponse>(`/news-sites/${site.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ notify_webhook_enabled: !site.notify_webhook_enabled }),
+    });
+    sites.value.items = sites.value.items.map((item) => item.id === updated.id ? updated : item);
+  } catch (error) {
+    toast.show({
+      title: "Failed to update webhook notification setting.",
+      description: error instanceof Error ? error.message : undefined,
+      color: "error",
+      icon: "i-lucide-circle-alert",
+    });
+  } finally {
+    updatingNotificationId.value = null;
+  }
 };
 
 const askDelete = (site: NewsSiteResponse) => {
@@ -229,4 +243,3 @@ const confirmDelete = async () => {
 
 onMounted(() => loadSites());
 </script>
-
