@@ -241,7 +241,7 @@ jobs:
         uses: jdx/mise-action@v4
 
       - name: Run E2E tests
-        run: ./scripts/run-e2e-tests.sh
+        run: mise run e2e
 
       - name: Upload logs on failure
         if: failure()

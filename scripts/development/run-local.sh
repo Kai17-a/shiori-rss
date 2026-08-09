@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-repo_root=$(cd "$(dirname "$0")" && pwd)
+repo_root=$(cd "$(dirname "$0")/../.." && pwd)
 api_port=${API_PORT:-8000}
 frontend_port=${FRONTEND_PORT:-3000}
 database_path=${DATABASE_URL:-$repo_root/data/data.db}

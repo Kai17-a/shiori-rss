@@ -11,9 +11,9 @@
     "start": "node .output/server/index.mjs",
     "generate": "nuxt generate",
     "preview": "nuxt preview",
-    "e2e": "bash -lc '../scripts/run-e2e-tests.sh'",
-    "e2e:run": "bash -lc 'set -o pipefail; mkdir -p .artifacts && ../scripts/run-e2e-tests.sh | tee .artifacts/playwright-e2e.log'",
-    "e2e:headed": "bash -lc '../scripts/run-e2e-tests.sh --headed'",
+    "e2e": "bash -lc '../scripts/testing/run-e2e-tests.sh'",
+    "e2e:run": "bash -lc 'set -o pipefail; mkdir -p .artifacts && ../scripts/testing/run-e2e-tests.sh | tee .artifacts/playwright-e2e.log'",
+    "e2e:headed": "bash -lc '../scripts/testing/run-e2e-tests.sh --headed'",
     "test": "bunx vitest run --no-file-parallelism",
     "typecheck": "vue-tsc --noEmit"
   },

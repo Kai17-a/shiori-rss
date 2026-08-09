@@ -41,7 +41,7 @@ docker run --rm -p 3000:3000 -p 8000:8000 \
 ## Development
 
 ```bash
-./scripts/run-all-tests.sh
+mise run test-all
 ```
 
 設計資料は [specs](./specs/README.md)、開発・コミット規約は [DEVELOPMENT.md](./DEVELOPMENT.md) を参照してください。
