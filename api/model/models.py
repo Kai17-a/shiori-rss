@@ -491,6 +491,35 @@ class ErrorResponse(BaseModel):
     detail: str
 
 
+class AskAIRequest(BaseModel):
+    message: str = PydField(min_length=1, max_length=2000)
+
+    @field_validator("message")
+    @classmethod
+    def normalize_message(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Message cannot be empty")
+        return value
+
+
+class AskAISource(BaseModel):
+    source_type: Literal["rss", "custom"]
+    article_id: int
+    source_id: int
+    source_title: str
+    title: str | None
+    summary: str | None
+    url: str
+    published: datetime | None
+    created_at: datetime
+
+
+class AskAIResponse(BaseModel):
+    answer: str
+    sources: list[AskAISource]
+
+
 class DashboardSummary(BaseModel):
     rss_feed_count: int
     custom_feed_count: int

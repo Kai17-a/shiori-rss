@@ -14,12 +14,37 @@ test("opens the rolling 24-hour news summary as the app home", async ({ page }) 
 });
 
 test("opens the Ask AI chat modal from the floating launcher", async ({ page }) => {
+  await page.route("**/ai/chat", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        answer: "Agentic systems were the main theme. [S1]",
+        sources: [{
+          source_type: "rss",
+          article_id: 12,
+          source_id: 3,
+          source_title: "Tech Feed",
+          title: "Agentic systems",
+          summary: "A saved summary",
+          url: "https://example.com/agentic-systems",
+          published: "2026-08-09T08:00:00Z",
+          created_at: "2026-08-09T08:00:00Z",
+        }],
+      }),
+    });
+  });
   await page.goto("/");
 
   await page.getByRole("button", { name: "Open Ask AI chat" }).click();
   await expect(page.getByRole("dialog", { name: "Ask AI" })).toBeVisible();
   await expect(page.getByText("Ask about your feed library")).toBeVisible();
-  await expect(page.getByLabel("Ask AI message")).toBeDisabled();
+  await page.getByLabel("Ask AI message").fill("Summarize agent news");
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect(page.getByText("Agentic systems were the main theme. [S1]")).toBeVisible();
+  await expect(page.getByRole("link", { name: /Agentic systems/ })).toHaveAttribute(
+    "href",
+    "https://example.com/agentic-systems",
+  );
 
   await page.getByRole("button", { name: "Close Ask AI" }).click();
   await expect(page.getByRole("dialog", { name: "Ask AI" })).toBeHidden();

@@ -40,6 +40,7 @@ describe("API helpers", () => {
       "/rss-feeds",
       "/settings/webhooks",
       "/settings/llm",
+      "/ai/chat",
     ]) {
       await expect(request(path)).resolves.toEqual({ ok: true });
     }

@@ -76,6 +76,72 @@ CREATE TABLE news_site_webhooks (
   webhook_id INTEGER NOT NULL REFERENCES webhook_endpoints(id) ON DELETE CASCADE,
   PRIMARY KEY (site_id, webhook_id)
 );
+CREATE VIRTUAL TABLE article_search USING fts5(
+  source_type UNINDEXED,
+  article_id UNINDEXED,
+  source_id UNINDEXED,
+  source_title,
+  title,
+  summary,
+  url UNINDEXED,
+  published UNINDEXED,
+  created_at UNINDEXED,
+  tokenize = 'trigram'
+)
+/* article_search(source_type,article_id,source_id,source_title,title,summary,url,published,created_at) */;
+CREATE TABLE IF NOT EXISTS 'article_search_data'(id INTEGER PRIMARY KEY, block BLOB);
+CREATE TABLE IF NOT EXISTS 'article_search_idx'(segid, term, pgno, PRIMARY KEY(segid, term)) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS 'article_search_content'(id INTEGER PRIMARY KEY, c0, c1, c2, c3, c4, c5, c6, c7, c8);
+CREATE TABLE IF NOT EXISTS 'article_search_docsize'(id INTEGER PRIMARY KEY, sz BLOB);
+CREATE TABLE IF NOT EXISTS 'article_search_config'(k PRIMARY KEY, v) WITHOUT ROWID;
+CREATE TRIGGER article_search_rss_insert AFTER INSERT ON rss_feed_articles BEGIN
+  INSERT INTO article_search (
+    source_type, article_id, source_id, source_title, title, summary, url, published, created_at
+  )
+  SELECT 'rss', new.id, feeds.id, feeds.title, new.title, new.summary, new.url,
+         new.published, new.created_at
+  FROM rss_feeds AS feeds WHERE feeds.id = new.feed_id;
+END;
+CREATE TRIGGER article_search_rss_update AFTER UPDATE ON rss_feed_articles BEGIN
+  DELETE FROM article_search WHERE source_type = 'rss' AND article_id = old.id;
+  INSERT INTO article_search (
+    source_type, article_id, source_id, source_title, title, summary, url, published, created_at
+  )
+  SELECT 'rss', new.id, feeds.id, feeds.title, new.title, new.summary, new.url,
+         new.published, new.created_at
+  FROM rss_feeds AS feeds WHERE feeds.id = new.feed_id;
+END;
+CREATE TRIGGER article_search_rss_delete AFTER DELETE ON rss_feed_articles BEGIN
+  DELETE FROM article_search WHERE source_type = 'rss' AND article_id = old.id;
+END;
+CREATE TRIGGER article_search_custom_insert AFTER INSERT ON news_site_articles BEGIN
+  INSERT INTO article_search (
+    source_type, article_id, source_id, source_title, title, summary, url, published, created_at
+  )
+  SELECT 'custom', new.id, sites.id, sites.title, new.title, new.summary, new.url,
+         new.published, new.created_at
+  FROM news_sites AS sites WHERE sites.id = new.site_id;
+END;
+CREATE TRIGGER article_search_custom_update AFTER UPDATE ON news_site_articles BEGIN
+  DELETE FROM article_search WHERE source_type = 'custom' AND article_id = old.id;
+  INSERT INTO article_search (
+    source_type, article_id, source_id, source_title, title, summary, url, published, created_at
+  )
+  SELECT 'custom', new.id, sites.id, sites.title, new.title, new.summary, new.url,
+         new.published, new.created_at
+  FROM news_sites AS sites WHERE sites.id = new.site_id;
+END;
+CREATE TRIGGER article_search_custom_delete AFTER DELETE ON news_site_articles BEGIN
+  DELETE FROM article_search WHERE source_type = 'custom' AND article_id = old.id;
+END;
+CREATE TRIGGER article_search_rss_source_title AFTER UPDATE OF title ON rss_feeds BEGIN
+  UPDATE article_search SET source_title = new.title
+  WHERE source_type = 'rss' AND source_id = new.id;
+END;
+CREATE TRIGGER article_search_custom_source_title AFTER UPDATE OF title ON news_sites BEGIN
+  UPDATE article_search SET source_title = new.title
+  WHERE source_type = 'custom' AND source_id = new.id;
+END;
 -- Dbmate schema migrations
 INSERT INTO "schema_migrations" (version) VALUES
   ('010'),
@@ -91,4 +157,5 @@ INSERT INTO "schema_migrations" (version) VALUES
   ('202608041600'),
   ('202608081200'),
   ('202608081300'),
-  ('202608081400');
+  ('202608081400'),
+  ('202608090945');
