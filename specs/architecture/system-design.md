@@ -32,6 +32,7 @@
 | GET/PUT/DELETE | `/settings/llm` | LLM接続設定の取得・検証付き保存・削除 |
 | POST | `/settings/llm/test` | LLM疎通テスト |
 | GET/PUT | `/settings/ai-article-analysis` | AI記事事前解析の有効化と上限設定 |
+| POST | `/settings/ai-article-analysis/execute` | 定期実行設定に依存しないAI記事解析の手動実行 |
 | POST | `/ai/chat` | 保存済み記事の横断検索と根拠付きLLM回答 |
 
 ## Ask AI フロー
@@ -53,3 +54,4 @@
 6. 少なくとも1つの送信先で成功した記事を通知済みに更新する。
 7. AI記事解析が有効なら、対象期間内の未解析・更新済み記事を上限件数までLLMで解析する。
 8. 利用量を呼び出し単位で記録し、1日のトークン上限に達する前に解析を停止する。
+9. 手動実行では定期解析の有効・無効だけを無視し、同じ件数、対象期間、日次トークン上限と再解析判定を適用する。

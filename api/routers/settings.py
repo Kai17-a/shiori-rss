@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 
-from api.dependencies import get_settings_service
+from api.dependencies import get_article_analysis_service, get_settings_service
 from api.model.models import (
     ErrorResponse,
     LLMSettingsResponse,
@@ -8,6 +8,7 @@ from api.model.models import (
     LLMSettingsTestResponse,
     LLMSettingsUpdate,
     SettingsAIArticleAnalysisResponse,
+    SettingsAIArticleAnalysisRunResponse,
     SettingsAIArticleAnalysisUpdate,
     SettingsRssExecutionResponse,
     SettingsRssExecutionUpdate,
@@ -23,8 +24,20 @@ from api.model.models import (
     SettingsWebhookUpdate,
 )
 from api.services.settings_service import SettingsService
+from api.services.article_analysis_service import ArticleAnalysisService
 
 router = APIRouter(prefix="/settings", tags=["settings"])
+
+
+@router.post(
+    "/ai-article-analysis/execute",
+    status_code=200,
+    response_model=SettingsAIArticleAnalysisRunResponse,
+)
+def execute_ai_article_analysis(
+    service: ArticleAnalysisService = Depends(get_article_analysis_service),
+):
+    return service.run_manual()
 
 
 @router.get(

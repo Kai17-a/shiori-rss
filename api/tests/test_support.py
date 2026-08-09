@@ -25,6 +25,7 @@ from api.model.models import (
     SettingsWebhookUpdate,
 )
 from api.services.ask_ai_service import AskAIService
+from api.services.article_analysis_service import ArticleAnalysisService
 from api.services.rss_feed_service import RSSFeedService
 from api.services.dashboard_service import DashboardService
 from api.services.news_site_service import NewsSiteService
@@ -171,6 +172,8 @@ class CompatTestClient:
 
     def _settings_response(self, method: str, path: str, json):
         service = SettingsService()
+        if method == "POST" and path == "/settings/ai-article-analysis/execute":
+            return self._ok(ArticleAnalysisService().run_manual().model_dump())
         if method == "GET" and path == "/settings/llm":
             return self._ok(service.get_llm_settings().model_dump())
         if method == "PUT" and path == "/settings/llm":

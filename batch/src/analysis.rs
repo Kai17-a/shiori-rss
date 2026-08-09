@@ -1,13 +1,25 @@
 use reqwest::Client;
 use rusqlite::{Connection, OptionalExtension, params};
+use serde::Serialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::error::Error;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const PROMPT_VERSION: &str = "article-analysis-v1";
 const MAX_INPUT_CHARS: usize = 12_000;
 const RESERVED_OUTPUT_TOKENS: i64 = 600;
+const ANALYSIS_LOCK_KEY: &str = "ai_article_analysis_running";
+const ANALYSIS_LOCK_TTL_SECONDS: u64 = 7200;
+
+#[derive(Debug, Default, Serialize)]
+pub struct AnalysisRunReport {
+    pub processed: usize,
+    pub succeeded: usize,
+    pub failed: usize,
+    pub skipped_current: usize,
+    pub stopped_by_token_limit: bool,
+}
 
 #[derive(Debug)]
 struct AnalysisSettings {
@@ -47,6 +59,38 @@ struct AnalysisResult {
     output_tokens: i64,
 }
 
+struct AnalysisRunLock<'a> {
+    conn: &'a Connection,
+    token: String,
+}
+
+impl Drop for AnalysisRunLock<'_> {
+    fn drop(&mut self) {
+        let _ = self.conn.execute(
+            "DELETE FROM app_settings WHERE key = ? AND value = ?",
+            params![ANALYSIS_LOCK_KEY, self.token],
+        );
+    }
+}
+
+fn acquire_run_lock(conn: &Connection) -> rusqlite::Result<Option<AnalysisRunLock<'_>>> {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let token = now.to_string();
+    let stale_before = now.saturating_sub(ANALYSIS_LOCK_TTL_SECONDS).to_string();
+    let changed = conn.execute(
+        r#"
+        INSERT INTO app_settings (key, value) VALUES (?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+        WHERE CAST(app_settings.value AS INTEGER) < CAST(? AS INTEGER)
+        "#,
+        params![ANALYSIS_LOCK_KEY, token, stale_before],
+    )?;
+    Ok((changed == 1).then_some(AnalysisRunLock { conn, token }))
+}
+
 fn setting(conn: &Connection, key: &str) -> rusqlite::Result<Option<String>> {
     conn.query_row(
         "SELECT value FROM app_settings WHERE key = ?",
@@ -62,8 +106,11 @@ fn int_setting(conn: &Connection, key: &str, default: i64) -> rusqlite::Result<i
         .unwrap_or(default))
 }
 
-fn load_settings(conn: &Connection) -> rusqlite::Result<Option<AnalysisSettings>> {
-    if setting(conn, "ai_article_analysis_enabled")?.as_deref() != Some("1") {
+fn load_settings(
+    conn: &Connection,
+    require_enabled: bool,
+) -> rusqlite::Result<Option<AnalysisSettings>> {
+    if require_enabled && setting(conn, "ai_article_analysis_enabled")?.as_deref() != Some("1") {
         return Ok(None);
     }
     Ok(Some(AnalysisSettings {
@@ -395,21 +442,34 @@ fn save_failure(
     Ok(())
 }
 
-pub async fn run_article_analysis(conn: &Connection) -> Result<(), Box<dyn Error>> {
-    let Some(settings) = load_settings(conn)? else {
-        return Ok(());
+async fn run_article_analysis_with_mode(
+    conn: &Connection,
+    require_enabled: bool,
+) -> Result<AnalysisRunReport, Box<dyn Error>> {
+    let Some(settings) = load_settings(conn, require_enabled)? else {
+        return Ok(AnalysisRunReport::default());
     };
     let Some(config) = load_llm_config(conn)? else {
+        if !require_enabled {
+            return Err("LLM settings are not configured".into());
+        }
         eprintln!("Skipping AI article analysis: LLM settings are not configured");
-        return Ok(());
+        return Ok(AnalysisRunReport::default());
+    };
+    let Some(_run_lock) = acquire_run_lock(conn)? else {
+        if !require_enabled {
+            return Err("Article analysis is already running".into());
+        }
+        eprintln!("Skipping AI article analysis: another analysis is already running");
+        return Ok(AnalysisRunReport::default());
     };
     let client = Client::builder().timeout(Duration::from_secs(60)).build()?;
     let candidates = load_candidates(conn, &settings)?;
     let mut used_tokens = used_tokens_today(conn)?;
-    let mut processed = 0usize;
+    let mut report = AnalysisRunReport::default();
 
     for article in candidates {
-        if processed >= settings.max_articles_per_run {
+        if report.processed >= settings.max_articles_per_run {
             break;
         }
         let hash = content_hash(&article);
@@ -418,12 +478,14 @@ pub async fn run_article_analysis(conn: &Connection) -> Result<(), Box<dyn Error
             && article.existing_prompt_version.as_deref() == Some(PROMPT_VERSION)
             && article.existing_status.as_deref() == Some("completed");
         if current {
+            report.skipped_current += 1;
             continue;
         }
         let input = format!("{}\n{}", article.title, article.summary);
         let estimated_input = estimated_tokens(&truncate(&input, MAX_INPUT_CHARS));
         if used_tokens + estimated_input + RESERVED_OUTPUT_TOKENS > settings.daily_token_limit {
             eprintln!("Stopping AI article analysis: daily token limit reached");
+            report.stopped_by_token_limit = true;
             break;
         }
 
@@ -438,6 +500,7 @@ pub async fn run_article_analysis(conn: &Connection) -> Result<(), Box<dyn Error
                     true,
                 )?;
                 used_tokens += result.input_tokens + result.output_tokens;
+                report.succeeded += 1;
             }
             Err(error) => {
                 let message = error.to_string();
@@ -448,16 +511,27 @@ pub async fn run_article_analysis(conn: &Connection) -> Result<(), Box<dyn Error
                     "AI article analysis failed for {}:{}: {}",
                     article.source_type, article.article_id, message
                 );
+                report.failed += 1;
             }
         }
-        processed += 1;
+        report.processed += 1;
     }
-    Ok(())
+    Ok(report)
+}
+
+pub async fn run_article_analysis(conn: &Connection) -> Result<AnalysisRunReport, Box<dyn Error>> {
+    run_article_analysis_with_mode(conn, true).await
+}
+
+pub async fn run_article_analysis_manual(
+    conn: &Connection,
+) -> Result<AnalysisRunReport, Box<dyn Error>> {
+    run_article_analysis_with_mode(conn, false).await
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{extract_json, run_article_analysis, truncate};
+    use super::{extract_json, run_article_analysis, run_article_analysis_manual, truncate};
     use rusqlite::Connection;
     use serde_json::json;
     use wiremock::{
@@ -528,7 +602,7 @@ mod tests {
             INSERT INTO rss_feed_articles (id, title, summary)
             VALUES (1, 'Agent systems', 'A saved article about reliable agents.');
             INSERT INTO app_settings (key, value) VALUES
-              ('ai_article_analysis_enabled', '1'),
+              ('ai_article_analysis_enabled', '0'),
               ('ai_article_analysis_max_articles_per_run', '5'),
               ('ai_article_analysis_daily_token_limit', '50000'),
               ('ai_article_analysis_lookback_days', '30'),
@@ -543,7 +617,9 @@ mod tests {
         )
         .expect("save mock LLM URL");
 
-        run_article_analysis(&conn).await.expect("analyze article");
+        let report = run_article_analysis_manual(&conn)
+            .await
+            .expect("analyze article manually");
 
         let analysis: (String, i64, i64, String) = conn
             .query_row(
@@ -564,6 +640,18 @@ mod tests {
             )
             .expect("load usage"),
             150
+        );
+        assert_eq!(report.processed, 1);
+        assert_eq!(report.succeeded, 1);
+        assert_eq!(report.failed, 0);
+        assert_eq!(
+            conn.query_row(
+                "SELECT count(*) FROM app_settings WHERE key = 'ai_article_analysis_running'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("check run lock cleanup"),
+            0
         );
     }
 

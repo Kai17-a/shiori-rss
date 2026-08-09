@@ -1,6 +1,7 @@
 """Unit tests for Settings API endpoints."""
 
 import sqlite3
+import subprocess
 from contextlib import contextmanager
 
 import pytest
@@ -343,6 +344,37 @@ def test_ai_article_analysis_settings_round_trip(client):
         "max_articles_per_run": 10,
         "daily_token_limit": 20000,
         "lookback_days": 14,
+    }
+
+
+def test_ai_article_analysis_can_run_manually_while_schedule_is_disabled(
+    client, monkeypatch
+):
+    import api.services.article_analysis_service as analysis_module
+
+    monkeypatch.setattr(
+        analysis_module.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args[0],
+            0,
+            stdout=(
+                '{"processed":2,"succeeded":2,"failed":0,'
+                '"skipped_current":3,"stopped_by_token_limit":false}\n'
+            ),
+            stderr="",
+        ),
+    )
+
+    response = client.post("/settings/ai-article-analysis/execute")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "processed": 2,
+        "succeeded": 2,
+        "failed": 0,
+        "skipped_current": 3,
+        "stopped_by_token_limit": False,
     }
 
 

@@ -121,6 +121,13 @@ test("does not expose the former RSS screen route", async ({ page }) => {
 });
 
 test("shows the LLM connection settings used by custom RSS", async ({ page }) => {
+  await page.route(/\/api\/settings\/llm\/?$/, async (route) => {
+    await route.fulfill({
+      status: 404,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "LLM settings are not configured" }),
+    });
+  });
   await page.goto("/settings?tab=llm");
 
   await expect(page.getByText("Tune your feed workflow.")).toHaveCount(0);
@@ -130,6 +137,59 @@ test("shows the LLM connection settings used by custom RSS", async ({ page }) =>
   await expect(page.getByText("Token usage and content sharing", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Analyze saved articles")).not.toBeChecked();
   await expect(page.getByLabel("Analyze saved articles")).toBeDisabled();
+});
+
+test("runs article analysis manually with a loading state", async ({ page }) => {
+  let releaseAnalysis = () => {};
+  const analysisPending = new Promise<void>((resolve) => {
+    releaseAnalysis = resolve;
+  });
+  await page.route(/\/api\/settings\/llm\/?$/, async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        provider: "openai",
+        base_url: "https://llm.example.com/v1",
+        api_key_configured: true,
+        model: "example-model",
+      }),
+    });
+  });
+  await page.route(/\/api\/settings\/ai-article-analysis\/?$/, async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        enabled: false,
+        max_articles_per_run: 20,
+        daily_token_limit: 50000,
+        lookback_days: 30,
+      }),
+    });
+  });
+  await page.route(/\/api\/settings\/ai-article-analysis\/execute\/?$/, async (route) => {
+    await analysisPending;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        processed: 2,
+        succeeded: 2,
+        failed: 0,
+        skipped_current: 3,
+        stopped_by_token_limit: false,
+      }),
+    });
+  });
+
+  await page.goto("/settings?tab=llm");
+  const runButton = page.getByRole("button", { name: "Run analysis now" });
+  await expect(runButton).toBeEnabled();
+  await runButton.click();
+
+  await expect(runButton).toBeDisabled();
+  await expect(runButton.locator(".animate-spin")).toBeVisible();
+  releaseAnalysis();
+  await expect(page.getByText("Article analysis completed.", { exact: true })).toBeVisible();
+  await expect(runButton).toBeEnabled();
 });
 
 test("groups automation controls under the settings tabs", async ({ page }) => {

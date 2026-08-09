@@ -450,6 +450,14 @@ class SettingsAIArticleAnalysisUpdate(BaseModel):
     lookback_days: int = PydField(ge=1, le=3650)
 
 
+class SettingsAIArticleAnalysisRunResponse(BaseModel):
+    processed: int
+    succeeded: int
+    failed: int
+    skipped_current: int
+    stopped_by_token_limit: bool
+
+
 class SettingsWebhookSummaryResponse(BaseModel):
     enabled: bool
 

@@ -43,6 +43,14 @@ export interface SettingsAIArticleAnalysisResponse {
   lookback_days: number;
 }
 
+export interface SettingsAIArticleAnalysisRunResponse {
+  processed: number;
+  succeeded: number;
+  failed: number;
+  skipped_current: number;
+  stopped_by_token_limit: boolean;
+}
+
 export type LLMProvider = "vllm" | "ollama" | "openai";
 
 export interface LLMSettingsResponse {
