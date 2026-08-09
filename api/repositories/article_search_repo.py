@@ -9,6 +9,10 @@ class ArticleSearchRepository:
     def _quote_match_term(term: str) -> str:
         return f'"{term.replace(chr(34), chr(34) * 2)}"'
 
+    @staticmethod
+    def _escape_like_term(term: str) -> str:
+        return term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
     def search(
         self,
         *,
@@ -17,13 +21,24 @@ class ArticleSearchRepository:
         published_after: str | None,
         published_before: str | None,
         limit: int,
+        relaxed: bool = False,
     ) -> list[dict]:
         long_terms = [term for term in keywords if len(term) >= 3]
         short_terms = [term for term in keywords if len(term) < 3]
         clauses: list[str] = []
         params: list[object] = []
 
-        if long_terms:
+        if relaxed and keywords:
+            like_clauses: list[str] = []
+            for term in keywords:
+                like_clauses.append(
+                    "(source_title LIKE ? ESCAPE '\\' OR title LIKE ? ESCAPE '\\' "
+                    "OR summary LIKE ? ESCAPE '\\')"
+                )
+                like = f"%{self._escape_like_term(term)}%"
+                params.extend((like, like, like))
+            clauses.append(f"({' OR '.join(like_clauses)})")
+        elif long_terms:
             clauses.append("article_search MATCH ?")
             params.append(
                 " OR ".join(self._quote_match_term(term) for term in long_terms)
@@ -50,7 +65,11 @@ class ArticleSearchRepository:
             params.append(published_before)
 
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
-        rank = "bm25(article_search, 0, 0, 0, 3, 8, 4, 0, 0, 0)" if long_terms else "0"
+        rank = (
+            "bm25(article_search, 0, 0, 0, 3, 8, 4, 0, 0, 0)"
+            if long_terms and not relaxed
+            else "0"
+        )
         rows = self.conn.execute(
             f"""
             SELECT source_type, CAST(article_id AS INTEGER) AS article_id,

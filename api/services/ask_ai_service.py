@@ -16,6 +16,7 @@ from api.services.llm_service import chat_completion, load_llm_config
 MAX_SEARCH_RESULTS = 20
 MAX_ANSWER_SOURCES = 10
 MAX_SOURCE_SUMMARY_CHARS = 1200
+LITERAL_QUERY_TOKEN_PATTERN = re.compile(r"[A-Za-z][A-Za-z0-9+.#-]{1,49}")
 
 
 class ArticleSearchPlan(BaseModel):
@@ -75,21 +76,20 @@ class AskAIService:
                 )
 
             plan = self._create_search_plan(config, message)
-            rows = ArticleSearchRepository(conn).search(
-                keywords=plan.keywords,
-                source_types=plan.source_types,
-                published_after=plan.published_after.isoformat()
-                if plan.published_after
-                else None,
-                published_before=plan.published_before.isoformat()
-                if plan.published_before
-                else None,
-                limit=MAX_SEARCH_RESULTS,
+            rows = self._search_with_fallback(
+                ArticleSearchRepository(conn),
+                message,
+                plan,
             )
 
         if not rows:
+            terms = ", ".join(plan.keywords[:3])
+            search_description = f' for "{terms}"' if terms else ""
             return AskAIResponse(
-                answer="No saved articles matched that question. Try broader keywords or a wider date range.",
+                answer=(
+                    f"No saved articles matched{search_description}, even after broadening "
+                    "the keywords and date range. Fetch your feeds or try another topic."
+                ),
                 sources=[],
             )
 
@@ -98,6 +98,55 @@ class AskAIService:
         return AskAIResponse(
             answer=answer,
             sources=[AskAISource(**row) for row in answer_rows],
+        )
+
+    @staticmethod
+    def _literal_query_tokens(message: str) -> list[str]:
+        return list(dict.fromkeys(LITERAL_QUERY_TOKEN_PATTERN.findall(message)))
+
+    def _search_with_fallback(
+        self,
+        repo: ArticleSearchRepository,
+        message: str,
+        plan: ArticleSearchPlan,
+    ) -> list[dict]:
+        published_after = (
+            plan.published_after.isoformat() if plan.published_after else None
+        )
+        published_before = (
+            plan.published_before.isoformat() if plan.published_before else None
+        )
+        rows = repo.search(
+            keywords=plan.keywords,
+            source_types=plan.source_types,
+            published_after=published_after,
+            published_before=published_before,
+            limit=MAX_SEARCH_RESULTS,
+        )
+        if rows:
+            return rows
+
+        relaxed_keywords = list(
+            dict.fromkeys([*plan.keywords, *self._literal_query_tokens(message)])
+        )
+        rows = repo.search(
+            keywords=relaxed_keywords,
+            source_types=plan.source_types,
+            published_after=published_after,
+            published_before=published_before,
+            limit=MAX_SEARCH_RESULTS,
+            relaxed=True,
+        )
+        if rows or not (published_after or published_before):
+            return rows
+
+        return repo.search(
+            keywords=relaxed_keywords,
+            source_types=plan.source_types,
+            published_after=None,
+            published_before=None,
+            limit=MAX_SEARCH_RESULTS,
+            relaxed=True,
         )
 
     def _create_search_plan(self, config, message: str) -> ArticleSearchPlan:
@@ -112,7 +161,9 @@ class AskAIService:
                         "Return only JSON with keys keywords (array, max 8), source_types "
                         "(array containing rss and/or custom, or empty), published_after "
                         "(ISO 8601 or null), and published_before (ISO 8601 or null). "
-                        "Use concise literal terms likely to occur in article titles or summaries. "
+                        "Use single-concept literal terms likely to occur in article titles or "
+                        "summaries, never sentence fragments. Preserve acronyms and product names "
+                        "from the question as separate keywords. "
                         f"The current UTC time is {now}."
                     ),
                 },
