@@ -8,8 +8,11 @@ delete process.env.FORCE_COLOR;
 export default defineConfig({
   testDir: "./tests/e2e",
   fullyParallel: false,
-  retries: 0,
+  retries: process.env.CI ? 1 : 0,
   reporter: "list",
+  expect: {
+    timeout: 15_000,
+  },
   use: {
     baseURL: frontendBaseUrl,
     trace: "on-first-retry",

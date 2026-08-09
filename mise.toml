@@ -1,5 +1,6 @@
 [tools]
 act = "latest"
+actionlint = "latest"
 bun = "1.3.12"
 dbmate = "latest"
 git-cliff = "2.12.0"
@@ -101,7 +102,11 @@ run = "docker compose down"
 
 [tasks.act-pr]
 description = "Run the pull request workflow locally with act"
-run = "act pull_request -W .github/workflows/pr-tests.yml"
+run = "act pull_request -W .github/workflows/ci.yml"
+
+[tasks.actions-lint]
+description = "Lint GitHub Actions workflows"
+run = "actionlint"
 
 [tasks.test-all]
 description = "Run all repository checks"

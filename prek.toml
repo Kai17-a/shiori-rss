@@ -20,6 +20,7 @@ hooks = [
   { id = "api-lint", name = "API lint", language = "system", entry = "mise run api-lint", files = "^api/.*\\.py$", pass_filenames = false, stages = ["pre-commit"] },
   { id = "batch-fmt-check", name = "Batch format check", language = "system", entry = "mise run batch-fmt-check", files = "^(batch/.*\\.rs|batch/Cargo\\.(toml|lock))$", pass_filenames = false, stages = ["pre-commit"] },
   { id = "frontend-typecheck", name = "Frontend typecheck", language = "system", entry = "mise run frontend-typecheck", files = "^frontend/.*\\.(ts|vue)$", pass_filenames = false, stages = ["pre-commit"] },
+  { id = "actions-lint", name = "GitHub Actions lint", language = "system", entry = "mise run actions-lint", files = "^\\.github/workflows/.*\\.ya?ml$", pass_filenames = false, stages = ["pre-commit"] },
   { id = "conventional-commit", name = "Conventional Commit message", language = "system", entry = "./scripts/repository/check-commit-message.sh", stages = ["commit-msg"] },
   { id = "repository-tests", name = "Repository tests", language = "system", entry = "mise run test-all", pass_filenames = false, always_run = true, stages = ["pre-push"] },
 ]

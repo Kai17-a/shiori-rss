@@ -41,14 +41,20 @@ API は `http://127.0.0.1:8000`、frontend は `http://127.0.0.1:3000` で起動
 GitHub Actions のワークフローをローカルで再現する場合は `mise exec act -- ...` を使う。
 
 ```bash
-mise exec -- act pull_request -W .github/workflows/pr-tests.yml
+mise exec -- act pull_request -W .github/workflows/ci.yml
 ```
 
-`act` は `mise.toml` で管理しているので、先に `mise install` を実行しておく。
+`act` と `actionlint` は `mise.toml` で管理しているので、先に `mise install` を実行しておく。
 別のワークフローを試す場合は、`-W` のパスとイベント名を変える。
 
+ワークフローの構文と参照関係だけを検証する場合は次を実行する。
+
 ```bash
-mise exec -- act push -W .github/workflows/release-on-tag.yml
+mise run actions-lint
+```
+
+```bash
+mise exec -- act push -W .github/workflows/release.yml
 ```
 
 ### Docker を使う場合
@@ -151,7 +157,7 @@ mise run prek
 - `fix`, `perf`, `revert` も同じ形式で載る
 - `docs`, `test`, `chore`, `ci`, `style`, `refactor` は載せない
 
-push 前に API、batch、frontend、ブラウザ拡張、E2E の lint・型検査・テスト・配布ビルドをまとめて手動実行したい場合は次を使う。
+push 前に API、batch、frontend、E2E の lint・型検査・テスト・配布ビルドをまとめて手動実行したい場合は次を使う。
 
 ```bash
 mise run test-all

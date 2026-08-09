@@ -120,7 +120,7 @@ test("shows loading while updating a feed notification", async ({ page }) => {
     updated_at: "2026-08-08T00:00:00Z",
   };
 
-  await page.route("**/api/rss-feeds?*", async (route) => {
+  await page.route(/\/api\/rss-feeds\?.*$/, async (route) => {
     await route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
