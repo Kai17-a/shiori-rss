@@ -79,14 +79,14 @@
               <div v-if="message.sources.length" class="mt-4 space-y-2 border-t border-default pt-3">
                 <p class="text-xs font-semibold uppercase tracking-wide text-muted">Sources</p>
                 <a
-                  v-for="(source, sourceIndex) in message.sources"
+                  v-for="source in message.sources"
                   :key="`${source.source_type}-${source.article_id}`"
                   :href="source.url"
                   target="_blank"
                   rel="noopener noreferrer"
                   class="flex items-start gap-2 rounded-lg p-2 text-sm hover:bg-accented"
                 >
-                  <span class="font-mono text-xs text-muted">S{{ sourceIndex + 1 }}</span>
+                  <span class="font-mono text-xs text-muted">{{ source.reference }}</span>
                   <span class="min-w-0">
                     <span class="block truncate font-medium text-highlighted">
                       {{ source.title || source.url }}

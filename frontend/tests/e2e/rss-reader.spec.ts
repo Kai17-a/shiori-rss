@@ -18,7 +18,10 @@ test("opens the Ask AI chat modal from the floating launcher", async ({ page }) 
     await route.fulfill({
       contentType: "application/x-ndjson",
       body: [
+        JSON.stringify({ type: "delta", delta: "## Highlights\n\n- **Agentic systems** " }),
+        JSON.stringify({ type: "delta", delta: "were the main theme. [S1]\n- Read the `saved summary` for details." }),
         JSON.stringify({ type: "sources", sources: [{
+          reference: "S1",
           source_type: "rss",
           article_id: 12,
           source_id: 3,
@@ -29,8 +32,6 @@ test("opens the Ask AI chat modal from the floating launcher", async ({ page }) 
           published: "2026-08-09T08:00:00Z",
           created_at: "2026-08-09T08:00:00Z",
         }] }),
-        JSON.stringify({ type: "delta", delta: "## Highlights\n\n- **Agentic systems** " }),
-        JSON.stringify({ type: "delta", delta: "were the main theme. [S1]\n- Read the `saved summary` for details." }),
         JSON.stringify({ type: "done" }),
       ].join("\n") + "\n",
     });

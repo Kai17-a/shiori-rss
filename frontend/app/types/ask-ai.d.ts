@@ -1,4 +1,5 @@
 export interface AskAISource {
+  reference: string;
   source_type: "rss" | "custom";
   article_id: number;
   source_id: number;

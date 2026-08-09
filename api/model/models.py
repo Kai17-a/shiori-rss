@@ -526,6 +526,7 @@ class AskAIRequest(BaseModel):
 
 
 class AskAISource(BaseModel):
+    reference: str
     source_type: Literal["rss", "custom"]
     article_id: int
     source_id: int

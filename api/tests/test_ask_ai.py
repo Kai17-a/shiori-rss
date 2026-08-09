@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from api.main import app
 from api.repositories.article_search_repo import ArticleSearchRepository
+from api.services.ask_ai_service import AskAIService
 from api.tests.test_support import build_test_db
 
 
@@ -63,6 +64,7 @@ def client(tmp_path, monkeypatch):
     replies = iter(
         [
             '{"keywords":["人工知能に関する記事"],"source_types":[],"published_after":null,"published_before":null}',
+            '{"references":["S1"]}',
             "The saved article describes autonomous agent systems. [S1]",
         ]
     )
@@ -96,13 +98,69 @@ def test_ask_ai_streams_sources_and_answer_deltas(client):
         json.loads(line) for line in ask_ai_module.AskAIService().stream("AI news")
     ]
 
-    assert events[0]["type"] == "sources"
-    assert events[0]["sources"][0]["title"] == "Agentic AI systems"
+    assert [event["type"] for event in events] == [
+        "delta",
+        "delta",
+        "sources",
+        "done",
+    ]
+    assert events[2]["sources"][0]["reference"] == "S1"
+    assert events[2]["sources"][0]["title"] == "Agentic AI systems"
     assert [event.get("delta") for event in events if event["type"] == "delta"] == [
         "Streamed ",
         "answer. [S1]",
     ]
     assert events[-1] == {"type": "done"}
+
+
+def test_ask_ai_returns_only_sources_cited_by_the_answer():
+    rows = [
+        {
+            "source_type": "rss",
+            "article_id": article_id,
+            "source_id": 1,
+            "source_title": "Example feed",
+            "title": title,
+            "summary": None,
+            "url": f"https://example.com/{article_id}",
+            "published": None,
+            "created_at": "2026-08-09T08:00:00+00:00",
+        }
+        for article_id, title in ((1, "Unrelated Svelte news"), (2, "OpenAI news"))
+    ]
+
+    sources = AskAIService._cited_sources("Relevant article. [S2]", rows)
+
+    assert [(source.reference, source.title) for source in sources] == [
+        ("S2", "OpenAI news")
+    ]
+
+
+def test_ask_ai_removes_unrelated_candidates_before_answering(monkeypatch):
+    import api.services.ask_ai_service as ask_ai_module
+
+    rows = [
+        {
+            "source_title": "Example feed",
+            "title": title,
+            "summary": summary,
+        }
+        for title, summary in (
+            ("What’s new in Svelte", "Includes an incidental AI tool."),
+            ("OpenAI launches a model", "A new OpenAI model was released."),
+        )
+    ]
+    monkeypatch.setattr(
+        ask_ai_module,
+        "chat_completion",
+        lambda *args, **kwargs: '{"references":["S2"]}',
+    )
+
+    selected = AskAIService()._select_relevant_rows(
+        object(), "OpenAIのニュースを教えて", rows
+    )
+
+    assert [row["title"] for row in selected] == ["OpenAI launches a model"]
 
 
 def test_ask_ai_rejects_empty_questions(client):
@@ -228,6 +286,7 @@ def test_ask_ai_removes_date_filter_after_relaxed_search_finds_nothing(
     replies = iter(
         [
             '{"keywords":["AI"],"source_types":[],"published_after":"2026-08-09T00:00:00Z","published_before":null}',
+            '{"references":["S1"]}',
             "An older saved article covers AI systems. [S1]",
         ]
     )
