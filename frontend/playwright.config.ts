@@ -8,7 +8,7 @@ delete process.env.FORCE_COLOR;
 export default defineConfig({
   testDir: "./tests/e2e",
   fullyParallel: false,
-  retries: process.env.CI ? 1 : 0,
+  retries: 1,
   reporter: "list",
   expect: {
     timeout: 15_000,
