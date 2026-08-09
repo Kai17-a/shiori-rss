@@ -1,12 +1,19 @@
-from datetime import date
+from datetime import datetime, timedelta, timezone
 
 from api.database import get_db
 from api.model.models import DashboardArticle, DashboardResponse, DashboardSummary
 
 
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
 class DashboardService:
-    def get(self, access_date: date, limit: int = 100) -> DashboardResponse:
-        date_value = access_date.isoformat()
+    def get(self, limit: int = 100) -> DashboardResponse:
+        accessed_at = _utc_now()
+        window_started_at = accessed_at - timedelta(hours=24)
+        window_start = window_started_at.isoformat()
+        window_end = accessed_at.isoformat()
         with get_db() as conn:
             summary_row = conn.execute(
                 """
@@ -15,11 +22,13 @@ class DashboardService:
                   (SELECT COUNT(*) FROM news_sites) AS custom_feed_count,
                   (
                     SELECT COUNT(*) FROM rss_feed_articles
-                    WHERE substr(coalesce(published, created_at), 1, 10) = ?
+                    WHERE datetime(coalesce(published, created_at)) >= datetime(?)
+                      AND datetime(coalesce(published, created_at)) <= datetime(?)
                   ) + (
                     SELECT COUNT(*) FROM news_site_articles
-                    WHERE substr(coalesce(published, created_at), 1, 10) = ?
-                  ) AS today_article_count,
+                    WHERE datetime(coalesce(published, created_at)) >= datetime(?)
+                      AND datetime(coalesce(published, created_at)) <= datetime(?)
+                  ) AS recent_article_count,
                   (
                     SELECT COUNT(*) FROM rss_feed_articles
                     WHERE webhook_notified = 0
@@ -28,7 +37,7 @@ class DashboardService:
                     WHERE webhook_notified = 0
                   ) AS pending_notification_count
                 """,
-                (date_value, date_value),
+                (window_start, window_end, window_start, window_end),
             ).fetchone()
             article_rows = conn.execute(
                 """
@@ -41,7 +50,8 @@ class DashboardService:
                          articles.webhook_notified
                   FROM rss_feed_articles AS articles
                   JOIN rss_feeds AS feeds ON feeds.id = articles.feed_id
-                  WHERE substr(coalesce(articles.published, articles.created_at), 1, 10) = ?
+                  WHERE datetime(coalesce(articles.published, articles.created_at)) >= datetime(?)
+                    AND datetime(coalesce(articles.published, articles.created_at)) <= datetime(?)
                   UNION ALL
                   SELECT 'custom' AS source_type, sites.id AS source_id,
                          sites.title AS source_title, articles.url, articles.title,
@@ -49,17 +59,19 @@ class DashboardService:
                          articles.webhook_notified
                   FROM news_site_articles AS articles
                   JOIN news_sites AS sites ON sites.id = articles.site_id
-                  WHERE substr(coalesce(articles.published, articles.created_at), 1, 10) = ?
+                  WHERE datetime(coalesce(articles.published, articles.created_at)) >= datetime(?)
+                    AND datetime(coalesce(articles.published, articles.created_at)) <= datetime(?)
                 )
-                ORDER BY coalesce(published, created_at) DESC, source_type, source_id
+                ORDER BY datetime(coalesce(published, created_at)) DESC, source_type, source_id
                 LIMIT ?
                 """,
-                (date_value, date_value, limit),
+                (window_start, window_end, window_start, window_end, limit),
             ).fetchall()
 
         assert summary_row is not None
         return DashboardResponse(
-            date=access_date,
+            generated_at=accessed_at,
+            window_started_at=window_started_at,
             summary=DashboardSummary(**dict(summary_row)),
             articles=[DashboardArticle(**dict(row)) for row in article_rows],
         )

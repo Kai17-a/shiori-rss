@@ -24,8 +24,8 @@
               <p class="text-xs font-semibold uppercase tracking-[0.16em] text-primary">
                 {{ accessDateLabel }}
               </p>
-              <h2 class="mt-1 text-2xl font-bold tracking-tight text-highlighted">Today’s news</h2>
-              <p class="mt-1 text-sm text-muted">Articles published or discovered today.</p>
+              <h2 class="mt-1 text-2xl font-bold tracking-tight text-highlighted">Last 24 hours</h2>
+              <p class="mt-1 text-sm text-muted">Articles published or discovered in the previous 24 hours.</p>
             </div>
             <RefreshButton :loading="loading" @click="loadDashboard(true)" />
           </div>
@@ -100,10 +100,10 @@
                 :class="{ 'animate-spin': loading }"
               />
               <p class="mt-3 font-semibold text-default">
-                {{ loading ? "Loading today’s news…" : "No news for this date" }}
+                {{ loading ? "Loading recent news…" : "No news in the last 24 hours" }}
               </p>
               <p v-if="!loading" class="mt-1 text-sm text-muted">
-                Fetch a feed to add articles to today’s news.
+                Fetch a feed to add articles to this rolling news window.
               </p>
             </div>
           </div>
@@ -122,20 +122,16 @@ const toast = useSingleToast();
 const loading = ref(false);
 const loadError = ref("");
 const accessDate = new Date();
-const accessDateValue = [
-  accessDate.getFullYear(),
-  String(accessDate.getMonth() + 1).padStart(2, "0"),
-  String(accessDate.getDate()).padStart(2, "0"),
-].join("-");
 const accessDateLabel = new Intl.DateTimeFormat("en-US", {
   dateStyle: "full",
 }).format(accessDate);
 const dashboard = ref<DashboardResponse>({
-  date: accessDateValue,
+  generated_at: accessDate.toISOString(),
+  window_started_at: new Date(accessDate.getTime() - 24 * 60 * 60 * 1000).toISOString(),
   summary: {
     rss_feed_count: 0,
     custom_feed_count: 0,
-    today_article_count: 0,
+    recent_article_count: 0,
     pending_notification_count: 0,
   },
   articles: [],
@@ -149,8 +145,8 @@ const summaryItems = computed(() => [
     icon: "i-lucide-wand-sparkles",
   },
   {
-    label: "Today’s articles",
-    value: dashboard.value.summary.today_article_count,
+    label: "Recent articles",
+    value: dashboard.value.summary.recent_article_count,
     icon: "i-lucide-newspaper",
   },
   {
@@ -169,9 +165,7 @@ const loadDashboard = async (showToast = false) => {
   loading.value = true;
   loadError.value = "";
   try {
-    dashboard.value = await request<DashboardResponse>(
-      `/dashboard?date=${accessDateValue}`,
-    );
+    dashboard.value = await request<DashboardResponse>("/dashboard");
     if (showToast) {
       toast.show({ title: "Home refreshed.", color: "success", icon: "i-lucide-check" });
     }

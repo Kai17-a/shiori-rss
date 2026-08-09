@@ -1,5 +1,6 @@
 import sqlite3
 from contextlib import contextmanager
+from datetime import datetime, timezone
 
 import pytest
 from fastapi.testclient import TestClient
@@ -14,6 +15,9 @@ def client(tmp_path, monkeypatch):
     build_test_db(db_path)
 
     import api.services.dashboard_service as dashboard_module
+
+    accessed_at = datetime(2026, 8, 9, 9, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(dashboard_module, "_utc_now", lambda: accessed_at)
 
     @contextmanager
     def patched_get_db(database_url=db_path):
@@ -45,10 +49,10 @@ def client(tmp_path, monkeypatch):
             VALUES (1, ?, ?, ?, ?, 1)
             """,
             (
-                "https://example.com/rss-today",
-                "RSS today",
+                "https://example.com/rss-boundary",
+                "RSS at boundary",
                 "RSS summary",
-                "2026-08-08 09:00:00",
+                "2026-08-08T09:00:00+00:00",
             ),
         )
         conn.execute(
@@ -58,10 +62,10 @@ def client(tmp_path, monkeypatch):
             VALUES (1, ?, ?, ?, ?, 0)
             """,
             (
-                "https://example.com/custom-today",
-                "Custom today",
+                "https://example.com/custom-recent",
+                "Custom recent",
                 "Custom summary",
-                "2026-08-08 10:00:00",
+                "2026-08-09T17:00:00+09:00",
             ),
         )
         conn.execute(
@@ -70,31 +74,39 @@ def client(tmp_path, monkeypatch):
                 (feed_id, url, title, published, webhook_notified)
             VALUES (1, ?, ?, ?, 0)
             """,
-            ("https://example.com/yesterday", "Yesterday", "2026-08-07 10:00:00"),
+            (
+                "https://example.com/outside-window",
+                "Outside window",
+                "2026-08-08T08:59:59+00:00",
+            ),
         )
 
     with TestClient(app) as test_client:
         yield test_client
 
 
-def test_dashboard_summarizes_sources_and_articles_for_access_date(client):
-    response = client.get("/dashboard?date=2026-08-08")
+def test_dashboard_summarizes_sources_and_articles_from_the_last_24_hours(client):
+    response = client.get("/dashboard")
 
     assert response.status_code == 200
     assert response.json()["summary"] == {
         "rss_feed_count": 1,
         "custom_feed_count": 1,
-        "today_article_count": 2,
+        "recent_article_count": 2,
         "pending_notification_count": 2,
     }
     assert [article["title"] for article in response.json()["articles"]] == [
-        "Custom today",
-        "RSS today",
+        "Custom recent",
+        "RSS at boundary",
     ]
     assert response.json()["articles"][0]["source_type"] == "custom"
+    assert response.json()["generated_at"] == "2026-08-09T09:00:00Z"
+    assert response.json()["window_started_at"] == "2026-08-08T09:00:00Z"
 
 
-def test_dashboard_rejects_missing_access_date(client):
-    response = client.get("/dashboard")
+def test_dashboard_excludes_articles_after_the_requested_limit(client):
+    response = client.get("/dashboard?limit=1")
 
-    assert response.status_code == 422
+    assert response.status_code == 200
+    assert len(response.json()["articles"]) == 1
+    assert response.json()["summary"]["recent_article_count"] == 2

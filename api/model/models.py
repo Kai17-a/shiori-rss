@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import datetime
 from typing import ClassVar, Literal
 
 from pydantic import (
@@ -494,7 +494,7 @@ class ErrorResponse(BaseModel):
 class DashboardSummary(BaseModel):
     rss_feed_count: int
     custom_feed_count: int
-    today_article_count: int
+    recent_article_count: int
     pending_notification_count: int
 
 
@@ -511,6 +511,7 @@ class DashboardArticle(BaseModel):
 
 
 class DashboardResponse(BaseModel):
-    date: date
+    generated_at: datetime
+    window_started_at: datetime
     summary: DashboardSummary
     articles: list[DashboardArticle]

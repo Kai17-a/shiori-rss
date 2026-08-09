@@ -1,7 +1,7 @@
 export interface DashboardSummary {
   rss_feed_count: number;
   custom_feed_count: number;
-  today_article_count: number;
+  recent_article_count: number;
   pending_notification_count: number;
 }
 
@@ -18,8 +18,8 @@ export interface DashboardArticle {
 }
 
 export interface DashboardResponse {
-  date: string;
+  generated_at: string;
+  window_started_at: string;
   summary: DashboardSummary;
   articles: DashboardArticle[];
 }
-

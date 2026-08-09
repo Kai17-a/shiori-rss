@@ -1,11 +1,11 @@
 import { expect, test } from "@playwright/test";
 
-test("opens the daily news summary as the app home", async ({ page }) => {
+test("opens the rolling 24-hour news summary as the app home", async ({ page }) => {
   await page.goto("/");
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole("heading", { name: "Today’s news" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Last 24 hours" })).toBeVisible();
   await expect(page.getByText(/^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday), /)).toBeVisible();
-  await expect(page.getByText("Today’s articles", { exact: true })).toBeVisible();
+  await expect(page.getByText("Recent articles", { exact: true })).toBeVisible();
   await expect(page.getByText("Follow the web on your terms.")).toHaveCount(0);
   await expect(page.getByText("Your signal, uninterrupted")).toHaveCount(0);
   await expect(page.getByText("Automation", { exact: true })).toHaveCount(0);
@@ -73,7 +73,7 @@ test("does not expose the former RSS screen route", async ({ page }) => {
   await page.goto("/rss");
   await expect(page).toHaveURL(/\/rss$/);
   await expect(page.getByRole("heading", { name: "Your feeds" })).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "Today’s news" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Last 24 hours" })).toHaveCount(0);
 });
 
 test("shows the LLM connection settings used by custom RSS", async ({ page }) => {

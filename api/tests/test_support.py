@@ -109,15 +109,9 @@ class CompatTestClient:
     def _dashboard_response(self, method: str, path: str, query):
         if method != "GET" or path != "/dashboard":
             return None
-        from datetime import date
-
-        date_value = query.get("date", [None])[0]
-        if date_value is None:
-            return self._error(422, "date is required")
         payload = (
             DashboardService()
             .get(
-                date.fromisoformat(date_value),
                 limit=int(query.get("limit", [100])[0]),
             )
             .model_dump(mode="json")
