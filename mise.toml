@@ -4,6 +4,7 @@ bun = "1.3.12"
 dbmate = "latest"
 git-cliff = "2.12.0"
 "github:aptible/supercronic" = "latest"
+prek = "latest"
 uv = "latest"
 
 [tasks.dev]
@@ -11,8 +12,12 @@ description = "Start the API and frontend development servers"
 run = "./scripts/development/run-local.sh"
 
 [tasks.setup-hooks]
-description = "Configure repository Git hooks"
+description = "Install prek-managed repository Git hooks"
 run = "./scripts/repository/setup-repo.sh"
+
+[tasks.prek]
+description = "Run prek checks against all tracked files"
+run = "prek run --all-files"
 
 [tasks.api-install]
 description = "Install the API dependencies"

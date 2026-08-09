@@ -89,16 +89,26 @@ API 直アクセスは `http://localhost:8005/...` で行える。
 GitHub Packages の Docker image 公開機能を使う場合は、別途ワークフローを用意する。
 `GITHUB_TOKEN` に `packages: write` 権限が付くように設定する。
 
-## Push 前チェック
+## Git hookチェック
 
-ローカルから `git push` する前に同じ検査を走らせるには、次を設定する。
+`prek`は`mise.toml`で管理している。ツールをインストールし、Git hookを設定するには次を実行する。
 
 ```bash
+mise install
 mise run setup-hooks
 ```
 
-この設定を入れると、この workspace の `.git/config` にだけ `core.hooksPath` が記録される。
-`.githooks/pre-push` が実行され、コミットメッセージの Conventional Commits 検査に加えて、API の `ruff check`、API テスト、frontend の unit test が push 前に走る。
+設定後は次の検査が自動実行される。
+
+- commit前: 末尾空白、改行、JSON・TOML・YAML、競合マーカー、秘密鍵の検査。変更範囲に応じてAPIの`ruff`、Rustの`cargo fmt --check`、frontendの型検査
+- commit message確定時: Conventional Commits形式の検査
+- push前: `mise run test-all`
+
+全追跡ファイルに対してcommit前チェックを手動実行する場合は次を使う。
+
+```bash
+mise run prek
+```
 
 ### Git 運用
 

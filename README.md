@@ -42,8 +42,12 @@ docker run --rm -p 3000:3000 -p 8000:8000 \
 ## Development
 
 ```bash
+mise install
+mise run setup-hooks
 mise run test-all
 ```
+
+`setup-hooks`はmise管理の`prek`を使い、commit前、commit message、push前のGit hookを設定します。
 
 `mise run dev` は手動AI解析で使用するRustバッチをビルドしてから、APIとフロントエンドを起動します。
 
