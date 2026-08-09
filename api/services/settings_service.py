@@ -9,6 +9,8 @@ from api.model.models import (
     LLMSettingsTestRequest,
     LLMSettingsTestResponse,
     LLMSettingsUpdate,
+    SettingsAIArticleAnalysisResponse,
+    SettingsAIArticleAnalysisUpdate,
     SettingsRssExecutionResponse,
     SettingsRssExecutionUpdate,
     SettingsRssWebhookNotificationResponse,
@@ -40,9 +42,24 @@ from api.services.webhook_service import (
 RSS_EXECUTION_SETTING_KEY = "rss_periodic_execution_enabled"
 RSS_WEBHOOK_NOTIFICATION_SETTING_KEY = "rss_webhook_notification_enabled"
 WEBHOOK_SUMMARY_SETTING_KEY = "webhook_include_summary_enabled"
+AI_ARTICLE_ANALYSIS_ENABLED_KEY = "ai_article_analysis_enabled"
+AI_ARTICLE_ANALYSIS_MAX_ARTICLES_KEY = "ai_article_analysis_max_articles_per_run"
+AI_ARTICLE_ANALYSIS_DAILY_TOKEN_LIMIT_KEY = "ai_article_analysis_daily_token_limit"
+AI_ARTICLE_ANALYSIS_LOOKBACK_DAYS_KEY = "ai_article_analysis_lookback_days"
+AI_ARTICLE_ANALYSIS_DEFAULT_MAX_ARTICLES = 20
+AI_ARTICLE_ANALYSIS_DEFAULT_DAILY_TOKEN_LIMIT = 50_000
+AI_ARTICLE_ANALYSIS_DEFAULT_LOOKBACK_DAYS = 30
 
 
 class SettingsService:
+    @staticmethod
+    def _get_int_setting(repo: SettingsRepository, key: str, default: int) -> int:
+        value = repo.get(key)
+        try:
+            return int(value) if value is not None else default
+        except ValueError:
+            return default
+
     def _validate_webhook_url(self, webhook_url: str) -> None:
         from urllib.parse import urlparse
 
@@ -171,6 +188,7 @@ class SettingsService:
             repo = SettingsRepository(conn)
             for key in LLM_SETTING_KEYS:
                 repo.delete(key)
+            repo.set(AI_ARTICLE_ANALYSIS_ENABLED_KEY, "0")
 
     def test_llm_settings(
         self, data: LLMSettingsTestRequest
@@ -244,6 +262,52 @@ class SettingsService:
                     RSS_WEBHOOK_NOTIFICATION_SETTING_KEY, data.enabled
                 )
             )
+
+    def get_ai_article_analysis(self) -> SettingsAIArticleAnalysisResponse:
+        with get_db() as conn:
+            repo = SettingsRepository(conn)
+            return SettingsAIArticleAnalysisResponse(
+                enabled=repo.get(AI_ARTICLE_ANALYSIS_ENABLED_KEY) == "1",
+                max_articles_per_run=self._get_int_setting(
+                    repo,
+                    AI_ARTICLE_ANALYSIS_MAX_ARTICLES_KEY,
+                    AI_ARTICLE_ANALYSIS_DEFAULT_MAX_ARTICLES,
+                ),
+                daily_token_limit=self._get_int_setting(
+                    repo,
+                    AI_ARTICLE_ANALYSIS_DAILY_TOKEN_LIMIT_KEY,
+                    AI_ARTICLE_ANALYSIS_DEFAULT_DAILY_TOKEN_LIMIT,
+                ),
+                lookback_days=self._get_int_setting(
+                    repo,
+                    AI_ARTICLE_ANALYSIS_LOOKBACK_DAYS_KEY,
+                    AI_ARTICLE_ANALYSIS_DEFAULT_LOOKBACK_DAYS,
+                ),
+            )
+
+    def set_ai_article_analysis(
+        self, data: SettingsAIArticleAnalysisUpdate
+    ) -> SettingsAIArticleAnalysisResponse:
+        if data.enabled:
+            with get_db() as conn:
+                if load_llm_config(SettingsRepository(conn)) is None:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Configure an LLM connection before enabling AI article analysis.",
+                    )
+        with get_db() as conn:
+            repo = SettingsRepository(conn)
+            repo.set(AI_ARTICLE_ANALYSIS_ENABLED_KEY, "1" if data.enabled else "0")
+            repo.set(
+                AI_ARTICLE_ANALYSIS_MAX_ARTICLES_KEY,
+                str(data.max_articles_per_run),
+            )
+            repo.set(
+                AI_ARTICLE_ANALYSIS_DAILY_TOKEN_LIMIT_KEY,
+                str(data.daily_token_limit),
+            )
+            repo.set(AI_ARTICLE_ANALYSIS_LOOKBACK_DAYS_KEY, str(data.lookback_days))
+        return self.get_ai_article_analysis()
 
     def get_webhook_summary(self) -> SettingsWebhookSummaryResponse:
         with get_db() as conn:

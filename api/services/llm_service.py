@@ -6,6 +6,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass
+from collections.abc import Iterator
 from typing import Literal
 from urllib.parse import urlparse
 from uuid import uuid4
@@ -267,6 +268,83 @@ def chat_completion(
             ),
         )
     return content
+
+
+def chat_completion_stream(
+    config: LLMConfig,
+    messages: list[dict],
+    *,
+    max_tokens: int,
+    timeout: float = 60.0,
+) -> Iterator[str]:
+    reference_id = new_diagnostic_reference()
+    base_url = config.base_url.rstrip("/")
+    if config.provider == "ollama":
+        url = f"{base_url}/api/chat"
+        payload: dict = {
+            "model": config.model,
+            "messages": messages,
+            "stream": True,
+        }
+    else:
+        url = f"{base_url}/chat/completions"
+        payload = {
+            "model": config.model,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": 0,
+            "stream": True,
+        }
+    headers = {"Authorization": f"Bearer {config.api_key}"} if config.api_key else None
+
+    try:
+        with httpx.stream(
+            "POST", url, json=payload, headers=headers, timeout=timeout
+        ) as response:
+            if response.status_code >= 400:
+                response.read()
+                raise HTTPException(
+                    status_code=502,
+                    detail=_upstream_error_detail(
+                        response.status_code, "chat_completion", reference_id
+                    ),
+                )
+            for line in response.iter_lines():
+                if not line:
+                    continue
+                if config.provider == "ollama":
+                    data = json.loads(line)
+                    content = _extract_reply_content(config.provider, data)
+                else:
+                    if not line.startswith("data:"):
+                        continue
+                    event = line.removeprefix("data:").strip()
+                    if event == "[DONE]":
+                        break
+                    data = json.loads(event)
+                    choices = data.get("choices")
+                    delta = choices[0].get("delta") if choices else None
+                    content = delta.get("content") if isinstance(delta, dict) else None
+                if isinstance(content, str) and content:
+                    yield content
+    except HTTPException:
+        raise
+    except (httpx.HTTPError, json.JSONDecodeError) as exc:
+        logger.error(
+            "llm_stream_failed reference_id=%s provider=%s model=%s endpoint=%s exception=%s",
+            reference_id,
+            config.provider,
+            config.model,
+            _safe_url(url),
+            type(exc).__name__,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "LLM streaming error: The streamed response was interrupted or invalid. "
+                f"Reference ID: {reference_id}."
+            ),
+        ) from exc
 
 
 def test_llm_connection(config: LLMConfig) -> str:

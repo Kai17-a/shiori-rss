@@ -17,6 +17,7 @@ api/.ruff_cache/
 api/__pycache__/
 local-data/*
 */test-results/
+scripts/**/test-results/
 .actrc
 */data/*
 data.db

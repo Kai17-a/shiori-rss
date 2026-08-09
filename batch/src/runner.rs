@@ -9,8 +9,9 @@ use std::error::Error;
 use std::time::Duration;
 
 use crate::{
-    fetch_rss_feeds, fetch_webhook_endpoints, rss_periodic_execution_enabled,
-    rss_webhook_notification_enabled, webhook, webhook_summary_enabled,
+    analysis::run_article_analysis, fetch_rss_feeds, fetch_webhook_endpoints,
+    rss_periodic_execution_enabled, rss_webhook_notification_enabled, webhook,
+    webhook_summary_enabled,
 };
 
 #[derive(Debug, PartialEq)]
@@ -115,7 +116,7 @@ fn parse_feed_articles(content: &[u8]) -> Result<Vec<FeedArticle>, parser::Parse
         .collect())
 }
 
-pub async fn run_batch(conn: &Connection) -> Result<(), Box<dyn Error>> {
+async fn run_rss_batch(conn: &Connection) -> Result<(), Box<dyn Error>> {
     let rss_feeds = fetch_rss_feeds(conn)?;
     let rss_enabled = rss_periodic_execution_enabled(conn)?;
 
@@ -288,6 +289,12 @@ pub async fn run_batch(conn: &Connection) -> Result<(), Box<dyn Error>> {
         }
     }
 
+    Ok(())
+}
+
+pub async fn run_batch(conn: &Connection) -> Result<(), Box<dyn Error>> {
+    run_rss_batch(conn).await?;
+    run_article_analysis(conn).await?;
     Ok(())
 }
 

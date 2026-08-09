@@ -1,5 +1,5 @@
 # Frontend build stage
-FROM oven/bun:1.3.12-alpine AS frontend-build
+FROM oven/bun:1.3.14-alpine AS frontend-build
 
 WORKDIR /app/frontend
 
@@ -81,8 +81,8 @@ COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=frontend-build /app/frontend/dist /usr/share/nginx/html
 COPY --from=batch-build /bin/shiori-feed-batch /usr/local/bin/shiori-feed-batch
 
-COPY start.sh render-scheduler.sh /app/
-RUN chmod +x /app/start.sh /app/render-scheduler.sh
+COPY scripts/container/ /app/scripts/container/
+RUN chmod +x /app/scripts/container/start.sh /app/scripts/container/render-scheduler.sh
 
 # Runtime defaults; users can override these with `docker run -e` or compose
 ENV DATABASE_URL=/data/data.db
@@ -91,4 +91,4 @@ ENV RSS_CRON_SCHEDULE="0 * * * *"
 
 EXPOSE 3000 8000
 
-CMD ["/app/start.sh"]
+CMD ["/app/scripts/container/start.sh"]
