@@ -16,6 +16,7 @@ from api.model.models import (
     NewsSiteUpdate,
     RSSFeedCreate,
     RSSFeedUpdate,
+    SettingsAIArticleAnalysisUpdate,
     SettingsRssExecutionUpdate,
     SettingsRssWebhookNotificationUpdate,
     SettingsWebhookCreate,
@@ -209,6 +210,11 @@ class CompatTestClient:
             )
 
         setting_routes = {
+            "/settings/ai-article-analysis": (
+                service.get_ai_article_analysis,
+                service.set_ai_article_analysis,
+                SettingsAIArticleAnalysisUpdate,
+            ),
             "/settings/rss-execution": (
                 service.get_rss_execution,
                 service.set_rss_execution,

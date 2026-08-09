@@ -7,6 +7,8 @@ from api.model.models import (
     LLMSettingsTestRequest,
     LLMSettingsTestResponse,
     LLMSettingsUpdate,
+    SettingsAIArticleAnalysisResponse,
+    SettingsAIArticleAnalysisUpdate,
     SettingsRssExecutionResponse,
     SettingsRssExecutionUpdate,
     SettingsRssWebhookNotificationResponse,
@@ -23,6 +25,29 @@ from api.model.models import (
 from api.services.settings_service import SettingsService
 
 router = APIRouter(prefix="/settings", tags=["settings"])
+
+
+@router.get(
+    "/ai-article-analysis",
+    status_code=200,
+    response_model=SettingsAIArticleAnalysisResponse,
+)
+def get_ai_article_analysis(
+    service: SettingsService = Depends(get_settings_service),
+):
+    return service.get_ai_article_analysis()
+
+
+@router.put(
+    "/ai-article-analysis",
+    status_code=200,
+    response_model=SettingsAIArticleAnalysisResponse,
+)
+def set_ai_article_analysis(
+    body: SettingsAIArticleAnalysisUpdate,
+    service: SettingsService = Depends(get_settings_service),
+):
+    return service.set_ai_article_analysis(body)
 
 
 @router.get("/llm", status_code=200, response_model=LLMSettingsResponse)

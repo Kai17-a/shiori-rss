@@ -5,6 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.main import app
+from api.repositories.article_search_repo import ArticleSearchRepository
 from api.tests.test_support import build_test_db
 
 
@@ -116,6 +117,46 @@ def test_article_search_index_tracks_article_deletion(tmp_path):
             ).fetchone()[0]
             == 0
         )
+
+
+def test_article_search_uses_completed_ai_analysis_metadata(tmp_path):
+    db_path = str(tmp_path / "analysis-search.db")
+    build_test_db(db_path)
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        conn.execute(
+            "INSERT INTO rss_feeds (id, url, title) VALUES (1, ?, ?)",
+            ("https://example.com/feed.xml", "Tech Feed"),
+        )
+        article_id = conn.execute(
+            "INSERT INTO rss_feed_articles (feed_id, url, title) VALUES (1, ?, ?)",
+            ("https://example.com/article", "A generic article"),
+        ).lastrowid
+        conn.execute(
+            """
+            INSERT INTO article_ai_analyses (
+              source_type, article_id, content_hash, model, prompt_version,
+              ai_summary, topics_json, status
+            ) VALUES ('rss', ?, 'hash', 'model', 'v1', ?, ?, 'completed')
+            """,
+            (
+                article_id,
+                "Explains retrieval augmented generation patterns.",
+                '["knowledge retrieval"]',
+            ),
+        )
+
+        rows = ArticleSearchRepository(conn).search(
+            keywords=["retrieval"],
+            source_types=[],
+            published_after=None,
+            published_before=None,
+            limit=10,
+        )
+
+        assert len(rows) == 1
+        assert rows[0]["article_id"] == article_id
+        assert rows[0]["ai_summary"].startswith("Explains retrieval")
 
 
 def test_ask_ai_removes_date_filter_after_relaxed_search_finds_nothing(

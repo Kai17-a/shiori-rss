@@ -436,6 +436,20 @@ class SettingsRssWebhookNotificationUpdate(BaseModel):
     enabled: bool
 
 
+class SettingsAIArticleAnalysisResponse(BaseModel):
+    enabled: bool
+    max_articles_per_run: int
+    daily_token_limit: int
+    lookback_days: int
+
+
+class SettingsAIArticleAnalysisUpdate(BaseModel):
+    enabled: bool
+    max_articles_per_run: int = PydField(ge=1, le=100)
+    daily_token_limit: int = PydField(ge=1000, le=10_000_000)
+    lookback_days: int = PydField(ge=1, le=3650)
+
+
 class SettingsWebhookSummaryResponse(BaseModel):
     enabled: bool
 

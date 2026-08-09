@@ -182,6 +182,7 @@ class AskAIService:
         sources = []
         for index, row in enumerate(rows, start=1):
             summary = re.sub(r"\s+", " ", row.get("summary") or "").strip()
+            ai_summary = re.sub(r"\s+", " ", row.get("ai_summary") or "").strip()
             sources.append(
                 {
                     "reference": f"S{index}",
@@ -189,6 +190,15 @@ class AskAIService:
                     "source": row["source_title"],
                     "published": row.get("published") or row["created_at"],
                     "summary": summary[:MAX_SOURCE_SUMMARY_CHARS],
+                    "ai_analysis": {
+                        "summary": ai_summary[:MAX_SOURCE_SUMMARY_CHARS],
+                        "key_points": json.loads(row.get("key_points_json") or "[]"),
+                        "topics": json.loads(row.get("topics_json") or "[]"),
+                        "keywords": json.loads(row.get("keywords_json") or "[]"),
+                        "entities": json.loads(row.get("entities_json") or "[]"),
+                    }
+                    if ai_summary
+                    else None,
                 }
             )
         return chat_completion(

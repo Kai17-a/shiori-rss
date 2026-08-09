@@ -126,6 +126,10 @@ test("shows the LLM connection settings used by custom RSS", async ({ page }) =>
   await expect(page.getByText("Tune your feed workflow.")).toHaveCount(0);
   await expect(page.getByText("LLM connection", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Provider")).toBeVisible();
+  await expect(page.getByText("Article analysis batch", { exact: true })).toBeVisible();
+  await expect(page.getByText("Token usage and content sharing", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Analyze saved articles")).not.toBeChecked();
+  await expect(page.getByLabel("Analyze saved articles")).toBeDisabled();
 });
 
 test("groups automation controls under the settings tabs", async ({ page }) => {

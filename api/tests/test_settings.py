@@ -258,6 +258,7 @@ def test_rss_execution_setting_can_toggle_true_and_false(client):
     assert last.status_code == 200
     assert last.json()["enabled"] is False
 
+
 def test_rss_webhook_notification_setting_can_toggle_true_and_false(client):
     first = client.get("/settings/rss-webhook-notification")
     assert first.status_code == 200
@@ -288,6 +289,61 @@ def test_webhook_summary_setting_defaults_to_true_and_can_toggle(client):
     last = client.get("/settings/webhook-summary")
     assert last.status_code == 200
     assert last.json()["enabled"] is False
+
+
+def test_ai_article_analysis_defaults_to_disabled(client):
+    response = client.get("/settings/ai-article-analysis")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "enabled": False,
+        "max_articles_per_run": 20,
+        "daily_token_limit": 50000,
+        "lookback_days": 30,
+    }
+
+
+def test_ai_article_analysis_requires_llm_before_enabling(client):
+    response = client.put(
+        "/settings/ai-article-analysis",
+        json={
+            "enabled": True,
+            "max_articles_per_run": 10,
+            "daily_token_limit": 20000,
+            "lookback_days": 14,
+        },
+    )
+
+    assert response.status_code == 409
+    assert "Configure an LLM connection" in response.json()["detail"]
+
+
+def test_ai_article_analysis_settings_round_trip(client):
+    import api.services.settings_service as settings_module
+
+    with settings_module.get_db() as conn:
+        repo = settings_module.SettingsRepository(conn)
+        repo.set("llm_provider", "openai")
+        repo.set("llm_base_url", "https://llm.example.com/v1")
+        repo.set("llm_model", "example-model")
+
+    response = client.put(
+        "/settings/ai-article-analysis",
+        json={
+            "enabled": True,
+            "max_articles_per_run": 10,
+            "daily_token_limit": 20000,
+            "lookback_days": 14,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "enabled": True,
+        "max_articles_per_run": 10,
+        "daily_token_limit": 20000,
+        "lookback_days": 14,
+    }
 
 
 def test_llm_settings_are_tested_before_save_and_do_not_expose_api_key(
@@ -362,5 +418,17 @@ def test_llm_test_can_use_saved_settings_and_settings_can_be_deleted(
     assert tested.status_code == 200
     assert tested.json() == {"ok": True, "reply": "pong"}
 
+    analysis = client.put(
+        "/settings/ai-article-analysis",
+        json={
+            "enabled": True,
+            "max_articles_per_run": 20,
+            "daily_token_limit": 50000,
+            "lookback_days": 30,
+        },
+    )
+    assert analysis.status_code == 200
+
     assert client.delete("/settings/llm").status_code == 204
     assert client.get("/settings/llm").status_code == 404
+    assert client.get("/settings/ai-article-analysis").json()["enabled"] is False

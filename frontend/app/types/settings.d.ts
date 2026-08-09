@@ -36,6 +36,13 @@ export interface SettingsWebhookSummaryResponse {
   enabled: boolean;
 }
 
+export interface SettingsAIArticleAnalysisResponse {
+  enabled: boolean;
+  max_articles_per_run: number;
+  daily_token_limit: number;
+  lookback_days: number;
+}
+
 export type LLMProvider = "vllm" | "ollama" | "openai";
 
 export interface LLMSettingsResponse {
