@@ -26,7 +26,7 @@ jobs:
 
       - name: Restore API virtualenv cache
         id: api-cache
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: api/.venv
           key: api-venv-${{ runner.os }}-${{ hashFiles('api/pyproject.toml', 'api/uv.lock') }}
@@ -63,7 +63,7 @@ jobs:
 
       - name: Restore frontend dependency cache
         id: frontend-cache
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: frontend/node_modules
           key: frontend-node-modules-${{ runner.os }}-${{ hashFiles('frontend/package.json', 'frontend/bun.lock') }}
@@ -105,7 +105,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Restore Cargo cache
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
@@ -146,7 +146,7 @@ jobs:
 
       - name: Restore browser extension dependency cache
         id: browser-extension-cache
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: browser_extension/node_modules
           key: browser-extension-node-modules-${{ runner.os }}-${{ hashFiles('browser_extension/package.json', 'browser_extension/bun.lock') }}
@@ -202,20 +202,20 @@ jobs:
 
       - name: Restore API virtualenv cache
         id: api-cache
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: api/.venv
           key: api-venv-${{ runner.os }}-${{ hashFiles('api/pyproject.toml', 'api/uv.lock') }}
 
       - name: Restore frontend dependency cache
         id: frontend-cache
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: frontend/node_modules
           key: frontend-node-modules-${{ runner.os }}-${{ hashFiles('frontend/package.json', 'frontend/bun.lock') }}
 
       - name: Restore Playwright browser cache
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: /home/runner/.cache/ms-playwright
           key: playwright-browsers-${{ runner.os }}-${{ hashFiles('frontend/package.json', 'frontend/bun.lock') }}
