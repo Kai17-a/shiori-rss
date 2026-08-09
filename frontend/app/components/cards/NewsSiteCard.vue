@@ -21,6 +21,7 @@
         :color="site.notify_webhook_enabled ? 'warning' : 'neutral'"
         :icon="site.notify_webhook_enabled ? 'i-lucide-bell' : 'i-lucide-bell-off'"
         :label="site.notify_webhook_enabled ? 'Disable webhook notification' : 'Enable webhook notification'"
+        :loading="notificationLoading"
         @click="$emit('toggleWebhook', site)"
       />
       <IconButton
@@ -46,7 +47,11 @@
 <script setup lang="ts">
 import type { NewsSiteResponse } from "~/types";
 
-defineProps<{ site: NewsSiteResponse; running?: boolean }>();
+defineProps<{
+  site: NewsSiteResponse;
+  running?: boolean;
+  notificationLoading?: boolean;
+}>();
 defineEmits<{
   edit: [site: NewsSiteResponse];
   execute: [site: NewsSiteResponse];

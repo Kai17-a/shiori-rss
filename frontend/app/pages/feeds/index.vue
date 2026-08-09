@@ -70,6 +70,7 @@
               :feed="feed"
               :to="`/feeds/${feed.id}`"
               :running="executingFeedId === feed.id"
+              :notification-loading="updatingNotificationFeedId === feed.id"
               @edit="openEditModal"
               @execute="executeFeed"
               @toggle-webhook="toggleWebhookNotification"
@@ -141,6 +142,7 @@ const loading = ref(false);
 const saving = ref(false);
 const deleting = ref(false);
 const executingFeedId = ref<number | null>(null);
+const updatingNotificationFeedId = ref<number | null>(null);
 const loadError = ref("");
 const modalOpen = ref(false);
 const deleteOpen = ref(false);
@@ -341,6 +343,7 @@ const executeFeed = async (feed: RSSFeedResponse) => {
 };
 
 const toggleWebhookNotification = async (feed: RSSFeedResponse) => {
+  updatingNotificationFeedId.value = feed.id;
   try {
     const updated = await request<RSSFeedResponse>(`/rss-feeds/${feed.id}`, {
       method: "PATCH",
@@ -369,6 +372,8 @@ const toggleWebhookNotification = async (feed: RSSFeedResponse) => {
       color: "error",
       icon: "i-lucide-circle-alert",
     });
+  } finally {
+    updatingNotificationFeedId.value = null;
   }
 };
 
@@ -402,4 +407,3 @@ onMounted(async () => {
   await Promise.all([loadFeeds(), loadWebhooks()]);
 });
 </script>
-

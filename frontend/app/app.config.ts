@@ -4,5 +4,8 @@ export default defineAppConfig({
       primary: "emerald",
       neutral: "stone",
     },
+    icons: {
+      loading: "i-lucide-loader-circle",
+    },
   },
 });

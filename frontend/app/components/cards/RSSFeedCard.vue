@@ -43,6 +43,7 @@
               :color="feed.notify_webhook_enabled ? 'warning' : 'neutral'"
               :icon="feed.notify_webhook_enabled ? 'i-lucide-bell' : 'i-lucide-bell-off'"
               :label="feed.notify_webhook_enabled ? 'Mute feed delivery' : 'Enable feed delivery'"
+              :loading="notificationLoading"
               @click.stop="$emit('toggleWebhook', feed)"
             />
             <IconButton
@@ -68,6 +69,7 @@ const props = defineProps<{
   feed: RSSFeedResponse;
   to: string;
   running?: boolean;
+  notificationLoading?: boolean;
 }>();
 
 defineEmits<{
