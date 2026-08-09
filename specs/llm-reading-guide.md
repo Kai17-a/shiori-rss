@@ -59,10 +59,10 @@ Nuxt、Python、Nuxt UI、TypeScript の実装方針を短く集約し、参照�
 
 ### Batch
 
-- `batch/` は Rust 製の RSS 定期巡回プロセスである
+- `batch/` は Rust 製の通常RSS定期巡回・保存済み記事AI解析プロセスである
 - API サーバーとは別プロセスとして動作し、HTTP ルートは持たない
-- SQLite の `app_settings`、`rss_feeds`、`rss_feed_articles` を直接読む
-- webhook 送信成功後に `rss_feed_articles` へ送信済み記事を記録する
+- SQLite の `app_settings`、通常RSS、通常RSS・カスタムRSSの記事、AI解析結果・使用量テーブルを直接読む
+- Webhook送信成功後に `rss_feed_articles.webhook_notified` を更新する
 - Rust SQLite access を変更する場合は `.agents/skills/learning/references/rustqlite/llm.txt` も確認する
 
 ## 参照すべき実装ファイル
