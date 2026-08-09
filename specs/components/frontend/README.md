@@ -11,7 +11,7 @@ Nuxt 4 SPA は RSS 専用 UI を提供する。
 - 通常RSSとカスタムRSSの詳細画面は、検索、記事一覧、公開日時、通知状態、ページネーションを共通の記事履歴コンポーネントで描画する。
 - サイドメニューは Home、通常RSS、カスタムRSS、Preferencesで構成する。通常RSSとカスタムRSSの見出しクリックは折り畳みを切り替えながら各一覧ルートへ移動し、配下から詳細画面へ直接移動できる。
 - `/settings` は General、Automation、Webhooks、LLM のカテゴリタブを持ち、テーマ、定期取得、全体通知、Webhook、LLM接続設定を提供する。LLMタブではデフォルトOFFのAI記事解析バッチ、1回の記事数、日次トークン上限、対象期間を設定でき、記事情報の送信とトークン消費に関する注意を表示する。`Run analysis now` は定期解析がOFFでも同じ制限で解析を実行し、Nuxt UIのloading表示中はボタンを無効化して連続実行を防ぎ、完了後に結果件数を通知する。
-- 全画面の右下に `Ask AI` ボタンを固定表示し、クリックすると保存済み記事の横断検索・要約チャット用モーダルを開く。LLMの回答は読み取り専用のNuxt UI EditorでMarkdown表示し、根拠として通常RSS・カスタムRSSの記事リンクを表示する。
+- 全画面の右下に `Ask AI` ボタンを固定表示し、クリックすると保存済み記事の横断検索・要約チャット用モーダルを開く。LLMの回答は読み取り専用のNuxt UI EditorでMarkdown表示し、根拠として通常RSS・カスタムRSSの記事リンクを表示する。回答はNDJSONストリームから逐次反映し、Nuxt UIの `ChatMessages` による自動スクロールと `ChatPromptSubmit` のsubmitted・streaming・error状態を使用する。
 - 一覧と設定画面は宣伝的なヒーローやキャッチコピーを置かず、操作対象を先頭に表示する。
 - サイドバーには Home、RSS feeds、Custom RSS、Preferencesを表示する。
 - 旧 `/rss` ルートは提供しない。

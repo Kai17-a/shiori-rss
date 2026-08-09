@@ -467,6 +467,13 @@ async fn run_article_analysis_with_mode(
     let candidates = load_candidates(conn, &settings)?;
     let mut used_tokens = used_tokens_today(conn)?;
     let mut report = AnalysisRunReport::default();
+    eprintln!(
+        "Starting AI article analysis: candidates={}, max_articles={}, tokens_used_today={}, daily_token_limit={}",
+        candidates.len(),
+        settings.max_articles_per_run,
+        used_tokens,
+        settings.daily_token_limit
+    );
 
     for article in candidates {
         if report.processed >= settings.max_articles_per_run {
@@ -488,6 +495,13 @@ async fn run_article_analysis_with_mode(
             report.stopped_by_token_limit = true;
             break;
         }
+        eprintln!(
+            "Analyzing article {}:{} ({}/{})",
+            article.source_type,
+            article.article_id,
+            report.processed + 1,
+            settings.max_articles_per_run
+        );
 
         match analyze_article(&client, &config, &article).await {
             Ok(result) => {
@@ -501,6 +515,13 @@ async fn run_article_analysis_with_mode(
                 )?;
                 used_tokens += result.input_tokens + result.output_tokens;
                 report.succeeded += 1;
+                eprintln!(
+                    "AI article analysis succeeded for {}:{} (input_tokens={}, output_tokens={})",
+                    article.source_type,
+                    article.article_id,
+                    result.input_tokens,
+                    result.output_tokens
+                );
             }
             Err(error) => {
                 let message = error.to_string();
@@ -516,6 +537,14 @@ async fn run_article_analysis_with_mode(
         }
         report.processed += 1;
     }
+    eprintln!(
+        "AI article analysis finished: processed={}, succeeded={}, failed={}, skipped_current={}, stopped_by_token_limit={}",
+        report.processed,
+        report.succeeded,
+        report.failed,
+        report.skipped_current,
+        report.stopped_by_token_limit
+    );
     Ok(report)
 }
 

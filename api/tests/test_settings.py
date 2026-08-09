@@ -1,7 +1,7 @@
 """Unit tests for Settings API endpoints."""
 
+import io
 import sqlite3
-import subprocess
 from contextlib import contextmanager
 
 import pytest
@@ -354,22 +354,29 @@ def test_ai_article_analysis_can_run_manually_while_schedule_is_disabled(
 
     monkeypatch.setenv("SHIORI_FEED_BATCH_BIN", "/tmp/mock-shiori-feed-batch")
 
-    def run_batch(command, **kwargs):
-        assert command == ["/tmp/mock-shiori-feed-batch", "--article-analysis-only"]
-        return subprocess.CompletedProcess(
-            command,
-            0,
-            stdout=(
+    class BatchProcess:
+        def __init__(self):
+            self.stdout = io.StringIO(
+                "Analyzing article rss:1 (1/20)\n"
                 '{"processed":2,"succeeded":2,"failed":0,'
                 '"skipped_current":3,"stopped_by_token_limit":false}\n'
-            ),
-            stderr="",
-        )
+            )
+
+        def wait(self):
+            return 0
+
+        def kill(self):
+            return None
+
+    def open_batch(command, **kwargs):
+        assert command == ["/tmp/mock-shiori-feed-batch", "--article-analysis-only"]
+        assert kwargs["stderr"] is analysis_module.subprocess.STDOUT
+        return BatchProcess()
 
     monkeypatch.setattr(
         analysis_module.subprocess,
-        "run",
-        run_batch,
+        "Popen",
+        open_batch,
     )
 
     response = client.post("/settings/ai-article-analysis/execute")

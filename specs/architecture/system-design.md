@@ -34,6 +34,7 @@
 | GET/PUT | `/settings/ai-article-analysis` | AI記事事前解析の有効化と上限設定 |
 | POST | `/settings/ai-article-analysis/execute` | 定期実行設定に依存しないAI記事解析の手動実行 |
 | POST | `/ai/chat` | 保存済み記事の横断検索と根拠付きLLM回答 |
+| POST | `/ai/chat/stream` | 出典とLLM回答差分をNDJSONで逐次返すAsk AI |
 
 ## Ask AI フロー
 
@@ -43,6 +44,7 @@
 4. 上位候補の記事タイトル、保存済みサマリー、利用可能なAI要約・要点・トピック、出典情報をLLMへ渡す。
 5. LLMは候補の関連性を判断し、参照番号付きで回答する。
 6. APIは回答と候補記事のURLを返し、画面は出典リンクを表示する。
+7. ストリーミングAPIは出典を先に返し、回答本文をLLMから受信した単位で逐次転送する。画面はNuxt UI Chatのstreaming状態と自動スクロールを使用する。
 
 ## バッチフロー
 

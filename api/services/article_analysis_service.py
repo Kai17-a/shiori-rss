@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -12,6 +13,8 @@ from api.model.models import SettingsAIArticleAnalysisRunResponse
 
 _manual_run_lock = threading.Lock()
 _REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+_logger = logging.getLogger("uvicorn.error")
+_RUN_TIMEOUT_SECONDS = 7200
 
 
 def _batch_command() -> list[str]:
@@ -46,41 +49,74 @@ class ArticleAnalysisService:
             )
         try:
             try:
-                result = subprocess.run(
+                process = subprocess.Popen(
                     _batch_command(),
-                    capture_output=True,
-                    check=False,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
                     text=True,
-                    timeout=7200,
+                    bufsize=1,
                 )
             except (FileNotFoundError, PermissionError) as exc:
                 raise HTTPException(
                     status_code=503, detail="Article analysis runner is not available"
                 ) from exc
-            except subprocess.TimeoutExpired as exc:
+            timed_out = threading.Event()
+
+            def terminate_on_timeout() -> None:
+                timed_out.set()
+                process.kill()
+
+            timeout = threading.Timer(_RUN_TIMEOUT_SECONDS, terminate_on_timeout)
+            timeout.start()
+            output_lines: list[str] = []
+            report: SettingsAIArticleAnalysisRunResponse | None = None
+            _logger.info("Starting manual AI article analysis")
+            try:
+                if process.stdout is None:
+                    raise HTTPException(
+                        status_code=502, detail="Article analysis produced no output"
+                    )
+                for raw_line in process.stdout:
+                    line = raw_line.strip()
+                    if not line:
+                        continue
+                    try:
+                        report = SettingsAIArticleAnalysisRunResponse.model_validate(
+                            json.loads(line)
+                        )
+                        continue
+                    except (ValueError, ValidationError):
+                        output_lines.append(line)
+                        output_lines = output_lines[-20:]
+                        _logger.info("AI article analysis: %s", line)
+                returncode = process.wait()
+            finally:
+                timeout.cancel()
+
+            if timed_out.is_set():
                 raise HTTPException(
                     status_code=504, detail="Article analysis timed out"
-                ) from exc
-
-            if result.returncode != 0:
-                detail = (
-                    result.stderr.strip().splitlines()[-1]
-                    if result.stderr.strip()
-                    else ""
                 )
+            if returncode != 0:
+                detail = output_lines[-1] if output_lines else ""
                 if "already running" in detail.lower():
                     raise HTTPException(status_code=409, detail=detail[:500])
                 raise HTTPException(
                     status_code=502,
                     detail=detail[:500] or "Article analysis failed",
                 )
-            try:
-                payload = json.loads(result.stdout.strip().splitlines()[-1])
-                return SettingsAIArticleAnalysisRunResponse.model_validate(payload)
-            except (IndexError, ValueError, ValidationError) as exc:
+            if report is None:
                 raise HTTPException(
                     status_code=502,
                     detail="Article analysis returned an invalid result",
-                ) from exc
+                )
+            _logger.info(
+                "Manual AI article analysis completed: processed=%d succeeded=%d failed=%d skipped=%d",
+                report.processed,
+                report.succeeded,
+                report.failed,
+                report.skipped_current,
+            )
+            return report
         finally:
             _manual_run_lock.release()

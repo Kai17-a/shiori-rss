@@ -47,12 +47,23 @@
           </div>
         </div>
 
-        <div v-else class="flex-1 space-y-5 overflow-y-auto p-5" aria-live="polite">
-          <div v-for="(message, index) in messages" :key="index" class="space-y-3">
+        <UChatMessages
+          v-else
+          :messages="uiMessages"
+          :status="chatStatus"
+          should-auto-scroll
+          :auto-scroll="false"
+          class="flex-1 space-y-5 overflow-y-auto p-5"
+          aria-live="polite"
+        >
+          <div v-for="message in messages" :key="message.id" class="space-y-3">
             <div class="ml-auto max-w-[85%] rounded-2xl rounded-br-md bg-primary px-4 py-3 text-sm text-inverted">
               {{ message.question }}
             </div>
-            <div class="max-w-[92%] rounded-2xl rounded-bl-md bg-elevated px-4 py-3">
+            <div
+              v-if="message.answer || message.sources.length || !isActiveExchange(message)"
+              class="max-w-[92%] rounded-2xl rounded-bl-md bg-elevated px-4 py-3"
+            >
               <LazyUEditor
                 :model-value="message.answer"
                 content-type="markdown"
@@ -86,11 +97,7 @@
               </div>
             </div>
           </div>
-          <div v-if="loading" class="flex items-center gap-2 text-sm text-muted" role="status">
-            <UIcon name="i-lucide-loader-circle" class="size-4 animate-spin" />
-            Searching saved articles…
-          </div>
-        </div>
+        </UChatMessages>
 
         <div v-if="errorMessage" class="px-4 pt-4">
           <UAlert
@@ -101,44 +108,72 @@
           />
         </div>
 
-        <form class="flex items-end gap-2 border-t border-default p-4" @submit.prevent="submitQuestion">
-          <UTextarea
+        <div class="border-t border-default p-4">
+          <UChatPrompt
             v-model="question"
             placeholder="Ask a question about saved articles…"
             :rows="2"
-            autoresize
-            class="w-full"
-            aria-label="Ask AI message"
             :disabled="loading"
-            @keydown.enter.exact.prevent="submitQuestion"
-          />
-          <UButton
-            type="submit"
-            icon="i-lucide-send"
-            label="Send"
-            :loading="loading"
-            :disabled="!question.trim() || loading"
-          />
-        </form>
+            aria-label="Ask AI message"
+            @submit="submitQuestion"
+          >
+            <template #footer>
+              <div class="flex justify-end">
+                <UChatPromptSubmit
+                  label="Send"
+                  aria-label="Send"
+                  icon="i-lucide-send"
+                  :status="chatStatus"
+                  :disabled="!question.trim() && !loading"
+                  @stop="stopStreaming"
+                  @reload="submitQuestion"
+                />
+              </div>
+            </template>
+          </UChatPrompt>
+        </div>
       </div>
     </template>
   </UModal>
 </template>
 
 <script setup lang="ts">
-import type { AskAIResponse, AskAISource } from "~/types";
+import type { AskAISource } from "~/types";
+
+type ChatStatus = "ready" | "submitted" | "streaming" | "error";
+
+type StreamEvent =
+  | { type: "sources"; sources: AskAISource[] }
+  | { type: "delta"; delta: string }
+  | { type: "done" }
+  | { type: "error"; detail: string };
 
 interface ChatExchange {
+  id: string;
   question: string;
   answer: string;
   sources: AskAISource[];
 }
 
-const { request } = useApi();
+const { defaultApiBase } = useApi();
 const question = ref("");
-const loading = ref(false);
+const chatStatus = ref<ChatStatus>("ready");
 const errorMessage = ref("");
 const messages = ref<ChatExchange[]>([]);
+const activeController = shallowRef<AbortController | null>(null);
+const loading = computed(() => ["submitted", "streaming"].includes(chatStatus.value));
+const uiMessages = computed(() => messages.value.flatMap((message) => [
+  {
+    id: `user-${message.id}`,
+    role: "user" as const,
+    parts: [{ type: "text" as const, text: message.question }],
+  },
+  {
+    id: `assistant-${message.id}`,
+    role: "assistant" as const,
+    parts: message.answer ? [{ type: "text" as const, text: message.answer }] : [],
+  },
+]));
 const readOnlyEditorOptions = {
   link: {
     openOnClick: true,
@@ -149,24 +184,84 @@ const readOnlyEditorOptions = {
   },
 };
 
+const isActiveExchange = (message: ChatExchange) =>
+  loading.value && messages.value.at(-1)?.id === message.id;
+
+const errorFromResponse = async (response: Response) => {
+  const body = await response.json().catch(() => null) as { detail?: string } | null;
+  return body?.detail || `HTTP ${response.status}`;
+};
+
+const applyStreamEvent = (exchange: ChatExchange, event: StreamEvent) => {
+  if (event.type === "sources") {
+    exchange.sources = event.sources;
+    chatStatus.value = "streaming";
+  } else if (event.type === "delta") {
+    exchange.answer += event.delta;
+    chatStatus.value = "streaming";
+  } else if (event.type === "error") {
+    throw new Error(event.detail);
+  }
+};
+
+const readStream = async (response: Response, exchange: ChatExchange) => {
+  if (!response.body) throw new Error("Ask AI returned an empty stream.");
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { value, done } = await reader.read();
+    buffer += decoder.decode(value, { stream: !done });
+    const lines = buffer.split("\n");
+    buffer = done ? "" : lines.pop() || "";
+    for (const line of lines) {
+      if (line.trim()) applyStreamEvent(exchange, JSON.parse(line) as StreamEvent);
+    }
+    if (done) break;
+  }
+  if (buffer.trim()) applyStreamEvent(exchange, JSON.parse(buffer) as StreamEvent);
+};
+
+const stopStreaming = () => {
+  activeController.value?.abort();
+};
+
 const submitQuestion = async () => {
   const message = question.value.trim();
   if (!message || loading.value) return;
 
-  loading.value = true;
+  chatStatus.value = "submitted";
   errorMessage.value = "";
   question.value = "";
+  const exchange: ChatExchange = {
+    id: crypto.randomUUID(),
+    question: message,
+    answer: "",
+    sources: [],
+  };
+  messages.value.push(exchange);
+  const controller = new AbortController();
+  activeController.value = controller;
   try {
-    const response = await request<AskAIResponse>("/ai/chat", {
+    const response = await fetch(`${defaultApiBase}/ai/chat/stream`, {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message }),
+      signal: controller.signal,
     });
-    messages.value.push({ question: message, ...response });
+    if (!response.ok) throw new Error(await errorFromResponse(response));
+    await readStream(response, exchange);
+    chatStatus.value = "ready";
   } catch (error) {
-    question.value = message;
-    errorMessage.value = error instanceof Error ? error.message : "Ask AI request failed.";
+    if (error instanceof DOMException && error.name === "AbortError") {
+      chatStatus.value = "ready";
+    } else {
+      question.value = message;
+      chatStatus.value = "error";
+      errorMessage.value = error instanceof Error ? error.message : "Ask AI request failed.";
+    }
   } finally {
-    loading.value = false;
+    activeController.value = null;
   }
 };
 </script>

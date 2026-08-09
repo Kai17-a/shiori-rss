@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from contextlib import contextmanager
 
@@ -68,6 +69,11 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(
         ask_ai_module, "chat_completion", lambda *args, **kwargs: next(replies)
     )
+    monkeypatch.setattr(
+        ask_ai_module,
+        "chat_completion_stream",
+        lambda *args, **kwargs: iter(["Streamed ", "answer. [S1]"]),
+    )
     with TestClient(app) as test_client:
         yield test_client
 
@@ -81,6 +87,22 @@ def test_ask_ai_searches_saved_articles_and_returns_sources(client):
     assert response.json()["answer"].endswith("[S1]")
     assert response.json()["sources"][0]["title"] == "Agentic AI systems"
     assert response.json()["sources"][0]["source_type"] == "rss"
+
+
+def test_ask_ai_streams_sources_and_answer_deltas(client):
+    import api.services.ask_ai_service as ask_ai_module
+
+    events = [
+        json.loads(line) for line in ask_ai_module.AskAIService().stream("AI news")
+    ]
+
+    assert events[0]["type"] == "sources"
+    assert events[0]["sources"][0]["title"] == "Agentic AI systems"
+    assert [event.get("delta") for event in events if event["type"] == "delta"] == [
+        "Streamed ",
+        "answer. [S1]",
+    ]
+    assert events[-1] == {"type": "done"}
 
 
 def test_ask_ai_rejects_empty_questions(client):
