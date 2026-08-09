@@ -7,7 +7,7 @@ edition = "2024"
 chrono = { version = "0.4.44", default-features = false }
 feed-rs = "2.4.0"
 quick-xml = "0.41.0"
-rusqlite = { version = "0.39.0", features = ["bundled"] }
+rusqlite = { version = "0.40.1", features = ["bundled"] }
 reqwest = { version = "0.13", features = ["json"] }
 serde = { version = "1.0", features = ["derive"] }
 sha2 = "0.10"
