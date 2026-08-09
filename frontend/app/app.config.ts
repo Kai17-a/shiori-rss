@@ -5,7 +5,7 @@ export default defineAppConfig({
       neutral: "stone",
     },
     icons: {
-      loading: "i-lucide-loader",
+      loading: "i-lucide-loader-circle",
     },
   },
 });

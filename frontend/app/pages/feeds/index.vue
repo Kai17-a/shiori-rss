@@ -84,7 +84,7 @@
           >
             <div class="max-w-sm space-y-3">
               <span class="mx-auto grid size-12 place-items-center rounded-2xl bg-primary/10 text-primary">
-                <UIcon :name="loading ? 'i-lucide-loader' : 'i-lucide-radio-tower'" class="size-6" :class="{ 'animate-spin': loading }" />
+                <UIcon :name="loading ? 'i-lucide-loader-circle' : 'i-lucide-radio-tower'" class="size-6" :class="{ 'animate-spin': loading }" />
               </span>
               <p class="font-semibold text-default">{{ loading ? 'Tuning in…' : loadError ? 'Could not load feeds' : 'Your feed library is empty' }}</p>
               <p class="text-sm text-muted">{{ loadError || 'Add an RSS or Atom URL to start following the web.' }}</p>

@@ -16,4 +16,4 @@ Nuxt 4 SPA は RSS 専用 UI を提供する。
 - サイドバーには Home、RSS feeds、Custom RSS、Preferencesを表示する。
 - 旧 `/rss` と `/rss/{id}` ルートは提供しない。
 - API 呼び出しは `useApi` と `/api` reverse proxy を通す。
-- 保存、削除、取得、再読込、通知切替などの非同期ボタンは、処理中にNuxt UIの `loading` 状態とLucideの `loader` アイコンを表示して再実行を防ぐ。
+- 保存、削除、取得、再読込、通知切替などの非同期ボタンは、処理中にNuxt UIの `loading` 状態とLucideの `loader-circle` アイコンを表示して再実行を防ぐ。

@@ -95,7 +95,7 @@
           >
             <div>
               <UIcon
-                :name="loading ? 'i-lucide-loader' : 'i-lucide-newspaper'"
+                :name="loading ? 'i-lucide-loader-circle' : 'i-lucide-newspaper'"
                 class="mx-auto size-7 text-muted"
                 :class="{ 'animate-spin': loading }"
               />
