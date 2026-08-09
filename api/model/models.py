@@ -436,6 +436,28 @@ class SettingsRssWebhookNotificationUpdate(BaseModel):
     enabled: bool
 
 
+class SettingsAIArticleAnalysisResponse(BaseModel):
+    enabled: bool
+    max_articles_per_run: int
+    daily_token_limit: int
+    lookback_days: int
+
+
+class SettingsAIArticleAnalysisUpdate(BaseModel):
+    enabled: bool
+    max_articles_per_run: int = PydField(ge=1, le=100)
+    daily_token_limit: int = PydField(ge=1000, le=10_000_000)
+    lookback_days: int = PydField(ge=1, le=3650)
+
+
+class SettingsAIArticleAnalysisRunResponse(BaseModel):
+    processed: int
+    succeeded: int
+    failed: int
+    skipped_current: int
+    stopped_by_token_limit: bool
+
+
 class SettingsWebhookSummaryResponse(BaseModel):
     enabled: bool
 
@@ -489,6 +511,36 @@ class LLMSettingsTestResponse(BaseModel):
 
 class ErrorResponse(BaseModel):
     detail: str
+
+
+class AskAIRequest(BaseModel):
+    message: str = PydField(min_length=1, max_length=2000)
+
+    @field_validator("message")
+    @classmethod
+    def normalize_message(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Message cannot be empty")
+        return value
+
+
+class AskAISource(BaseModel):
+    reference: str
+    source_type: Literal["rss", "custom"]
+    article_id: int
+    source_id: int
+    source_title: str
+    title: str | None
+    summary: str | None
+    url: str
+    published: datetime | None
+    created_at: datetime
+
+
+class AskAIResponse(BaseModel):
+    answer: str
+    sources: list[AskAISource]
 
 
 class DashboardSummary(BaseModel):

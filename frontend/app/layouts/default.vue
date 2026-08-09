@@ -64,10 +64,12 @@
     </div>
 
     <slot />
+    <AskAIChatLauncher />
   </UDashboardGroup>
 </template>
 <script setup lang="ts">
 import type { NavigationMenuItem } from "@nuxt/ui";
+import AskAIChatLauncher from "~/components/AskAIChatLauncher.vue";
 import { refreshSidebarCatalogSafely } from "~/utils/sidebarCatalog";
 
 const route = useRoute();

@@ -179,6 +179,108 @@
         </UPageCard>
 
         <UPageCard
+          v-if="activeCategory === 'llm'"
+          title="Article analysis batch"
+          description="Pre-analyze saved articles so Ask AI can search richer metadata"
+          icon="i-lucide-scan-text"
+          :ui="{ body: 'space-y-5' }"
+        >
+          <UAlert
+            title="Token usage and content sharing"
+            description="This feature is off by default. When enabled, each batch run sends saved article titles and summaries to your configured LLM. Usage depends on article volume and model pricing, so start with a small limit and monitor your provider costs."
+            color="warning"
+            variant="soft"
+            icon="i-lucide-triangle-alert"
+          />
+
+          <form class="space-y-5" @submit.prevent="saveAiAnalysisSettings">
+            <div class="flex items-start justify-between gap-4 rounded-2xl bg-elevated/60 p-4">
+              <div class="space-y-1">
+                <p class="text-sm font-semibold text-default">Analyze saved articles</p>
+                <p class="text-sm text-muted">
+                  Runs after scheduled RSS fetching and only reprocesses new or changed content.
+                </p>
+              </div>
+              <USwitch
+                v-model="aiAnalysisForm.enabled"
+                :disabled="aiAnalysisLoading || aiAnalysisSaving || !llmConfigured"
+                aria-label="Analyze saved articles"
+              />
+            </div>
+
+            <UAlert
+              v-if="!llmConfigured && !llmLoading"
+              title="Configure an LLM connection first"
+              description="Test and save the connection above before enabling article analysis."
+              color="neutral"
+              variant="soft"
+            />
+
+            <div class="grid gap-4 md:grid-cols-3">
+              <UFormField
+                label="Articles per run"
+                description="Maximum LLM calls in one batch."
+              >
+                <UInput
+                  v-model.number="aiAnalysisForm.maxArticlesPerRun"
+                  type="number"
+                  :min="1"
+                  :max="100"
+                  class="w-full"
+                />
+              </UFormField>
+              <UFormField
+                label="Daily token limit"
+                description="Stops new calls at this estimate."
+              >
+                <UInput
+                  v-model.number="aiAnalysisForm.dailyTokenLimit"
+                  type="number"
+                  :min="1000"
+                  :max="10000000"
+                  :step="1000"
+                  class="w-full"
+                />
+              </UFormField>
+              <UFormField
+                label="Lookback days"
+                description="Only consider recent articles."
+              >
+                <UInput
+                  v-model.number="aiAnalysisForm.lookbackDays"
+                  type="number"
+                  :min="1"
+                  :max="3650"
+                  class="w-full"
+                />
+              </UFormField>
+            </div>
+
+            <div class="flex flex-wrap gap-3">
+              <UButton
+                type="submit"
+                icon="i-lucide-save"
+                :loading="aiAnalysisLoading || aiAnalysisSaving"
+              >
+                Save article analysis settings
+              </UButton>
+              <UButton
+                type="button"
+                color="neutral"
+                variant="soft"
+                icon="i-lucide-play"
+                loading-icon="i-lucide-loader-circle"
+                :loading="aiAnalysisRunning"
+                :disabled="aiAnalysisLoading || aiAnalysisSaving || aiAnalysisRunning || !llmConfigured"
+                @click="runAiAnalysis"
+              >
+                Run analysis now
+              </UButton>
+            </div>
+          </form>
+        </UPageCard>
+
+        <UPageCard
           v-if="activeCategory === 'webhooks'"
           title="Webhooks"
           description="Register the Discord, Slack, or Microsoft Teams webhooks used by RSS execution"
@@ -322,6 +424,8 @@ import type {
   SettingsWebhookSummaryResponse,
   SettingsRssExecutionResponse,
   SettingsRssWebhookNotificationResponse,
+  SettingsAIArticleAnalysisResponse,
+  SettingsAIArticleAnalysisRunResponse,
 } from "~/types";
 
 const colorMode = useColorMode();
@@ -386,6 +490,15 @@ const llmSaving = ref(false);
 const llmTesting = ref(false);
 const llmDeleting = ref(false);
 const llmDeleteOpen = ref(false);
+const aiAnalysisLoading = ref(false);
+const aiAnalysisSaving = ref(false);
+const aiAnalysisRunning = ref(false);
+const aiAnalysisForm = reactive({
+  enabled: false,
+  maxArticlesPerRun: 20,
+  dailyTokenLimit: 50_000,
+  lookbackDays: 30,
+});
 const llmForm = reactive({
   provider: "ollama" as LLMProvider,
   baseUrl: "http://127.0.0.1:11434",
@@ -599,6 +712,7 @@ const deleteLlmSettings = async () => {
   try {
     await request("/settings/llm", { method: "DELETE" });
     llmSettings.value = null;
+    aiAnalysisForm.enabled = false;
     llmForm.apiKey = "";
     llmForm.clearApiKey = false;
     llmDeleteOpen.value = false;
@@ -616,6 +730,97 @@ const deleteLlmSettings = async () => {
     });
   } finally {
     llmDeleting.value = false;
+  }
+};
+
+const applyAiAnalysisSettings = (settings: SettingsAIArticleAnalysisResponse) => {
+  aiAnalysisForm.enabled = settings.enabled;
+  aiAnalysisForm.maxArticlesPerRun = settings.max_articles_per_run;
+  aiAnalysisForm.dailyTokenLimit = settings.daily_token_limit;
+  aiAnalysisForm.lookbackDays = settings.lookback_days;
+};
+
+const loadAiAnalysisSettings = async () => {
+  aiAnalysisLoading.value = true;
+  try {
+    applyAiAnalysisSettings(
+      await request<SettingsAIArticleAnalysisResponse>("/settings/ai-article-analysis"),
+    );
+  } catch (err) {
+    toast.show({
+      title: "Failed to load article analysis settings.",
+      description: err instanceof Error ? err.message : undefined,
+      color: "error",
+      icon: "i-lucide-circle-alert",
+    });
+  } finally {
+    aiAnalysisLoading.value = false;
+  }
+};
+
+const saveAiAnalysisSettings = async () => {
+  aiAnalysisSaving.value = true;
+  try {
+    const response = await request<SettingsAIArticleAnalysisResponse>(
+      "/settings/ai-article-analysis",
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          enabled: aiAnalysisForm.enabled,
+          max_articles_per_run: aiAnalysisForm.maxArticlesPerRun,
+          daily_token_limit: aiAnalysisForm.dailyTokenLimit,
+          lookback_days: aiAnalysisForm.lookbackDays,
+        }),
+      },
+    );
+    applyAiAnalysisSettings(response);
+    toast.show({
+      title: response.enabled ? "Article analysis enabled." : "Article analysis settings saved.",
+      color: "success",
+      icon: "i-lucide-check",
+    });
+  } catch (err) {
+    toast.show({
+      title: "Failed to save article analysis settings.",
+      description: err instanceof Error ? err.message : undefined,
+      color: "error",
+      icon: "i-lucide-circle-alert",
+    });
+  } finally {
+    aiAnalysisSaving.value = false;
+  }
+};
+
+const runAiAnalysis = async () => {
+  if (aiAnalysisRunning.value) return;
+  aiAnalysisRunning.value = true;
+  try {
+    const response = await request<SettingsAIArticleAnalysisRunResponse>(
+      "/settings/ai-article-analysis/execute",
+      { method: "POST" },
+    );
+    const description = `${response.succeeded} succeeded, ${response.failed} failed, ${response.skipped_current} already current.`;
+    toast.show({
+      title: response.stopped_by_token_limit
+        ? "Analysis stopped at the daily token limit."
+        : response.processed
+          ? "Article analysis completed."
+          : "All eligible articles are already analyzed.",
+      description,
+      color: response.failed || response.stopped_by_token_limit ? "warning" : "success",
+      icon: response.failed || response.stopped_by_token_limit
+        ? "i-lucide-triangle-alert"
+        : "i-lucide-check",
+    });
+  } catch (err) {
+    toast.show({
+      title: "Failed to run article analysis.",
+      description: err instanceof Error ? err.message : undefined,
+      color: "error",
+      icon: "i-lucide-circle-alert",
+    });
+  } finally {
+    aiAnalysisRunning.value = false;
   }
 };
 
@@ -844,6 +1049,7 @@ onMounted(async () => {
     loadWebhookSummary(),
     loadRssExecution(),
     loadRssWebhookNotification(),
+    loadAiAnalysisSettings(),
   ]);
 });
 </script>

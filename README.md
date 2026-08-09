@@ -26,6 +26,7 @@ docker run --rm -p 3000:3000 -p 8000:8000 \
 - フィードごとの通知先選択と重複通知防止
 - 通知への記事概要の有無、ライト・ダーク・システムテーマ設定
 - Ollama、vLLM、OpenAI互換LLMの接続設定と疎通テスト
+- 保存済み記事のAI事前解析と、定期・手動実行
 
 ## Screens
 
@@ -43,6 +44,8 @@ docker run --rm -p 3000:3000 -p 8000:8000 \
 ```bash
 mise run test-all
 ```
+
+`mise run dev` は手動AI解析で使用するRustバッチをビルドしてから、APIとフロントエンドを起動します。
 
 設計資料は [specs](./specs/README.md)、開発・コミット規約は [DEVELOPMENT.md](./DEVELOPMENT.md) を参照してください。
 

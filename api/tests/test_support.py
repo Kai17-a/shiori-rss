@@ -9,12 +9,14 @@ from pydantic import ValidationError
 
 from api.database import initialize_database
 from api.model.models import (
+    AskAIRequest,
     LLMSettingsTestRequest,
     LLMSettingsUpdate,
     NewsSiteCreate,
     NewsSiteUpdate,
     RSSFeedCreate,
     RSSFeedUpdate,
+    SettingsAIArticleAnalysisUpdate,
     SettingsRssExecutionUpdate,
     SettingsRssWebhookNotificationUpdate,
     SettingsWebhookCreate,
@@ -22,6 +24,8 @@ from api.model.models import (
     SettingsWebhookSummaryUpdate,
     SettingsWebhookUpdate,
 )
+from api.services.ask_ai_service import AskAIService
+from api.services.article_analysis_service import ArticleAnalysisService
 from api.services.rss_feed_service import RSSFeedService
 from api.services.dashboard_service import DashboardService
 from api.services.news_site_service import NewsSiteService
@@ -118,6 +122,12 @@ class CompatTestClient:
         )
         return self._ok(payload)
 
+    def _ask_ai_response(self, method: str, path: str, json):
+        if method != "POST" or path != "/ai/chat":
+            return None
+        body = AskAIRequest(**(json or {}))
+        return self._ok(AskAIService().ask(body.message).model_dump(mode="json"))
+
     def _news_site_response(self, method: str, path: str, query, json):
         service = NewsSiteService()
         if method == "POST" and path == "/news-sites":
@@ -162,6 +172,8 @@ class CompatTestClient:
 
     def _settings_response(self, method: str, path: str, json):
         service = SettingsService()
+        if method == "POST" and path == "/settings/ai-article-analysis/execute":
+            return self._ok(ArticleAnalysisService().run_manual().model_dump())
         if method == "GET" and path == "/settings/llm":
             return self._ok(service.get_llm_settings().model_dump())
         if method == "PUT" and path == "/settings/llm":
@@ -201,6 +213,11 @@ class CompatTestClient:
             )
 
         setting_routes = {
+            "/settings/ai-article-analysis": (
+                service.get_ai_article_analysis,
+                service.set_ai_article_analysis,
+                SettingsAIArticleAnalysisUpdate,
+            ),
             "/settings/rss-execution": (
                 service.get_rss_execution,
                 service.set_rss_execution,
@@ -234,6 +251,9 @@ class CompatTestClient:
             if method == "GET" and parsed.path == "/health":
                 return self._ok({"status": "ok"})
             response = self._dashboard_response(method, parsed.path, query)
+            if response is not None:
+                return response
+            response = self._ask_ai_response(method, parsed.path, json)
             if response is not None:
                 return response
             response = self._rss_response(method, parsed.path, query, json)
