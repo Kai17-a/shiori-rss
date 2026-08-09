@@ -13,6 +13,18 @@ test("opens the rolling 24-hour news summary as the app home", async ({ page }) 
   await expect(page.getByRole("link", { name: "Bookmarks" })).toHaveCount(0);
 });
 
+test("opens the Ask AI chat modal from the floating launcher", async ({ page }) => {
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Open Ask AI chat" }).click();
+  await expect(page.getByRole("dialog", { name: "Ask AI" })).toBeVisible();
+  await expect(page.getByText("Ask about your feed library")).toBeVisible();
+  await expect(page.getByLabel("Ask AI message")).toBeDisabled();
+
+  await page.getByRole("button", { name: "Close Ask AI" }).click();
+  await expect(page.getByRole("dialog", { name: "Ask AI" })).toBeHidden();
+});
+
 test("lists custom RSS sources in the sidebar", async ({ page }) => {
   await page.route("**/news-sites?per_page=100", async (route) => {
     await route.fulfill({
