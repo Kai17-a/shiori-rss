@@ -10,15 +10,12 @@
       <template #header="{ collapsed }">
         <NuxtLink
           to="/"
-          class="flex items-center gap-3 px-1 py-2"
+          class="flex items-center px-1 py-2"
           aria-label="Shiori Feed home"
           @click="closeSidebar"
         >
-          <span class="grid size-9 shrink-0 place-items-center rounded-xl bg-primary text-inverted shadow-sm">
-            <UIcon name="i-lucide-radio" class="size-5" />
-          </span>
           <span v-if="!collapsed" class="min-w-0">
-            <span class="block text-sm font-bold tracking-tight text-highlighted">Shiori Feed</span>
+            <span class="block text-base font-semibold tracking-normal text-highlighted">Shiori Feed</span>
           </span>
         </NuxtLink>
       </template>
