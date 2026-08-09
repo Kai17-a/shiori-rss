@@ -196,6 +196,9 @@
               >
                 {{ article.title || article.url }}
               </a>
+              <p v-if="article.summary" class="line-clamp-3 text-sm leading-6 text-muted">
+                {{ formatArticleSummary(article.summary) }}
+              </p>
               <div class="flex flex-wrap items-center gap-2">
                 <p class="flex items-center gap-1.5 text-xs text-muted">
                   <UIcon name="i-lucide-clock-3" class="size-3.5" />
@@ -263,6 +266,7 @@ import type {
   SettingsWebhookListResponse,
   SettingsWebhookResponse,
 } from "~/types";
+import { formatArticleSummary } from "~/utils/articleSummary";
 import { formatDateTime } from "~/utils/dateTime";
 
 type PaginationItem = { type: "page"; label: string; value: number } | { type: "ellipsis" };

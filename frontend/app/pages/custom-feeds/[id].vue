@@ -94,6 +94,9 @@
               >
                 {{ article.title || article.url }}
               </a>
+              <p v-if="article.summary" class="line-clamp-3 text-sm leading-6 text-muted">
+                {{ formatArticleSummary(article.summary) }}
+              </p>
               <p class="text-xs text-muted">
                 Published {{ formatDateTime(article.published || article.created_at) }}
               </p>
@@ -167,6 +170,7 @@ import type {
   SettingsWebhookListResponse,
   SettingsWebhookResponse,
 } from "~/types";
+import { formatArticleSummary } from "~/utils/articleSummary";
 import { formatDateTime } from "~/utils/dateTime";
 
 const route = useRoute();
@@ -369,4 +373,3 @@ onMounted(async () => {
   await Promise.all([loadSite(), loadArticles(), loadWebhooks()]);
 });
 </script>
-
