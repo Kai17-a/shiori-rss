@@ -18,7 +18,12 @@ test("opens the Ask AI chat modal from the floating launcher", async ({ page }) 
     await route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
-        answer: "Agentic systems were the main theme. [S1]",
+        answer: [
+          "## Highlights",
+          "",
+          "- **Agentic systems** were the main theme. [S1]",
+          "- Read the `saved summary` for details.",
+        ].join("\n"),
         sources: [{
           source_type: "rss",
           article_id: 12,
@@ -40,7 +45,9 @@ test("opens the Ask AI chat modal from the floating launcher", async ({ page }) 
   await expect(page.getByText("Ask about your feed library")).toBeVisible();
   await page.getByLabel("Ask AI message").fill("Summarize agent news");
   await page.getByRole("button", { name: "Send" }).click();
-  await expect(page.getByText("Agentic systems were the main theme. [S1]")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Highlights" })).toBeVisible();
+  await expect(page.getByRole("listitem").filter({ hasText: "Agentic systems" })).toBeVisible();
+  await expect(page.getByText("saved summary", { exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: /Agentic systems/ })).toHaveAttribute(
     "href",
     "https://example.com/agentic-systems",

@@ -53,7 +53,18 @@
               {{ message.question }}
             </div>
             <div class="max-w-[92%] rounded-2xl rounded-bl-md bg-elevated px-4 py-3">
-              <p class="whitespace-pre-wrap text-sm leading-6 text-default">{{ message.answer }}</p>
+              <LazyUEditor
+                :model-value="message.answer"
+                content-type="markdown"
+                :editable="false"
+                :image="false"
+                :mention="false"
+                :starter-kit="readOnlyEditorOptions"
+                aria-label="Ask AI answer"
+                :ui="{
+                  base: 'sm:px-0 text-sm [&_h1]:text-xl [&_h2]:text-lg [&_h3]:text-base',
+                }"
+              />
               <div v-if="message.sources.length" class="mt-4 space-y-2 border-t border-default pt-3">
                 <p class="text-xs font-semibold uppercase tracking-wide text-muted">Sources</p>
                 <a
@@ -128,6 +139,15 @@ const question = ref("");
 const loading = ref(false);
 const errorMessage = ref("");
 const messages = ref<ChatExchange[]>([]);
+const readOnlyEditorOptions = {
+  link: {
+    openOnClick: true,
+    HTMLAttributes: {
+      target: "_blank",
+      rel: "noopener noreferrer",
+    },
+  },
+};
 
 const submitQuestion = async () => {
   const message = question.value.trim();
