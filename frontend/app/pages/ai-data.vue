@@ -1,5 +1,5 @@
 <template>
-  <UDashboardPanel id="ai-data">
+  <UDashboardPanel id="ai-data" class="min-w-0">
     <template #header>
       <PageHeaderActions title="AI analysis data">
         <UButton
@@ -13,8 +13,11 @@
     </template>
 
     <template #body>
-      <div class="mx-auto w-full max-w-7xl space-y-6 pb-10">
-        <UPageCard :ui="{ body: 'space-y-5' }">
+      <div class="mx-auto w-full min-w-0 max-w-7xl space-y-6 pb-10">
+        <UPageCard
+          class="w-full min-w-0 max-w-full overflow-hidden"
+          :ui="{ body: 'w-full min-w-0 max-w-full space-y-5 overflow-hidden' }"
+        >
           <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p class="text-xs font-semibold uppercase tracking-[0.18em] text-primary">AI index</p>
@@ -106,23 +109,26 @@
             </div>
           </div>
 
-          <div v-if="analyses.items.length" class="space-y-4">
+          <div
+            v-if="analyses.items.length"
+            class="w-full min-w-0 max-w-full space-y-4 overflow-hidden"
+          >
             <article
               v-for="analysis in analyses.items"
               :key="analysis.id"
-              class="space-y-4 rounded-2xl border border-default bg-elevated/30 p-5"
+              class="w-full min-w-0 max-w-full space-y-4 overflow-hidden rounded-2xl border border-default bg-elevated/30 p-4 sm:p-5"
             >
               <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                <div class="min-w-0">
+                <div class="min-w-0 flex-1">
                   <a
                     :href="analysis.article_url"
                     target="_blank"
                     rel="noreferrer"
-                    class="font-semibold text-highlighted hover:text-primary hover:underline"
+                    class="block max-w-full font-semibold text-highlighted [overflow-wrap:anywhere] hover:text-primary hover:underline"
                   >
                     {{ analysis.article_title }}
                   </a>
-                  <p class="mt-1 text-sm text-muted">
+                  <p class="mt-1 max-w-full text-sm text-muted [overflow-wrap:anywhere]">
                     {{ analysis.source_title }} · {{ formatDateTime(analysis.analyzed_at) }}
                   </p>
                 </div>
@@ -139,7 +145,10 @@
                 </div>
               </div>
 
-              <p v-if="analysis.ai_summary" class="text-sm leading-6 text-default">
+              <p
+                v-if="analysis.ai_summary"
+                class="w-full max-w-full whitespace-pre-wrap text-sm leading-6 text-default [overflow-wrap:anywhere]"
+              >
                 {{ analysis.ai_summary }}
               </p>
               <UAlert
@@ -151,26 +160,27 @@
               />
 
               <ul v-if="analysis.key_points.length" class="space-y-1 text-sm text-muted">
-                <li v-for="point in analysis.key_points" :key="point" class="flex gap-2">
-                  <span aria-hidden="true">-</span><span>{{ point }}</span>
+                <li v-for="point in analysis.key_points" :key="point" class="flex min-w-0 gap-2">
+                  <span aria-hidden="true">-</span>
+                  <span class="min-w-0 [overflow-wrap:anywhere]">{{ point }}</span>
                 </li>
               </ul>
 
-              <div v-if="analysis.topics.length || analysis.keywords.length || analysis.entities.length" class="flex flex-wrap gap-2">
-                <UBadge v-for="topic in analysis.topics" :key="`topic-${topic}`" color="primary" variant="soft">
+              <div v-if="analysis.topics.length || analysis.keywords.length || analysis.entities.length" class="flex min-w-0 flex-wrap gap-2">
+                <UBadge v-for="topic in analysis.topics" :key="`topic-${topic}`" class="max-w-full whitespace-normal text-left [overflow-wrap:anywhere]" color="primary" variant="soft">
                   {{ topic }}
                 </UBadge>
-                <UBadge v-for="keyword in analysis.keywords" :key="`keyword-${keyword}`" color="neutral" variant="outline">
+                <UBadge v-for="keyword in analysis.keywords" :key="`keyword-${keyword}`" class="max-w-full whitespace-normal text-left [overflow-wrap:anywhere]" color="neutral" variant="outline">
                   {{ keyword }}
                 </UBadge>
-                <UBadge v-for="entity in analysis.entities" :key="`entity-${entity}`" color="info" variant="soft">
+                <UBadge v-for="entity in analysis.entities" :key="`entity-${entity}`" class="max-w-full whitespace-normal text-left [overflow-wrap:anywhere]" color="info" variant="soft">
                   {{ entity }}
                 </UBadge>
               </div>
 
-              <div class="flex flex-wrap gap-x-5 gap-y-1 border-t border-default pt-3 text-xs text-muted">
-                <span>Model: {{ analysis.model }}</span>
-                <span>Prompt: {{ analysis.prompt_version }}</span>
+              <div class="flex min-w-0 flex-wrap gap-x-5 gap-y-1 border-t border-default pt-3 text-xs text-muted">
+                <span class="max-w-full [overflow-wrap:anywhere]">Model: {{ analysis.model }}</span>
+                <span class="max-w-full [overflow-wrap:anywhere]">Prompt: {{ analysis.prompt_version }}</span>
                 <span>Tokens: {{ analysis.input_tokens }} in / {{ analysis.output_tokens }} out</span>
                 <span>Attempts: {{ analysis.attempt_count }}</span>
               </div>

@@ -211,7 +211,10 @@ test("opens and displays saved AI article analysis data", async ({ page }) => {
             key_points: ["New agent APIs were announced."],
             topics: ["AI"],
             keywords: ["OpenAI"],
-            entities: ["OpenAI"],
+            entities: [
+              "OpenAI",
+              `https://example.com/${"unbroken-path-segment".repeat(30)}`,
+            ],
             input_tokens: 120,
             output_tokens: 40,
             status: "completed",
@@ -237,6 +240,11 @@ test("opens and displays saved AI article analysis data", async ({ page }) => {
   await expect(page.getByRole("link", { name: "OpenAI platform update" })).toBeVisible();
   await expect(page.getByText("The platform added new agent capabilities.")).toBeVisible();
   await expect(page.getByText("Tokens: 120 in / 40 out")).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+    ),
+  ).toBe(false);
 });
 
 test("runs article analysis manually with a loading state", async ({ page }) => {
