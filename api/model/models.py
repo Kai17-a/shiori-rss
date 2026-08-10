@@ -558,6 +558,39 @@ class AskAIResponse(BaseModel):
     sources: list[AskAISource]
 
 
+class AIArticleAnalysisResponse(BaseModel):
+    id: int
+    source_type: Literal["rss", "custom"]
+    article_id: int
+    source_id: int
+    source_title: str
+    article_title: str
+    article_url: str
+    article_published: str | None = None
+    model: str
+    prompt_version: str
+    ai_summary: str | None = None
+    key_points: list[str]
+    topics: list[str]
+    keywords: list[str]
+    entities: list[str]
+    input_tokens: int
+    output_tokens: int
+    status: Literal["completed", "failed"]
+    error_message: str | None = None
+    attempt_count: int
+    analyzed_at: datetime
+    updated_at: datetime
+
+
+class AIArticleAnalysisListResponse(BaseModel):
+    items: list[AIArticleAnalysisResponse]
+    total: int
+    page: int
+    per_page: int
+    total_pages: int
+
+
 class DashboardSummary(BaseModel):
     rss_feed_count: int
     custom_feed_count: int

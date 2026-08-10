@@ -190,6 +190,55 @@ test("shows the LLM connection settings used by custom RSS", async ({ page }) =>
   await expect(page.getByLabel("Analyze saved articles")).toBeDisabled();
 });
 
+test("opens and displays saved AI article analysis data", async ({ page }) => {
+  await page.route(/\/api\/ai\/article-analyses/, async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        items: [
+          {
+            id: 1,
+            source_type: "rss",
+            article_id: 12,
+            source_id: 3,
+            source_title: "Tech Feed",
+            article_title: "OpenAI platform update",
+            article_url: "https://example.com/openai-update",
+            article_published: "2026-08-09T08:00:00Z",
+            model: "example-model",
+            prompt_version: "v1",
+            ai_summary: "The platform added new agent capabilities.",
+            key_points: ["New agent APIs were announced."],
+            topics: ["AI"],
+            keywords: ["OpenAI"],
+            entities: ["OpenAI"],
+            input_tokens: 120,
+            output_tokens: 40,
+            status: "completed",
+            error_message: null,
+            attempt_count: 1,
+            analyzed_at: "2026-08-10T01:00:00Z",
+            updated_at: "2026-08-10T01:00:00Z",
+          },
+        ],
+        total: 1,
+        page: 1,
+        per_page: 20,
+        total_pages: 1,
+      }),
+    });
+  });
+
+  await page.goto("/settings?tab=llm");
+  await page.getByRole("link", { name: "View analysis data" }).click();
+
+  await expect(page).toHaveURL(/\/ai-data$/);
+  await expect(page.getByRole("heading", { name: "Analyzed articles" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "OpenAI platform update" })).toBeVisible();
+  await expect(page.getByText("The platform added new agent capabilities.")).toBeVisible();
+  await expect(page.getByText("Tokens: 120 in / 40 out")).toBeVisible();
+});
+
 test("runs article analysis manually with a loading state", async ({ page }) => {
   let executionRequests = 0;
   let releaseAnalysis = () => {};

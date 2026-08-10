@@ -276,6 +276,15 @@
               >
                 Run analysis now
               </UButton>
+              <UButton
+                to="/ai-data"
+                type="button"
+                color="neutral"
+                variant="outline"
+                icon="i-lucide-database"
+              >
+                View analysis data
+              </UButton>
             </div>
           </form>
         </UPageCard>
