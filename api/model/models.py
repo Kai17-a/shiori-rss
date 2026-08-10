@@ -606,6 +606,7 @@ class DashboardArticle(BaseModel):
     source_type: Literal["rss", "custom"]
     source_id: int
     source_title: str
+    source_icon_url: str | None
     url: str
     title: str | None
     summary: str | None

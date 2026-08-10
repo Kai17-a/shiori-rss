@@ -41,11 +41,12 @@ class DashboardService:
             ).fetchone()
             article_rows = conn.execute(
                 """
-                SELECT source_type, source_id, source_title, url, title, summary,
+                SELECT source_type, source_id, source_title, source_icon_url, url, title, summary,
                        published, created_at, webhook_notified
                 FROM (
                   SELECT 'rss' AS source_type, feeds.id AS source_id,
-                         feeds.title AS source_title, articles.url, articles.title,
+                         feeds.title AS source_title, feeds.icon_url AS source_icon_url,
+                         articles.url, articles.title,
                          articles.summary, articles.published, articles.created_at,
                          articles.webhook_notified
                   FROM rss_feed_articles AS articles
@@ -54,7 +55,8 @@ class DashboardService:
                     AND datetime(coalesce(articles.published, articles.created_at)) <= datetime(?)
                   UNION ALL
                   SELECT 'custom' AS source_type, sites.id AS source_id,
-                         sites.title AS source_title, articles.url, articles.title,
+                         sites.title AS source_title, sites.icon_url AS source_icon_url,
+                         articles.url, articles.title,
                          articles.summary, articles.published, articles.created_at,
                          articles.webhook_notified
                   FROM news_site_articles AS articles

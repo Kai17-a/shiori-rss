@@ -32,15 +32,23 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(dashboard_module, "get_db", patched_get_db)
     with patched_get_db() as conn:
         conn.execute(
-            "INSERT INTO rss_feeds (id, url, title) VALUES (1, ?, ?)",
-            ("https://example.com/feed.xml", "Daily RSS"),
+            "INSERT INTO rss_feeds (id, url, title, icon_url) VALUES (1, ?, ?, ?)",
+            (
+                "https://example.com/feed.xml",
+                "Daily RSS",
+                "https://cdn.example.com/rss.png",
+            ),
         )
         conn.execute(
             """
-            INSERT INTO news_sites (id, url, title, scrape_config)
-            VALUES (1, ?, ?, '{}')
+            INSERT INTO news_sites (id, url, title, scrape_config, icon_url)
+            VALUES (1, ?, ?, '{}', ?)
             """,
-            ("https://example.com/news", "Custom Daily"),
+            (
+                "https://example.com/news",
+                "Custom Daily",
+                "https://cdn.example.com/custom.png",
+            ),
         )
         conn.execute(
             """
@@ -100,6 +108,10 @@ def test_dashboard_summarizes_sources_and_articles_from_the_last_24_hours(client
         "RSS at boundary",
     ]
     assert response.json()["articles"][0]["source_type"] == "custom"
+    assert [article["source_icon_url"] for article in response.json()["articles"]] == [
+        "https://cdn.example.com/custom.png",
+        "https://cdn.example.com/rss.png",
+    ]
     assert response.json()["generated_at"] == "2026-08-09T09:00:00Z"
     assert response.json()["window_started_at"] == "2026-08-08T09:00:00Z"
 

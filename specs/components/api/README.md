@@ -6,7 +6,7 @@ FastAPI は `/health`、`/dashboard`、`/rss-feeds`、`/news-sites`、`/settings
 - Custom RSS: LLMによる作成・再解析、一覧、詳細、更新、削除、通知状態付き記事履歴、手動取得。定期巡回は行わない
 - Feed icon: 通常RSS・Custom RSSの外部画像URLを作成・更新APIで受け付け、`/{id}/icon` のGET/PUT/DELETEでアップロード画像を配信・設定・削除する。アップロードはPNG・JPEG・GIF・WebP、最大1 MBとし、公開HTTP(S) URLを同時に保存する
 - RSS記事の公開日時はXMLの `pubDate` / `published` を優先し、元のUTCオフセットを保ったISO 8601形式で保存・返却する。
-- Dashboard: リクエスト受信時刻を基準に、通常RSS・カスタムRSSの件数、直近24時間の記事数、未通知数、直近24時間の記事を集約して返す
+- Dashboard: リクエスト受信時刻を基準に、通常RSS・カスタムRSSの件数、直近24時間の記事数、未通知数、直近24時間の記事を集約して返す。各記事は配信元の設定済みアイコンURLを `source_icon_url` として返す
 - Settings: Webhook CRUD・疎通確認、定期実行、定期通知、記事概要、デフォルトOFFのAI記事解析と利用上限の設定
 - AI article analysis execution: `POST /settings/ai-article-analysis/execute` からRustバッチのAI解析専用モードを同期実行し、処理・成功・失敗・解析済みスキップ件数と日次上限到達状態を返す
 - AI article analysis status: `GET /settings/ai-article-analysis/status` はAPIプロセス内の手動実行ロックとSQLiteの有効なバッチロックを確認し、手動・定期のどちらかが実行中なら `running: true` を返す。バッチロックは開始時刻とプロセスIDを保持し、所有プロセスが存在しない場合は孤立ロックを削除する。APIから起動したプロセスの終了時にも成功・失敗を問わず、そのプロセス自身のロックだけを削除する。旧形式の開始時刻だけのロックは、実際のバッチプロセスが存在しない場合に孤立ロックとして削除する
