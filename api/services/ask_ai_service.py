@@ -25,6 +25,10 @@ MAX_RELEVANCE_METADATA_ITEMS = 10
 LITERAL_QUERY_TOKEN_PATTERN = re.compile(r"[A-Za-z][A-Za-z0-9+.#-]{1,49}")
 SOURCE_CITATION_PATTERN = re.compile(r"\[([^\]]+)\]")
 SOURCE_REFERENCE_PATTERN = re.compile(r"\bS([1-9]\d*)\b")
+ARTICLE_LIST_REQUEST_SUFFIX_PATTERN = re.compile(
+    r"(?:に関する|についての?|の)?(?:ニュース|記事)(?:の?一覧)?"
+    r"(?:を)?(?:\d+件)?(?:教えて(?:ください)?|出して|見せて|探して|検索して).*$"
+)
 
 
 class ArticleSearchPlan(BaseModel):
@@ -192,7 +196,9 @@ class AskAIService:
             for reference in references
         ]
 
-    def _select_relevant_rows(self, config, message: str, rows: list[dict]) -> list[dict]:
+    def _select_relevant_rows(
+        self, config, message: str, rows: list[dict]
+    ) -> list[dict]:
         candidates = [
             {
                 "reference": f"S{index}",
@@ -201,9 +207,9 @@ class AskAIService:
                 "summary": re.sub(r"\s+", " ", row.get("summary") or "").strip()[
                     :MAX_RELEVANCE_TEXT_CHARS
                 ],
-                "ai_summary": re.sub(
-                    r"\s+", " ", row.get("ai_summary") or ""
-                ).strip()[:MAX_RELEVANCE_TEXT_CHARS],
+                "ai_summary": re.sub(r"\s+", " ", row.get("ai_summary") or "").strip()[
+                    :MAX_RELEVANCE_TEXT_CHARS
+                ],
                 "topics": json.loads(row.get("topics_json") or "[]")[
                     :MAX_RELEVANCE_METADATA_ITEMS
                 ],
@@ -222,11 +228,17 @@ class AskAIService:
                 {
                     "role": "system",
                     "content": (
-                        "Select only saved articles that directly answer the user's question. "
+                        "Select only saved articles that are directly relevant to the user's request. "
+                        "First distinguish article-list or search requests from factual questions. "
+                        "For an article-list or search request, select articles whose main subject "
+                        "directly concerns the requested topic; an article does not need to answer "
+                        "a factual question. Treat an explicit named product, organization, or "
+                        "service from the question appearing in the source, title, summary, or AI "
+                        "metadata as strong evidence of direct relevance. "
                         "A shared broad category is not enough: for example, an article that "
                         "mentions AI is not relevant to an OpenAI-specific question unless it "
                         "substantively concerns OpenAI or its products. Return only JSON with "
-                        "a references array such as {\"references\":[\"S1\",\"S3\"]}. "
+                        'a references array such as {"references":["S1","S3"]}. '
                         "Return an empty array when no candidate is directly relevant."
                     ),
                 },
@@ -251,12 +263,40 @@ class AskAIService:
                 status_code=502, detail="LLM returned an invalid relevance selection"
             ) from exc
 
-        selected: list[dict] = []
+        selected_indexes: set[int] = set()
         for reference in selection.references:
             index = int(reference[1:]) - 1
             if 0 <= index < len(rows):
-                selected.append(rows[index])
-        return selected
+                selected_indexes.add(index)
+
+        explicit_phrase = self._explicit_article_list_phrase(message)
+        if explicit_phrase:
+            for index, candidate in enumerate(candidates):
+                searchable = " ".join(
+                    str(candidate.get(field) or "")
+                    for field in (
+                        "title",
+                        "source",
+                        "summary",
+                        "ai_summary",
+                        "topics",
+                        "keywords",
+                        "entities",
+                    )
+                ).casefold()
+                if explicit_phrase.casefold() in searchable:
+                    selected_indexes.add(index)
+
+        return [row for index, row in enumerate(rows) if index in selected_indexes]
+
+    @staticmethod
+    def _explicit_article_list_phrase(message: str) -> str | None:
+        phrase = ARTICLE_LIST_REQUEST_SUFFIX_PATTERN.sub("", message.strip()).strip(
+            " 　、。,.!?！？「」『』\"'"
+        )
+        if phrase == message.strip() or len(phrase) < 4:
+            return None
+        return phrase
 
     def _search_with_fallback(
         self,
