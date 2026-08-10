@@ -4,6 +4,7 @@ export interface RSSFeedCreateRequest {
   description?: string | null;
   notify_webhook_enabled?: boolean;
   webhook_ids?: number[];
+  icon_url?: string | null;
 }
 
 export interface RSSFeedUpdateRequest {
@@ -12,6 +13,7 @@ export interface RSSFeedUpdateRequest {
   description?: string | null;
   notify_webhook_enabled?: boolean | null;
   webhook_ids?: number[] | null;
+  icon_url?: string | null;
 }
 
 export interface RSSFeedResponse {
@@ -21,6 +23,8 @@ export interface RSSFeedResponse {
   description: string | null;
   notify_webhook_enabled: boolean;
   webhook_ids: number[];
+  icon_url: string | null;
+  icon_uploaded: boolean;
   created_at: string;
   updated_at: string;
 }

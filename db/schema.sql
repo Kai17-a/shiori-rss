@@ -6,7 +6,7 @@ CREATE TABLE rss_feeds (
   description TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-, notify_webhook_enabled INTEGER NOT NULL DEFAULT 1);
+, notify_webhook_enabled INTEGER NOT NULL DEFAULT 1, icon_url TEXT, icon_data BLOB, icon_media_type TEXT);
 CREATE UNIQUE INDEX idx_rss_feeds_url_unique ON rss_feeds(url);
 CREATE TABLE rss_feed_articles (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -52,7 +52,7 @@ CREATE TABLE news_sites (
   notify_webhook_enabled INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
+, icon_url TEXT, icon_data BLOB, icon_media_type TEXT);
 CREATE UNIQUE INDEX idx_news_sites_url_unique ON news_sites(url);
 CREATE INDEX idx_news_sites_title_id ON news_sites(title, id);
 CREATE TABLE news_site_articles (
@@ -242,4 +242,5 @@ INSERT INTO "schema_migrations" (version) VALUES
   ('202608081300'),
   ('202608081400'),
   ('202608090945'),
-  ('202608091010');
+  ('202608091010'),
+  ('202608101000');

@@ -8,7 +8,8 @@
         class="grid size-11 shrink-0 place-items-center rounded-2xl bg-primary/10 text-primary transition group-hover:bg-primary group-hover:text-inverted"
         :aria-label="`Open ${feed.title}`"
       >
-        <UIcon name="i-lucide-rss" class="size-5" />
+        <img v-if="feed.icon_url" :src="feed.icon_url" alt="" class="size-full rounded-2xl object-cover" />
+        <UIcon v-else name="i-lucide-rss" class="size-5" />
       </NuxtLink>
 
       <div class="min-w-0 flex-1">

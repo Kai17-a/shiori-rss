@@ -17,10 +17,12 @@
 | GET | `/dashboard` | リクエスト時点から直近24時間のホームサマリーと記事一覧（`limit` は1〜100件） |
 | POST/GET | `/rss-feeds` | フィード作成・一覧 |
 | GET/PATCH/DELETE | `/rss-feeds/{id}` | フィード詳細・更新・削除 |
+| GET/PUT/DELETE | `/rss-feeds/{id}/icon` | アップロードアイコンの取得・設定・削除 |
 | GET | `/rss-feeds/{id}/articles` | 記事履歴 |
 | POST | `/rss-feeds/{id}/execute` | 手動実行 |
 | POST/GET | `/news-sites` | LLMカスタムRSS作成・一覧 |
 | GET/PATCH/DELETE | `/news-sites/{id}` | カスタムRSS詳細・更新・削除 |
+| GET/PUT/DELETE | `/news-sites/{id}/icon` | アップロードアイコンの取得・設定・削除 |
 | GET | `/news-sites/{id}/articles` | カスタムRSS記事履歴 |
 | POST | `/news-sites/{id}/execute` | カスタムRSS手動取得 |
 | GET/POST | `/settings/webhooks` | Webhook 一覧・作成 |
@@ -52,7 +54,7 @@
 2. RSS フィードを読み、Webhook設定の有無に関係なく巡回する。
 3. フィードを取得し RSS / Atom を解析する。
 4. `rss_feed_articles` に存在しない記事を未通知として保存する。
-5. 通知が有効で送信先がある場合、保存済みの未通知記事を送る。
+5. 通知が有効で送信先がある場合、保存済みの未通知記事を送る。DiscordではフィードのアイコンURLをWebhookの `avatar_url` に使う。
 6. 少なくとも1つの送信先で成功した記事を通知済みに更新する。
 7. AI記事解析が有効なら、対象期間内の未解析・更新済み記事を上限件数までLLMで解析する。
 8. 利用量を呼び出し単位で記録し、1日のトークン上限に達する前に解析を停止する。

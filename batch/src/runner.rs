@@ -260,13 +260,14 @@ async fn run_rss_batch(conn: &Connection) -> Result<(), Box<dyn Error>> {
 
         let mut delivered = false;
         for endpoint in targets {
-            if let Err(err) = webhook::send_rss_webhook(
+            if let Err(err) = webhook::send_rss_webhook_with_icon(
                 &endpoint.url,
                 &rss_feed.title,
                 &rss_feed.url,
                 &embeds,
                 &articles,
                 include_summary,
+                rss_feed.icon_url.as_deref(),
             )
             .await
             {

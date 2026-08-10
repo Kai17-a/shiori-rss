@@ -4,6 +4,7 @@ FastAPI は `/health`、`/dashboard`、`/rss-feeds`、`/news-sites`、`/settings
 
 - RSS feed: 作成、一覧、詳細、更新、削除、通知状態付き記事履歴、Webhookなしでも保存できる手動実行。手動実行は定期通知とフィード別の自動通知設定を参照せず、有効な送信先があれば未通知記事を送る
 - Custom RSS: LLMによる作成・再解析、一覧、詳細、更新、削除、通知状態付き記事履歴、手動取得。定期巡回は行わない
+- Feed icon: 通常RSS・Custom RSSの外部画像URLを作成・更新APIで受け付け、`/{id}/icon` のGET/PUT/DELETEでアップロード画像を配信・設定・削除する。アップロードはPNG・JPEG・GIF・WebP、最大1 MBとし、公開HTTP(S) URLを同時に保存する
 - RSS記事の公開日時はXMLの `pubDate` / `published` を優先し、元のUTCオフセットを保ったISO 8601形式で保存・返却する。
 - Dashboard: リクエスト受信時刻を基準に、通常RSS・カスタムRSSの件数、直近24時間の記事数、未通知数、直近24時間の記事を集約して返す
 - Settings: Webhook CRUD・疎通確認、定期実行、定期通知、記事概要、デフォルトOFFのAI記事解析と利用上限の設定
@@ -15,5 +16,6 @@ FastAPI は `/health`、`/dashboard`、`/rss-feeds`、`/news-sites`、`/settings
 - Ask AI streaming: `POST /ai/chat/stream` はNDJSONで回答差分を逐次返し、回答完了後に実際に引用した出典、続いて完了イベントを返す。エラー時はエラーイベントを返し、OllamaとOpenAI互換のストリーム形式を吸収する。検索候補のうち回答で引用されなかった記事は出典へ含めない
 - エラー: `{"detail": ...}`。入力不正は 422、未検出は 404、重複は 409、外部通知失敗は 502 とする。
 - 一覧: `items`, `total`, `page`, `per_page`, `total_pages` を返す。
+- Webhook: Discord通知ではフィードの `icon_url` を `avatar_url` に設定する。Incoming Webhookでアイコンを上書きできないSlackとTeamsには追加しない。
 
 詳細な利用者要件は [product requirements](../../product/requirements.md)、ルート一覧は [system design](../../architecture/system-design.md) を参照する。

@@ -7,7 +7,18 @@ class NewsSiteRepository:
 
     def _with_webhook_ids(self, row: dict) -> dict:
         row["webhook_ids"] = self.find_webhook_ids(int(row["id"]))
+        row["icon_uploaded"] = row.get("icon_data") is not None
+        row.pop("icon_data", None)
+        row.pop("icon_media_type", None)
         return row
+
+    def find_icon(self, site_id: int) -> tuple[bytes, str] | None:
+        row = self.conn.execute(
+            "SELECT icon_data, icon_media_type FROM news_sites WHERE id = ?", (site_id,)
+        ).fetchone()
+        if row is None or row["icon_data"] is None:
+            return None
+        return bytes(row["icon_data"]), str(row["icon_media_type"])
 
     def find_webhook_ids(self, site_id: int) -> list[int]:
         rows = self.conn.execute(
@@ -36,13 +47,14 @@ class NewsSiteRepository:
         title: str,
         description: str | None,
         scrape_config: str,
+        icon_url: str | None,
     ) -> dict:
         cursor = self.conn.execute(
             """
-            INSERT INTO news_sites (url, title, description, scrape_config)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO news_sites (url, title, description, scrape_config, icon_url)
+            VALUES (?, ?, ?, ?, ?)
             """,
-            (url, title, description, scrape_config),
+            (url, title, description, scrape_config, icon_url),
         )
         assert cursor.lastrowid is not None
         row = self.find_by_id(cursor.lastrowid)

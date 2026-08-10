@@ -51,6 +51,8 @@
           />
         </UFormField>
 
+        <FeedIconField :form="form" />
+
         <UFormField
           v-if="form.id"
           label="Site analysis"
@@ -105,6 +107,10 @@ const props = defineProps<{
     description: string;
     webhookIds: number[];
     reanalyze: boolean;
+    iconUrl: string;
+    iconFile: File | null;
+    existingIconUrl: string;
+    removeIcon: boolean;
   };
   webhooks: SettingsWebhookResponse[];
   title: string;

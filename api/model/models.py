@@ -15,6 +15,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     String,
     Text,
     text,
@@ -37,6 +38,9 @@ class RSSFeed(SQLModel, table=True):
         default=True,
         sa_column=Column(Boolean, nullable=False, server_default=text("1")),
     )
+    icon_url: str | None = Field(default=None, sa_column=Column(Text))
+    icon_data: bytes | None = Field(default=None, sa_column=Column(LargeBinary))
+    icon_media_type: str | None = Field(default=None, sa_column=Column(String))
     created_at: datetime = Field(
         sa_column=Column(
             DateTime, nullable=False, server_default=text("(datetime('now'))")
@@ -95,6 +99,9 @@ class NewsSite(SQLModel, table=True):
         default=True,
         sa_column=Column(Boolean, nullable=False, server_default=text("1")),
     )
+    icon_url: str | None = Field(default=None, sa_column=Column(Text))
+    icon_data: bytes | None = Field(default=None, sa_column=Column(LargeBinary))
+    icon_media_type: str | None = Field(default=None, sa_column=Column(String))
     created_at: datetime = Field(
         sa_column=Column(
             DateTime, nullable=False, server_default=text("(datetime('now'))")
@@ -181,6 +188,7 @@ class RSSFeedCreate(BaseModel):
     description: str | None = None
     notify_webhook_enabled: bool = True
     webhook_ids: list[int] | None = None
+    icon_url: AnyHttpUrl | None = None
 
     @field_validator("title")
     @classmethod
@@ -204,6 +212,7 @@ class RSSFeedUpdate(BaseModel):
     description: str | None = None
     notify_webhook_enabled: bool | None = None
     webhook_ids: list[int] | None = None
+    icon_url: AnyHttpUrl | None = None
 
     @field_validator("title")
     @classmethod
@@ -240,6 +249,8 @@ class RSSFeedResponse(BaseModel):
     description: str | None
     notify_webhook_enabled: bool
     webhook_ids: list[int]
+    icon_url: str | None = None
+    icon_uploaded: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -290,6 +301,7 @@ class NewsSiteCreate(BaseModel):
     title: str | None = PydField(default=None, min_length=1)
     description: str | None = None
     webhook_ids: list[int] | None = None
+    icon_url: AnyHttpUrl | None = None
 
     @field_validator("title")
     @classmethod
@@ -309,6 +321,7 @@ class NewsSiteUpdate(BaseModel):
     notify_webhook_enabled: bool | None = None
     webhook_ids: list[int] | None = None
     reanalyze: bool = False
+    icon_url: AnyHttpUrl | None = None
 
     @field_validator("title")
     @classmethod
@@ -343,6 +356,8 @@ class NewsSiteResponse(BaseModel):
     description: str | None
     notify_webhook_enabled: bool
     webhook_ids: list[int]
+    icon_url: str | None = None
+    icon_uploaded: bool = False
     created_at: datetime
     updated_at: datetime
 

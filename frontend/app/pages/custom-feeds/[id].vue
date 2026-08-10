@@ -156,6 +156,10 @@ const form = reactive({
   description: "",
   webhookIds: [] as number[],
   reanalyze: false,
+  iconUrl: "",
+  iconFile: null as File | null,
+  existingIconUrl: "",
+  removeIcon: false,
 });
 const articlePageCount = computed(() => Math.max(articleList.value.total_pages, 1));
 const buildArticleQuery = () => {
@@ -242,6 +246,10 @@ const openEditModal = () => {
   form.description = site.value.description || "";
   form.webhookIds = [...site.value.webhook_ids];
   form.reanalyze = false;
+  form.iconUrl = site.value.icon_uploaded ? "" : (site.value.icon_url || "");
+  form.iconFile = null;
+  form.existingIconUrl = site.value.icon_url || "";
+  form.removeIcon = false;
   modalOpen.value = true;
 };
 
@@ -261,8 +269,19 @@ const saveSite = async () => {
         description: form.description.trim() || null,
         webhook_ids: form.webhookIds,
         reanalyze: form.reanalyze,
+        ...(form.iconUrl.trim() ? { icon_url: form.iconUrl.trim() } : {}),
       }),
     });
+    if (form.iconFile) {
+      const body = new FormData();
+      body.append("file", form.iconFile);
+      body.append("public_url", `${window.location.origin}/api/news-sites/${site.value.id}/icon`);
+      await request(`/news-sites/${site.value.id}/icon`, { method: "PUT", body });
+      await loadSite();
+    } else if (form.removeIcon) {
+      await request(`/news-sites/${site.value.id}/icon`, { method: "DELETE" });
+      await loadSite();
+    }
     saveError.value = "";
     modalOpen.value = false;
     await refreshSidebarCatalog(true);

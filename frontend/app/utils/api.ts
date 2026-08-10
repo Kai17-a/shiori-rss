@@ -8,9 +8,10 @@ export const getDefaultApiBase = () => "/api";
 
 export const buildRequestHeaders = (options: RequestInit = {}) => {
   const { headers, ...rest } = options;
+  const hasJsonBody = Boolean(rest.body) && !(rest.body instanceof FormData);
   return {
     headers: {
-      ...(rest.body ? { "Content-Type": "application/json" } : {}),
+      ...(hasJsonBody ? { "Content-Type": "application/json" } : {}),
       ...(headers || {}),
     } satisfies HeadersInit,
     rest,

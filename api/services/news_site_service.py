@@ -417,6 +417,7 @@ class NewsSiteService:
                     title=title,
                     description=data.description,
                     scrape_config=json.dumps(scrape_config, ensure_ascii=False),
+                    icon_url=str(data.icon_url) if data.icon_url else None,
                 )
             except sqlite3.IntegrityError as exc:
                 raise HTTPException(
@@ -481,6 +482,12 @@ class NewsSiteService:
             fields["description"] = payload["description"]
         if "notify_webhook_enabled" in payload:
             fields["notify_webhook_enabled"] = int(payload["notify_webhook_enabled"])
+        if "icon_url" in payload:
+            fields["icon_url"] = (
+                str(payload["icon_url"]) if payload["icon_url"] else None
+            )
+            fields["icon_data"] = None
+            fields["icon_media_type"] = None
 
         with get_db() as conn:
             repo = NewsSiteRepository(conn)
@@ -493,6 +500,58 @@ class NewsSiteService:
                     status_code=409, detail="News site URL already exists"
                 ) from exc
             assert row is not None
+            return self._to_response(row)
+
+    def set_icon(
+        self, site_id: int, *, content: bytes, media_type: str, public_url: str
+    ) -> NewsSiteResponse:
+        from api.services.rss_feed_service import (
+            ALLOWED_ICON_MEDIA_TYPES,
+            MAX_ICON_BYTES,
+        )
+
+        if media_type not in ALLOWED_ICON_MEDIA_TYPES:
+            raise HTTPException(
+                status_code=422, detail="Icon must be PNG, JPEG, GIF, or WebP"
+            )
+        if not content or len(content) > MAX_ICON_BYTES:
+            raise HTTPException(
+                status_code=422, detail="Icon must be between 1 byte and 1 MB"
+            )
+        with get_db() as conn:
+            repo = NewsSiteRepository(conn)
+            row = repo.update(
+                site_id,
+                {
+                    "icon_url": public_url,
+                    "icon_data": content,
+                    "icon_media_type": media_type,
+                },
+            )
+            if row is None:
+                raise HTTPException(status_code=404, detail="News site not found")
+            return self._to_response(row)
+
+    def get_icon(self, site_id: int) -> tuple[bytes, str]:
+        with get_db() as conn:
+            icon = NewsSiteRepository(conn).find_icon(site_id)
+            if icon is None:
+                raise HTTPException(status_code=404, detail="News site icon not found")
+            return icon
+
+    def clear_icon(self, site_id: int) -> NewsSiteResponse:
+        with get_db() as conn:
+            repo = NewsSiteRepository(conn)
+            row = repo.update(
+                site_id,
+                {
+                    "icon_url": None,
+                    "icon_data": None,
+                    "icon_media_type": None,
+                },
+            )
+            if row is None:
+                raise HTTPException(status_code=404, detail="News site not found")
             return self._to_response(row)
 
     def delete(self, site_id: int) -> None:
@@ -641,6 +700,9 @@ class NewsSiteService:
                             chunk_index=index,
                             chunk_count=len(chunks),
                             include_summary=include_summary,
+                            icon_url=str(row["icon_url"])
+                            if row.get("icon_url")
+                            else None,
                         ),
                     )
                     if response.status_code >= 400:

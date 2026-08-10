@@ -201,6 +201,27 @@ pub async fn send_rss_webhook(
     articles: &[Article<'_>],
     include_summary: bool,
 ) -> Result<(), Box<dyn Error>> {
+    send_rss_webhook_with_icon(
+        webhook_url,
+        feed_title,
+        feed_url,
+        embeds,
+        articles,
+        include_summary,
+        None,
+    )
+    .await
+}
+
+pub async fn send_rss_webhook_with_icon(
+    webhook_url: &str,
+    feed_title: &str,
+    feed_url: &str,
+    embeds: &[Embed<'_>],
+    articles: &[Article<'_>],
+    include_summary: bool,
+    icon_url: Option<&str>,
+) -> Result<(), Box<dyn Error>> {
     send_article_webhook(
         webhook_url,
         feed_title,
@@ -209,6 +230,7 @@ pub async fn send_rss_webhook(
         embeds,
         articles,
         include_summary,
+        icon_url,
     )
     .await
 }
@@ -221,6 +243,7 @@ async fn send_article_webhook(
     embeds: &[Embed<'_>],
     articles: &[Article<'_>],
     include_summary: bool,
+    icon_url: Option<&str>,
 ) -> Result<(), Box<dyn Error>> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(10))
@@ -252,7 +275,12 @@ async fn send_article_webhook(
                 payload
             })
             .collect();
-        let payload = build_payload(webhook_service, content, embeds_payload);
+        let mut payload = build_payload(webhook_service, content, embeds_payload);
+        if webhook_service == "discord"
+            && let Some(icon_url) = icon_url
+        {
+            payload["avatar_url"] = serde_json::json!(icon_url);
+        }
 
         let response = match post_with_retry(&client, webhook_url, &payload).await {
             Ok(response) => response,

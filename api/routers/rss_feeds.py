@@ -1,4 +1,7 @@
-from fastapi import APIRouter, Depends, Query
+from urllib.parse import urlparse
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi.responses import Response
 
 from api.dependencies import get_rss_feed_service
 from api.model.models import (
@@ -13,6 +16,13 @@ from api.model.models import (
 from api.services.rss_feed_service import RSSFeedService
 
 router = APIRouter(prefix="/rss-feeds", tags=["rss-feeds"])
+
+
+def _validate_public_icon_url(value: str) -> str:
+    parsed = urlparse(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise HTTPException(status_code=422, detail="public_url must be an HTTP URL")
+    return value
 
 
 @router.post("", status_code=201, response_model=RSSFeedResponse)
@@ -37,7 +47,43 @@ def get_rss_feed(feed_id: int, service: RSSFeedService = Depends(get_rss_feed_se
     return service.get(feed_id)
 
 
-@router.get("/{feed_id}/articles", status_code=200, response_model=RSSFeedArticleListResponse)
+@router.put("/{feed_id}/icon", response_model=RSSFeedResponse)
+async def upload_rss_feed_icon(
+    feed_id: int,
+    file: UploadFile = File(...),
+    public_url: str = Form(...),
+    service: RSSFeedService = Depends(get_rss_feed_service),
+):
+    return service.set_icon(
+        feed_id,
+        content=await file.read(),
+        media_type=file.content_type or "",
+        public_url=_validate_public_icon_url(public_url),
+    )
+
+
+@router.get("/{feed_id}/icon")
+def get_rss_feed_icon(
+    feed_id: int, service: RSSFeedService = Depends(get_rss_feed_service)
+):
+    content, media_type = service.get_icon(feed_id)
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Cache-Control": "no-cache"},
+    )
+
+
+@router.delete("/{feed_id}/icon", response_model=RSSFeedResponse)
+def delete_rss_feed_icon(
+    feed_id: int, service: RSSFeedService = Depends(get_rss_feed_service)
+):
+    return service.clear_icon(feed_id)
+
+
+@router.get(
+    "/{feed_id}/articles", status_code=200, response_model=RSSFeedArticleListResponse
+)
 def list_rss_feed_articles(
     feed_id: int,
     q: str | None = None,

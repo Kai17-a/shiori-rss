@@ -18,6 +18,7 @@ pub struct RSSFeed {
     pub title: String,
     pub description: Option<String>,
     pub notify_webhook_enabled: i64,
+    pub icon_url: Option<String>,
     pub webhook_ids: Vec<u32>,
     pub created_at: String,
     pub updated_at: String,
@@ -100,12 +101,22 @@ pub fn webhook_summary_enabled(conn: &Connection) -> Result<bool> {
 
 pub fn fetch_rss_feeds(conn: &Connection) -> Result<Vec<RSSFeed>> {
     let has_notify_webhook_enabled = has_column(conn, "rss_feeds", "notify_webhook_enabled")?;
-    let query = if has_notify_webhook_enabled {
-        "SELECT id, url, title, description, notify_webhook_enabled, created_at, updated_at FROM rss_feeds"
+    let has_icon_url = has_column(conn, "rss_feeds", "icon_url")?;
+    let icon_select = if has_icon_url {
+        "icon_url"
     } else {
-        "SELECT id, url, title, description, 1 AS notify_webhook_enabled, created_at, updated_at FROM rss_feeds"
+        "NULL AS icon_url"
     };
-    let mut stmt = conn.prepare(query)?;
+    let query = if has_notify_webhook_enabled {
+        format!(
+            "SELECT id, url, title, description, notify_webhook_enabled, {icon_select}, created_at, updated_at FROM rss_feeds"
+        )
+    } else {
+        format!(
+            "SELECT id, url, title, description, 1 AS notify_webhook_enabled, {icon_select}, created_at, updated_at FROM rss_feeds"
+        )
+    };
+    let mut stmt = conn.prepare(&query)?;
     let rss_feed_iter = stmt.query_map([], |row| {
         Ok(RSSFeed {
             id: row.get(0)?,
@@ -113,9 +124,10 @@ pub fn fetch_rss_feeds(conn: &Connection) -> Result<Vec<RSSFeed>> {
             title: row.get(2)?,
             description: row.get(3)?,
             notify_webhook_enabled: row.get(4)?,
+            icon_url: row.get(5)?,
             webhook_ids: Vec::new(),
-            created_at: row.get(5)?,
-            updated_at: row.get(6)?,
+            created_at: row.get(6)?,
+            updated_at: row.get(7)?,
         })
     })?;
 

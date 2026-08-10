@@ -20,6 +20,9 @@ erDiagram
         TEXT url UK
         TEXT title
         TEXT description
+        TEXT icon_url
+        BLOB icon_data
+        TEXT icon_media_type
         INTEGER notify_webhook_enabled
         TEXT created_at
         TEXT updated_at
@@ -52,6 +55,9 @@ erDiagram
         TEXT title
         TEXT description
         TEXT scrape_config
+        TEXT icon_url
+        BLOB icon_data
+        TEXT icon_media_type
         INTEGER notify_webhook_enabled
         TEXT created_at
         TEXT updated_at
@@ -126,7 +132,7 @@ erDiagram
     }
 ```
 
-`rss_feed_articles.published` はRSS XMLの公開日時をISO 8601形式で保持し、XMLに含まれるUTCオフセットを維持する。`rss_feed_articles.webhook_notified` と `news_site_articles.webhook_notified` は1件以上の送信先への通知成功後だけ真になる。未通知行はWebhook登録後の実行で再送対象になる。`app_settings` で `rss_periodic_execution_enabled`、`rss_webhook_notification_enabled`、`webhook_include_summary_enabled` に加え、`llm_provider`、`llm_base_url`、`llm_api_key`、`llm_model`、AI記事解析の有効化・件数・日次トークン上限・対象期間を保持する。LLM API key はAPIレスポンスへ返さない。ブックマーク、フォルダ、タグのテーブルは現行スキーマに存在しない。
+`rss_feeds` と `news_sites` のアイコンは、外部画像の場合は `icon_url` のみ、アップロードの場合は公開用API URLと `icon_data` / `icon_media_type` を保持する。`rss_feed_articles.published` はRSS XMLの公開日時をISO 8601形式で保持し、XMLに含まれるUTCオフセットを維持する。`rss_feed_articles.webhook_notified` と `news_site_articles.webhook_notified` は1件以上の送信先への通知成功後だけ真になる。未通知行はWebhook登録後の実行で再送対象になる。`app_settings` で `rss_periodic_execution_enabled`、`rss_webhook_notification_enabled`、`webhook_include_summary_enabled` に加え、`llm_provider`、`llm_base_url`、`llm_api_key`、`llm_model`、AI記事解析の有効化・件数・日次トークン上限・対象期間を保持する。LLM API key はAPIレスポンスへ返さない。ブックマーク、フォルダ、タグのテーブルは現行スキーマに存在しない。
 
 `article_search` はFTS5の仮想テーブルで、通常RSSとカスタムRSSの記事タイトル、保存済みサマリー、フィード名を三文字単位で索引化する。記事の追加・更新・削除とフィード名変更はSQLiteトリガーで同期する。
 

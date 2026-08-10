@@ -3,6 +3,7 @@ export interface NewsSiteCreateRequest {
   title?: string | null;
   description?: string | null;
   webhook_ids?: number[];
+  icon_url?: string | null;
 }
 
 export interface NewsSiteUpdateRequest {
@@ -12,6 +13,7 @@ export interface NewsSiteUpdateRequest {
   notify_webhook_enabled?: boolean | null;
   webhook_ids?: number[] | null;
   reanalyze?: boolean;
+  icon_url?: string | null;
 }
 
 export interface NewsSiteResponse {
@@ -21,6 +23,8 @@ export interface NewsSiteResponse {
   description: string | null;
   notify_webhook_enabled: boolean;
   webhook_ids: number[];
+  icon_url: string | null;
+  icon_uploaded: boolean;
   created_at: string;
   updated_at: string;
 }
