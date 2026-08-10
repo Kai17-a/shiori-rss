@@ -230,7 +230,7 @@ test("opens and displays saved AI article analysis data", async ({ page }) => {
   });
 
   await page.goto("/settings?tab=llm");
-  await page.getByRole("link", { name: "View analysis data" }).click();
+  await page.getByRole("link", { name: "AI analysis data", exact: true }).click();
 
   await expect(page).toHaveURL(/\/ai-data$/);
   await expect(page.getByRole("heading", { name: "Analyzed articles" })).toBeVisible();
