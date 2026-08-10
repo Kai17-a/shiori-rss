@@ -40,6 +40,18 @@
           </div>
 
           <UAlert
+            v-if="analysisRunning"
+            role="status"
+            aria-live="polite"
+            title="Article analysis is running"
+            description="Saved articles are being analyzed. This page will update when the run finishes."
+            color="info"
+            variant="soft"
+            icon="i-lucide-loader-circle"
+            :ui="{ leadingIcon: 'animate-spin' }"
+          />
+
+          <UAlert
             v-if="analysisRunError"
             role="alert"
             title="Article analysis stopped"

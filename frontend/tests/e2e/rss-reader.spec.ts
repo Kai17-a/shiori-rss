@@ -292,10 +292,12 @@ test("runs article analysis manually with a loading state", async ({ page }) => 
 
   await expect(runButton).toBeDisabled();
   await expect(runButton.locator(".animate-spin")).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("Article analysis is running");
   expect(executionRequests).toBe(1);
   releaseAnalysis();
   await expect(page.getByText("Article analysis completed.", { exact: true })).toBeVisible();
   await expect(runButton).toBeEnabled();
+  await expect(page.getByRole("status")).toBeHidden();
 });
 
 test("disables manual analysis while the server reports a running job", async ({ page }) => {
@@ -324,6 +326,7 @@ test("disables manual analysis while the server reports a running job", async ({
   await expect(runButton).toBeDisabled();
   await expect(runButton).toContainText("Analysis running");
   await expect(runButton.locator(".animate-spin")).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("Article analysis is running");
 });
 
 test("shows an alert when manual article analysis stops with an error", async ({ page }) => {
