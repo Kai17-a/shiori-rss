@@ -78,7 +78,7 @@ fn acquire_run_lock(conn: &Connection) -> rusqlite::Result<Option<AnalysisRunLoc
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
-    let token = now.to_string();
+    let token = format!("{now}:{}", std::process::id());
     let stale_before = now.saturating_sub(ANALYSIS_LOCK_TTL_SECONDS).to_string();
     let changed = conn.execute(
         r#"
