@@ -25,7 +25,17 @@
                 Inspect the summaries and metadata saved by the article analysis batch.
               </p>
             </div>
-            <RefreshButton :loading="loading" @click="loadAnalyses(true)" />
+            <div class="flex flex-wrap items-center gap-2">
+              <RefreshButton :loading="loading" @click="loadAnalyses(true)" />
+              <UButton
+                label="Run analysis now"
+                icon="i-lucide-play"
+                loading-icon="i-lucide-loader-circle"
+                :loading="analysisRunning"
+                :disabled="analysisRunning"
+                @click="runAnalysis"
+              />
+            </div>
           </div>
 
           <div class="grid gap-3 border-b border-default pb-5 md:grid-cols-[minmax(0,1fr)_12rem_12rem]">
@@ -152,11 +162,13 @@ import type {
   AIAnalysisSourceType,
   AIAnalysisStatus,
   AIArticleAnalysisListResponse,
+  SettingsAIArticleAnalysisRunResponse,
 } from "~/types";
 
 const { request } = useApi();
 const toast = useSingleToast();
 const loading = ref(false);
+const analysisRunning = ref(false);
 const loadError = ref("");
 const search = ref("");
 const sourceType = ref<AIAnalysisSourceType | "all">("all");
@@ -213,6 +225,40 @@ const loadAnalyses = async (showToast = false) => {
 const setPage = async (nextPage: number) => {
   page.value = Math.min(Math.max(nextPage, 1), pageCount.value);
   await loadAnalyses();
+};
+
+const runAnalysis = async () => {
+  if (analysisRunning.value) return;
+  analysisRunning.value = true;
+  try {
+    const response = await request<SettingsAIArticleAnalysisRunResponse>(
+      "/settings/ai-article-analysis/execute",
+      { method: "POST" },
+    );
+    const description = `${response.succeeded} succeeded, ${response.failed} failed, ${response.skipped_current} already current.`;
+    toast.show({
+      title: response.stopped_by_token_limit
+        ? "Analysis stopped at the daily token limit."
+        : response.processed
+          ? "Article analysis completed."
+          : "All eligible articles are already analyzed.",
+      description,
+      color: response.failed || response.stopped_by_token_limit ? "warning" : "success",
+      icon: response.failed || response.stopped_by_token_limit
+        ? "i-lucide-triangle-alert"
+        : "i-lucide-check",
+    });
+    await loadAnalyses();
+  } catch (error) {
+    toast.show({
+      title: "Failed to run article analysis.",
+      description: error instanceof Error ? error.message : undefined,
+      color: "error",
+      icon: "i-lucide-circle-alert",
+    });
+  } finally {
+    analysisRunning.value = false;
+  }
 };
 
 watch([search, sourceType, status], async () => {

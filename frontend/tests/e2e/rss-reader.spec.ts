@@ -245,25 +245,15 @@ test("runs article analysis manually with a loading state", async ({ page }) => 
   const analysisPending = new Promise<void>((resolve) => {
     releaseAnalysis = resolve;
   });
-  await page.route(/\/api\/settings\/llm\/?$/, async (route) => {
+  await page.route(/\/api\/ai\/article-analyses/, async (route) => {
     await route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
-        provider: "openai",
-        base_url: "https://llm.example.com/v1",
-        api_key_configured: true,
-        model: "example-model",
-      }),
-    });
-  });
-  await page.route(/\/api\/settings\/ai-article-analysis\/?$/, async (route) => {
-    await route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({
-        enabled: false,
-        max_articles_per_run: 20,
-        daily_token_limit: 50000,
-        lookback_days: 30,
+        items: [],
+        total: 0,
+        page: 1,
+        per_page: 20,
+        total_pages: 0,
       }),
     });
   });
@@ -282,8 +272,9 @@ test("runs article analysis manually with a loading state", async ({ page }) => 
     });
   });
 
-  await page.goto("/settings?tab=llm");
-  const runButton = page.getByRole("button", { name: "Run analysis now" });
+  await page.goto("/ai-data");
+  await expect(page.getByRole("heading", { name: "Analyzed articles" })).toBeVisible();
+  const runButton = page.locator('button:has-text("Run analysis now")');
   await expect(runButton).toBeEnabled();
   await runButton.evaluate((button: HTMLButtonElement) => {
     button.click();

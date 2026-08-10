@@ -265,18 +265,6 @@
                 Save article analysis settings
               </UButton>
               <UButton
-                type="button"
-                color="neutral"
-                variant="soft"
-                icon="i-lucide-play"
-                loading-icon="i-lucide-loader-circle"
-                :loading="aiAnalysisRunning"
-                :disabled="aiAnalysisLoading || aiAnalysisSaving || aiAnalysisRunning || !llmConfigured"
-                @click="runAiAnalysis"
-              >
-                Run analysis now
-              </UButton>
-              <UButton
                 to="/ai-data"
                 type="button"
                 color="neutral"
@@ -434,7 +422,6 @@ import type {
   SettingsRssExecutionResponse,
   SettingsRssWebhookNotificationResponse,
   SettingsAIArticleAnalysisResponse,
-  SettingsAIArticleAnalysisRunResponse,
 } from "~/types";
 
 const colorMode = useColorMode();
@@ -501,7 +488,6 @@ const llmDeleting = ref(false);
 const llmDeleteOpen = ref(false);
 const aiAnalysisLoading = ref(false);
 const aiAnalysisSaving = ref(false);
-const aiAnalysisRunning = ref(false);
 const aiAnalysisForm = reactive({
   enabled: false,
   maxArticlesPerRun: 20,
@@ -797,39 +783,6 @@ const saveAiAnalysisSettings = async () => {
     });
   } finally {
     aiAnalysisSaving.value = false;
-  }
-};
-
-const runAiAnalysis = async () => {
-  if (aiAnalysisRunning.value) return;
-  aiAnalysisRunning.value = true;
-  try {
-    const response = await request<SettingsAIArticleAnalysisRunResponse>(
-      "/settings/ai-article-analysis/execute",
-      { method: "POST" },
-    );
-    const description = `${response.succeeded} succeeded, ${response.failed} failed, ${response.skipped_current} already current.`;
-    toast.show({
-      title: response.stopped_by_token_limit
-        ? "Analysis stopped at the daily token limit."
-        : response.processed
-          ? "Article analysis completed."
-          : "All eligible articles are already analyzed.",
-      description,
-      color: response.failed || response.stopped_by_token_limit ? "warning" : "success",
-      icon: response.failed || response.stopped_by_token_limit
-        ? "i-lucide-triangle-alert"
-        : "i-lucide-check",
-    });
-  } catch (err) {
-    toast.show({
-      title: "Failed to run article analysis.",
-      description: err instanceof Error ? err.message : undefined,
-      color: "error",
-      icon: "i-lucide-circle-alert",
-    });
-  } finally {
-    aiAnalysisRunning.value = false;
   }
 };
 
