@@ -17,6 +17,7 @@ def client(tmp_path, monkeypatch):
     build_test_db(db_path)
 
     import api.database as db_module
+    import api.services.article_analysis_service as analysis_module
     import api.services.settings_service as settings_module
 
     @contextmanager
@@ -34,6 +35,7 @@ def client(tmp_path, monkeypatch):
             conn.close()
 
     monkeypatch.setattr(db_module, "get_db", patched_get_db)
+    monkeypatch.setattr(analysis_module, "get_db", patched_get_db)
     monkeypatch.setattr(settings_module, "get_db", patched_get_db)
 
     with TestClient(app) as c:
@@ -389,6 +391,36 @@ def test_ai_article_analysis_can_run_manually_while_schedule_is_disabled(
         "skipped_current": 3,
         "stopped_by_token_limit": False,
     }
+
+
+def test_ai_article_analysis_status_reports_manual_run(client):
+    import api.services.article_analysis_service as analysis_module
+
+    assert client.get("/settings/ai-article-analysis/status").json() == {
+        "running": False
+    }
+    assert analysis_module._manual_run_lock.acquire(blocking=False)
+    try:
+        response = client.get("/settings/ai-article-analysis/status")
+        assert response.status_code == 200
+        assert response.json() == {"running": True}
+    finally:
+        analysis_module._manual_run_lock.release()
+
+
+def test_ai_article_analysis_status_reports_batch_lock(client):
+    import api.services.article_analysis_service as analysis_module
+
+    with analysis_module.get_db() as conn:
+        conn.execute(
+            "INSERT INTO app_settings (key, value) VALUES (?, ?)",
+            ("ai_article_analysis_running", str(int(analysis_module.time.time()))),
+        )
+
+    response = client.get("/settings/ai-article-analysis/status")
+
+    assert response.status_code == 200
+    assert response.json() == {"running": True}
 
 
 def test_llm_settings_are_tested_before_save_and_do_not_expose_api_key(

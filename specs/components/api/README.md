@@ -9,6 +9,7 @@ FastAPI は `/health`、`/dashboard`、`/rss-feeds`、`/news-sites`、`/settings
 - Dashboard: リクエスト受信時刻を基準に、通常RSS・カスタムRSSの件数、直近24時間の記事数、未通知数、直近24時間の記事を集約して返す
 - Settings: Webhook CRUD・疎通確認、定期実行、定期通知、記事概要、デフォルトOFFのAI記事解析と利用上限の設定
 - AI article analysis execution: `POST /settings/ai-article-analysis/execute` からRustバッチのAI解析専用モードを同期実行し、処理・成功・失敗・解析済みスキップ件数と日次上限到達状態を返す
+- AI article analysis status: `GET /settings/ai-article-analysis/status` はAPIプロセス内の手動実行ロックとSQLiteの有効なバッチロックを確認し、手動・定期のどちらかが実行中なら `running: true` を返す
 - AI article analysis data: `GET /ai/article-analyses` は記事・配信元情報と解析済みの要約、要点、トピック、キーワード、固有表現、モデル、トークン数、状態、失敗内容を結合して返す。記事・配信元・AI要約の検索、通常RSS・Custom RSSの種別、成功・失敗状態、ページングで絞り込める
 - ローカル開発では `mise run dev` がRustバッチをビルドして `SHIORI_FEED_BATCH_BIN` をAPIへ渡す。本番コンテナではPATH上のインストール済みバイナリを使用する。
 - 手動AI解析のRust標準出力・標準エラーはAPIが行単位で `uvicorn.error` ログへ転送し、最終JSONだけをAPIレスポンスへ変換する。

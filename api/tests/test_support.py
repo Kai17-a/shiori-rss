@@ -99,7 +99,9 @@ class CompatTestClient:
                 return self._ok(payload)
             if method == "GET":
                 content, media_type = service.get_icon(feed_id)
-                return Response(200, content=content, headers={"content-type": media_type})
+                return Response(
+                    200, content=content, headers={"content-type": media_type}
+                )
             if method == "DELETE":
                 return self._ok(service.clear_icon(feed_id).model_dump())
         if len(parts) == 3 and parts[2] == "articles" and method == "GET":
@@ -174,7 +176,9 @@ class CompatTestClient:
                 return self._ok(payload)
             if method == "GET":
                 content, media_type = service.get_icon(site_id)
-                return Response(200, content=content, headers={"content-type": media_type})
+                return Response(
+                    200, content=content, headers={"content-type": media_type}
+                )
             if method == "DELETE":
                 return self._ok(service.clear_icon(site_id).model_dump())
         if len(parts) == 3 and parts[2] == "articles" and method == "GET":
@@ -206,6 +210,8 @@ class CompatTestClient:
         service = SettingsService()
         if method == "POST" and path == "/settings/ai-article-analysis/execute":
             return self._ok(ArticleAnalysisService().run_manual().model_dump())
+        if method == "GET" and path == "/settings/ai-article-analysis/status":
+            return self._ok(ArticleAnalysisService().status().model_dump())
         if method == "GET" and path == "/settings/llm":
             return self._ok(service.get_llm_settings().model_dump())
         if method == "PUT" and path == "/settings/llm":
@@ -291,7 +297,9 @@ class CompatTestClient:
             response = self._rss_response(method, parsed.path, query, json, kwargs)
             if response is not None:
                 return response
-            response = self._news_site_response(method, parsed.path, query, json, kwargs)
+            response = self._news_site_response(
+                method, parsed.path, query, json, kwargs
+            )
             if response is not None:
                 return response
             response = self._settings_response(method, parsed.path, json)

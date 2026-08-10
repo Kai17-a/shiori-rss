@@ -28,7 +28,8 @@
             <div class="flex flex-wrap items-center gap-2">
               <RefreshButton :loading="loading" @click="loadAnalyses(true)" />
               <UButton
-                label="Run analysis now"
+                :label="analysisRunning ? 'Analysis running' : 'Run analysis now'"
+                aria-label="Run analysis now"
                 icon="i-lucide-play"
                 loading-icon="i-lucide-loader-circle"
                 :loading="analysisRunning"
@@ -163,12 +164,14 @@ import type {
   AIAnalysisStatus,
   AIArticleAnalysisListResponse,
   SettingsAIArticleAnalysisRunResponse,
+  SettingsAIArticleAnalysisStatusResponse,
 } from "~/types";
 
 const { request } = useApi();
 const toast = useSingleToast();
 const loading = ref(false);
 const analysisRunning = ref(false);
+let statusPoll: ReturnType<typeof setInterval> | undefined;
 const loadError = ref("");
 const search = ref("");
 const sourceType = ref<AIAnalysisSourceType | "all">("all");
@@ -227,6 +230,17 @@ const setPage = async (nextPage: number) => {
   await loadAnalyses();
 };
 
+const loadAnalysisStatus = async () => {
+  try {
+    const response = await request<SettingsAIArticleAnalysisStatusResponse>(
+      "/settings/ai-article-analysis/status",
+    );
+    analysisRunning.value = response.running;
+  } catch {
+    // Keep the last known state when a background status check fails.
+  }
+};
+
 const runAnalysis = async () => {
   if (analysisRunning.value) return;
   analysisRunning.value = true;
@@ -266,5 +280,12 @@ watch([search, sourceType, status], async () => {
   await loadAnalyses();
 });
 
-onMounted(() => loadAnalyses());
+onMounted(async () => {
+  await Promise.all([loadAnalyses(), loadAnalysisStatus()]);
+  statusPoll = setInterval(loadAnalysisStatus, 3000);
+});
+
+onBeforeUnmount(() => {
+  if (statusPoll) clearInterval(statusPoll);
+});
 </script>

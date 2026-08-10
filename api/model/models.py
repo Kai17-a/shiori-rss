@@ -473,6 +473,10 @@ class SettingsAIArticleAnalysisRunResponse(BaseModel):
     stopped_by_token_limit: bool
 
 
+class SettingsAIArticleAnalysisStatusResponse(BaseModel):
+    running: bool
+
+
 class SettingsWebhookSummaryResponse(BaseModel):
     enabled: bool
 

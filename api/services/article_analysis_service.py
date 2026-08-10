@@ -4,17 +4,23 @@ import os
 import shutil
 import subprocess
 import threading
+import time
 from pathlib import Path
 
 from fastapi import HTTPException
 from pydantic import ValidationError
 
-from api.model.models import SettingsAIArticleAnalysisRunResponse
+from api.database import get_db
+from api.model.models import (
+    SettingsAIArticleAnalysisRunResponse,
+    SettingsAIArticleAnalysisStatusResponse,
+)
 
 _manual_run_lock = threading.Lock()
 _REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 _logger = logging.getLogger("uvicorn.error")
 _RUN_TIMEOUT_SECONDS = 7200
+_RUN_LOCK_KEY = "ai_article_analysis_running"
 
 
 def _batch_command() -> list[str]:
@@ -42,6 +48,22 @@ def _batch_command() -> list[str]:
 
 
 class ArticleAnalysisService:
+    def status(self) -> SettingsAIArticleAnalysisStatusResponse:
+        if _manual_run_lock.locked():
+            return SettingsAIArticleAnalysisStatusResponse(running=True)
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT value FROM app_settings WHERE key = ?", (_RUN_LOCK_KEY,)
+            ).fetchone()
+        if row is None:
+            return SettingsAIArticleAnalysisStatusResponse(running=False)
+        try:
+            started_at = int(row["value"])
+        except (TypeError, ValueError):
+            return SettingsAIArticleAnalysisStatusResponse(running=False)
+        running = 0 <= int(time.time()) - started_at < _RUN_TIMEOUT_SECONDS
+        return SettingsAIArticleAnalysisStatusResponse(running=running)
+
     def run_manual(self) -> SettingsAIArticleAnalysisRunResponse:
         if not _manual_run_lock.acquire(blocking=False):
             raise HTTPException(

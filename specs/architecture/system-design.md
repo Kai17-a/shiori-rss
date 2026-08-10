@@ -35,6 +35,7 @@
 | POST | `/settings/llm/test` | LLM疎通テスト |
 | GET/PUT | `/settings/ai-article-analysis` | AI記事事前解析の有効化と上限設定 |
 | POST | `/settings/ai-article-analysis/execute` | 定期実行設定に依存しないAI記事解析の手動実行 |
+| GET | `/settings/ai-article-analysis/status` | API手動実行ロックとSQLiteバッチロックを統合したAI記事解析の実行状態 |
 | POST | `/ai/chat` | 保存済み記事の横断検索と根拠付きLLM回答 |
 | POST | `/ai/chat/stream` | 出典とLLM回答差分をNDJSONで逐次返すAsk AI |
 | GET | `/ai/article-analyses` | 保存済みAI記事解析データの検索・絞り込み・ページング一覧 |

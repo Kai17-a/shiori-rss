@@ -241,6 +241,7 @@ test("opens and displays saved AI article analysis data", async ({ page }) => {
 
 test("runs article analysis manually with a loading state", async ({ page }) => {
   let executionRequests = 0;
+  let jobRunning = false;
   let releaseAnalysis = () => {};
   const analysisPending = new Promise<void>((resolve) => {
     releaseAnalysis = resolve;
@@ -257,9 +258,17 @@ test("runs article analysis manually with a loading state", async ({ page }) => 
       }),
     });
   });
+  await page.route(/\/api\/settings\/ai-article-analysis\/status\/?$/, async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ running: jobRunning }),
+    });
+  });
   await page.route(/\/api\/settings\/ai-article-analysis\/execute\/?$/, async (route) => {
     executionRequests += 1;
+    jobRunning = true;
     await analysisPending;
+    jobRunning = false;
     await route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
@@ -274,7 +283,7 @@ test("runs article analysis manually with a loading state", async ({ page }) => 
 
   await page.goto("/ai-data");
   await expect(page.getByRole("heading", { name: "Analyzed articles" })).toBeVisible();
-  const runButton = page.locator('button:has-text("Run analysis now")');
+  const runButton = page.getByRole("button", { name: "Run analysis now" });
   await expect(runButton).toBeEnabled();
   await runButton.evaluate((button: HTMLButtonElement) => {
     button.click();
@@ -287,6 +296,34 @@ test("runs article analysis manually with a loading state", async ({ page }) => 
   releaseAnalysis();
   await expect(page.getByText("Article analysis completed.", { exact: true })).toBeVisible();
   await expect(runButton).toBeEnabled();
+});
+
+test("disables manual analysis while the server reports a running job", async ({ page }) => {
+  await page.route(/\/api\/ai\/article-analyses/, async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        items: [],
+        total: 0,
+        page: 1,
+        per_page: 20,
+        total_pages: 0,
+      }),
+    });
+  });
+  await page.route(/\/api\/settings\/ai-article-analysis\/status\/?$/, async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ running: true }),
+    });
+  });
+
+  await page.goto("/ai-data");
+
+  const runButton = page.getByRole("button", { name: "Run analysis now" });
+  await expect(runButton).toBeDisabled();
+  await expect(runButton).toContainText("Analysis running");
+  await expect(runButton.locator(".animate-spin")).toBeVisible();
 });
 
 test("groups automation controls under the settings tabs", async ({ page }) => {

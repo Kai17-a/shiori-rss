@@ -51,6 +51,10 @@ export interface SettingsAIArticleAnalysisRunResponse {
   stopped_by_token_limit: boolean;
 }
 
+export interface SettingsAIArticleAnalysisStatusResponse {
+  running: boolean;
+}
+
 export type LLMProvider = "vllm" | "ollama" | "openai";
 
 export interface LLMSettingsResponse {
