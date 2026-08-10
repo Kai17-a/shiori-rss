@@ -14,9 +14,15 @@
       >
         <template #title>
           <div class="flex items-center gap-3">
-            <span class="grid size-12 shrink-0 place-items-center rounded-2xl bg-primary text-inverted shadow-sm">
-              <UIcon name="i-lucide-sparkles" class="size-6" />
-            </span>
+            <UAvatar
+              :src="site?.icon_url || undefined"
+              :alt="site?.title || 'Custom RSS feed'"
+              icon="i-lucide-sparkles"
+              size="2xl"
+              color="primary"
+              class="shrink-0 rounded-2xl shadow-sm"
+              :ui="{ icon: 'size-6' }"
+            />
             <div>
               <p class="text-xs font-semibold uppercase tracking-[0.16em] text-primary">Custom feed channel</p>
               <h1 class="mt-1 text-3xl font-bold tracking-tight text-highlighted">{{ site?.title }}</h1>
