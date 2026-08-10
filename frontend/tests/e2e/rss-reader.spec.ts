@@ -326,6 +326,43 @@ test("disables manual analysis while the server reports a running job", async ({
   await expect(runButton.locator(".animate-spin")).toBeVisible();
 });
 
+test("shows an alert when manual article analysis stops with an error", async ({ page }) => {
+  await page.route(/\/api\/ai\/article-analyses/, async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        items: [],
+        total: 0,
+        page: 1,
+        per_page: 20,
+        total_pages: 0,
+      }),
+    });
+  });
+  await page.route(/\/api\/settings\/ai-article-analysis\/status\/?$/, async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ running: false }),
+    });
+  });
+  await page.route(/\/api\/settings\/ai-article-analysis\/execute\/?$/, async (route) => {
+    await route.fulfill({
+      status: 502,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "The LLM provider stopped responding." }),
+    });
+  });
+
+  await page.goto("/ai-data");
+  await page.getByRole("button", { name: "Run analysis now" }).click();
+
+  const alert = page.getByRole("alert").filter({ hasText: "Article analysis stopped" });
+  await expect(alert).toBeVisible();
+  await expect(alert).toContainText("The LLM provider stopped responding.");
+  await alert.getByRole("button", { name: "Dismiss" }).click();
+  await expect(alert).toBeHidden();
+});
+
 test("groups automation controls under the settings tabs", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto("/settings?tab=automation");

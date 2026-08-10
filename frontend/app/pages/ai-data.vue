@@ -39,6 +39,26 @@
             </div>
           </div>
 
+          <UAlert
+            v-if="analysisRunError"
+            role="alert"
+            title="Article analysis stopped"
+            :description="analysisRunError"
+            color="error"
+            variant="soft"
+            icon="i-lucide-circle-alert"
+          >
+            <template #actions>
+              <UButton
+                label="Dismiss"
+                color="error"
+                variant="ghost"
+                size="xs"
+                @click="analysisRunError = ''"
+              />
+            </template>
+          </UAlert>
+
           <div class="grid gap-3 border-b border-default pb-5 md:grid-cols-[minmax(0,1fr)_12rem_12rem]">
             <UInput
               v-model="search"
@@ -171,6 +191,7 @@ const { request } = useApi();
 const toast = useSingleToast();
 const loading = ref(false);
 const analysisRunning = ref(false);
+const analysisRunError = ref("");
 let statusPoll: ReturnType<typeof setInterval> | undefined;
 const loadError = ref("");
 const search = ref("");
@@ -243,6 +264,7 @@ const loadAnalysisStatus = async () => {
 
 const runAnalysis = async () => {
   if (analysisRunning.value) return;
+  analysisRunError.value = "";
   analysisRunning.value = true;
   try {
     const response = await request<SettingsAIArticleAnalysisRunResponse>(
@@ -264,9 +286,11 @@ const runAnalysis = async () => {
     });
     await loadAnalyses();
   } catch (error) {
+    analysisRunError.value =
+      error instanceof Error ? error.message : "Article analysis stopped unexpectedly.";
     toast.show({
       title: "Failed to run article analysis.",
-      description: error instanceof Error ? error.message : undefined,
+      description: analysisRunError.value,
       color: "error",
       icon: "i-lucide-circle-alert",
     });
