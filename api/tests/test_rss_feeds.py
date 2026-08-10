@@ -188,7 +188,7 @@ def test_execute_rss_feed_supports_microsoft_teams_adaptive_cards(client, monkey
     first_article = card["body"][1]["items"]
     assert card["body"][1]["spacing"] == "Medium"
     assert "separator" not in card["body"][1]
-    assert first_article[0]["text"] == "• [Item 1](https://example.com/item-1)"
+    assert first_article[0]["text"] == "- [Item 1](https://example.com/item-1)"
     assert not any(item["type"] == "ActionSet" for item in first_article)
 
     summary_payload = webhook_module.build_rss_notification_payload(

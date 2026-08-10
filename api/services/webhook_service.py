@@ -202,7 +202,7 @@ def build_rss_notification_payload(
             article_body: list[dict[str, object]] = [
                 {
                     "type": "TextBlock",
-                    "text": f"• [{title}]({url})",
+                    "text": f"- [{title}]({url})",
                     "weight": "Bolder",
                     "wrap": True,
                 }

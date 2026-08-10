@@ -126,7 +126,7 @@ pub(crate) fn build_payload(
                 let url = embed["url"].as_str().unwrap_or("(no link)");
                 let mut items = vec![serde_json::json!({
                     "type": "TextBlock",
-                    "text": format!("• [{}]({})", title, url),
+                    "text": format!("- [{}]({})", title, url),
                     "weight": "Bolder",
                     "wrap": true,
                 })];
