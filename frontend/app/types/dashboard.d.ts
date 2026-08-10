@@ -9,6 +9,7 @@ export interface DashboardArticle {
   source_type: "rss" | "custom";
   source_id: number;
   source_title: string;
+  source_icon_url: string | null;
   url: string;
   title: string | null;
   summary: string | null;
