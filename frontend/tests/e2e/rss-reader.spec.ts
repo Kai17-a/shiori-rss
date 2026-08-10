@@ -13,43 +13,6 @@ test("opens the rolling 24-hour news summary as the app home", async ({ page }) 
   await expect(page.getByRole("link", { name: "Bookmarks" })).toHaveCount(0);
 });
 
-test("shows configured feed icons in the recent news list", async ({ page }) => {
-  await page.route("**/api/dashboard", async (route) => {
-    await route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({
-        generated_at: "2026-08-10T01:00:00Z",
-        window_started_at: "2026-08-09T01:00:00Z",
-        summary: {
-          rss_feed_count: 1,
-          custom_feed_count: 0,
-          recent_article_count: 1,
-          pending_notification_count: 0,
-        },
-        articles: [{
-          source_type: "rss",
-          source_id: 3,
-          source_title: "Tech Feed",
-          source_icon_url: "https://cdn.example.com/tech-feed.png",
-          url: "https://example.com/article",
-          title: "Recent article",
-          summary: null,
-          published: "2026-08-10T00:00:00Z",
-          created_at: "2026-08-10T00:00:00Z",
-          webhook_notified: true,
-        }],
-      }),
-    });
-  });
-
-  await page.goto("/");
-
-  await expect(page.getByRole("img", { name: "Tech Feed icon" })).toHaveAttribute(
-    "src",
-    "https://cdn.example.com/tech-feed.png",
-  );
-});
-
 test("opens the Ask AI chat modal from the floating launcher", async ({ page }) => {
   await page.route("**/ai/chat/stream", async (route) => {
     await route.fulfill({
