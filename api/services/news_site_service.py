@@ -113,7 +113,7 @@ def extract_news_articles(
         reference = f" Reference ID: {reference_id}." if reference_id else ""
         raise HTTPException(
             status_code=422,
-            detail=f"Selector validation error: The LLM generated invalid CSS.{reference}",
+            detail=f"Selector validation error: The configured CSS is invalid.{reference}",
         ) from exc
 
     articles: list[dict[str, object]] = []
@@ -147,7 +147,7 @@ def extract_news_articles(
             reference = f" Reference ID: {reference_id}." if reference_id else ""
             raise HTTPException(
                 status_code=422,
-                detail=f"Selector validation error: The LLM generated invalid CSS.{reference}",
+                detail=f"Selector validation error: The configured CSS is invalid.{reference}",
             ) from exc
 
         if not title or not link:
@@ -228,7 +228,7 @@ class NewsSiteService:
                 detail=(
                     "Target-site fetch error: Shiori Feed could not connect to the target "
                     "news site. "
-                    f"This failed before LLM analysis. Reference ID: {reference_id}."
+                    f"This failed before extraction setup. Reference ID: {reference_id}."
                 ),
             ) from exc
         if response.status_code >= 400:
@@ -253,7 +253,7 @@ class NewsSiteService:
                 status_code=422,
                 detail=(
                     f"Target-site fetch error: The site returned HTTP {response.status_code} "
-                    f"before LLM analysis. {reason} Reference ID: {reference_id}."
+                    f"before extraction setup. {reason} Reference ID: {reference_id}."
                 ),
             )
         if not response.text.strip():
@@ -265,7 +265,7 @@ class NewsSiteService:
             raise HTTPException(
                 status_code=422,
                 detail=(
-                    "Target-site fetch error: The site returned empty HTML before LLM analysis. "
+                    "Target-site fetch error: The site returned empty HTML before extraction setup. "
                     f"Reference ID: {reference_id}."
                 ),
             )
@@ -381,6 +381,40 @@ class NewsSiteService:
             )
         return scrape_config, articles
 
+    def _manual_config_and_test(
+        self,
+        url: str,
+        config: dict[str, object],
+        *,
+        site_title: str,
+    ) -> tuple[dict[str, object], list[dict[str, object]]]:
+        reference_id = new_diagnostic_reference()
+        scrape_config = {
+            **config,
+            "site_title": site_title,
+            "configuration_mode": "manual",
+        }
+        html = self._fetch_page(url, reference_id=reference_id)
+        articles = extract_news_articles(
+            html=html,
+            page_url=url,
+            scrape_config=scrape_config,
+            reference_id=reference_id,
+        )
+        if not articles:
+            diagnostics = _selector_diagnostics(html, scrape_config)
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "Manual selector extraction error: The configured selectors did not "
+                    "extract any article titles and links. "
+                    f"Matched {diagnostics['item_matches']} item(s), "
+                    f"{diagnostics['title_matches']} title(s), and "
+                    f"{diagnostics['link_matches']} link(s). Reference ID: {reference_id}."
+                ),
+            )
+        return scrape_config, articles
+
     def _verify_webhooks(self, conn, webhook_ids: list[int]) -> None:
         repo = WebhookEndpointRepository(conn)
         if any(repo.find_by_id(webhook_id) is None for webhook_id in webhook_ids):
@@ -395,9 +429,15 @@ class NewsSiteService:
         repo.set_webhook_ids(site_id, webhook_ids)
 
     def _to_response(self, row: dict) -> NewsSiteResponse:
-        response_row = {
-            key: value for key, value in row.items() if key != "scrape_config"
-        }
+        try:
+            scrape_config = json.loads(str(row["scrape_config"]))
+        except (TypeError, ValueError):
+            scrape_config = {}
+        response_row = {key: value for key, value in row.items() if key != "scrape_config"}
+        response_row["configuration_mode"] = (
+            "manual" if scrape_config.get("configuration_mode") == "manual" else "ai"
+        )
+        response_row["scrape_config"] = scrape_config
         return NewsSiteResponse(**response_row)
 
     def create(self, data: NewsSiteCreate) -> NewsSiteResponse:
@@ -411,8 +451,18 @@ class NewsSiteService:
             if data.webhook_ids is not None:
                 self._verify_webhooks(conn, data.webhook_ids)
 
-        scrape_config, _ = self._analyze_and_test(url)
-        title = data.title or str(scrape_config["site_title"])
+        if data.configuration_mode == "manual":
+            assert data.scrape_config is not None
+            fallback_title = urlparse(url).hostname or "Custom RSS"
+            title = data.title or fallback_title
+            scrape_config, _ = self._manual_config_and_test(
+                url,
+                data.scrape_config.model_dump(),
+                site_title=title,
+            )
+        else:
+            scrape_config, _ = self._analyze_and_test(url)
+            title = data.title or str(scrape_config["site_title"])
         with get_db() as conn:
             repo = NewsSiteRepository(conn)
             try:
@@ -466,6 +516,8 @@ class NewsSiteService:
 
         payload = data.model_dump(exclude_unset=True)
         reanalyze = bool(payload.pop("reanalyze", False))
+        configuration_mode = payload.pop("configuration_mode", None)
+        manual_config = payload.pop("scrape_config", None)
         fields: dict[str, object] = {}
         url = str(payload["url"]) if "url" in payload else str(current["url"])
         url_changed = url != current["url"]
@@ -477,7 +529,25 @@ class NewsSiteService:
                     status_code=409, detail="News site URL already exists"
                 )
             fields["url"] = url
-        if url_changed or reanalyze:
+        try:
+            current_config = json.loads(str(current["scrape_config"]))
+        except (TypeError, ValueError):
+            current_config = {}
+        current_mode = (
+            "manual" if current_config.get("configuration_mode") == "manual" else "ai"
+        )
+        requested_mode = configuration_mode or current_mode
+        if requested_mode == "manual" and manual_config is not None:
+            site_title = str(payload.get("title") or current["title"])
+            scrape_config, _ = self._manual_config_and_test(
+                url,
+                manual_config,
+                site_title=site_title,
+            )
+            fields["scrape_config"] = json.dumps(scrape_config, ensure_ascii=False)
+        elif requested_mode == "ai" and (
+            url_changed or reanalyze or current_mode == "manual"
+        ):
             scrape_config, _ = self._analyze_and_test(url)
             fields["scrape_config"] = json.dumps(scrape_config, ensure_ascii=False)
         if "title" in payload:

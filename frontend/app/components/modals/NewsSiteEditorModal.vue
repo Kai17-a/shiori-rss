@@ -5,6 +5,14 @@
         class="max-h-[calc(100dvh-2rem)] space-y-4 overflow-y-auto p-6 sm:max-h-[calc(100dvh-4rem)]"
         @submit.prevent="emit('save')"
       >
+        <UTabs
+          v-model="form.configurationMode"
+          :items="configurationModes"
+          :content="false"
+          class="w-full"
+          aria-label="Custom RSS configuration method"
+        />
+
         <UFormField
           label="Site URL"
           required
@@ -20,7 +28,7 @@
 
         <UFormField
           label="Title"
-          :description="form.id ? undefined : 'Optional. The LLM-detected site title is used when left blank.'"
+          :description="titleDescription"
           class="w-full"
         >
           <UInput v-model="form.title" placeholder="Optional site title" class="w-full" />
@@ -56,8 +64,40 @@
 
         <FeedIconField :form="form" />
 
+        <div v-if="form.configurationMode === 'manual'" class="space-y-4 rounded-lg border border-default p-4">
+          <div>
+            <p class="text-sm font-semibold text-default">CSS selectors</p>
+            <p class="text-sm text-muted">
+              Select each article container first, then fields relative to that container.
+            </p>
+          </div>
+          <UFormField label="Article item selector" required>
+            <UInput v-model="form.itemSelector" placeholder="article.news-item" class="w-full" />
+          </UFormField>
+          <div class="grid gap-4 sm:grid-cols-2">
+            <UFormField label="Title selector" required>
+              <UInput v-model="form.titleSelector" placeholder="h2 a" class="w-full" />
+            </UFormField>
+            <UFormField label="Link selector" required>
+              <UInput v-model="form.linkSelector" placeholder="h2 a" class="w-full" />
+            </UFormField>
+            <UFormField label="Link attribute" description="Usually href.">
+              <UInput v-model="form.linkAttribute" placeholder="href" class="w-full" />
+            </UFormField>
+            <UFormField label="Summary selector" description="Optional.">
+              <UInput v-model="form.summarySelector" placeholder=".summary" class="w-full" />
+            </UFormField>
+            <UFormField label="Published date selector" description="Optional.">
+              <UInput v-model="form.publishedSelector" placeholder="time" class="w-full" />
+            </UFormField>
+            <UFormField label="Published date attribute" description="Optional, for example datetime.">
+              <UInput v-model="form.publishedAttribute" placeholder="datetime" class="w-full" />
+            </UFormField>
+          </div>
+        </div>
+
         <UFormField
-          v-if="form.id"
+          v-if="form.id && form.configurationMode === 'ai'"
           label="Site analysis"
           description="Use this after the target site's layout changes. For an unchanged URL, saving without this option keeps the current selectors."
           class="w-full"
@@ -71,7 +111,7 @@
         <UAlert
           v-if="!form.id"
           title="Registration includes a live extraction test"
-          description="The page HTML is analyzed by the configured LLM and at least one title and link must be extracted before the site is saved."
+          :description="registrationTestDescription"
           color="info"
           variant="soft"
         />
@@ -90,7 +130,7 @@
             Cancel
           </UButton>
           <UButton type="submit" :loading="saving">
-            {{ form.id ? "Save site" : "Analyze and register" }}
+            {{ submitLabel }}
           </UButton>
         </div>
       </form>
@@ -114,6 +154,14 @@ const props = defineProps<{
     iconFile: File | null;
     existingIconUrl: string;
     removeIcon: boolean;
+    configurationMode: "ai" | "manual";
+    itemSelector: string;
+    titleSelector: string;
+    linkSelector: string;
+    linkAttribute: string;
+    summarySelector: string;
+    publishedSelector: string;
+    publishedAttribute: string;
   };
   webhooks: SettingsWebhookResponse[];
   title: string;
@@ -122,6 +170,24 @@ const props = defineProps<{
   error?: string;
 }>();
 const emit = defineEmits<{ save: [] }>();
+
+const configurationModes = [
+  { label: "AI setup", value: "ai", icon: "i-lucide-sparkles" },
+  { label: "Manual setup", value: "manual", icon: "i-lucide-sliders-horizontal" },
+];
+const titleDescription = computed(() => {
+  if (props.form.id) return undefined;
+  return props.form.configurationMode === "ai"
+    ? "Optional. The LLM-detected site title is used when left blank."
+    : "Optional. The site's hostname is used when left blank.";
+});
+const registrationTestDescription = computed(() => props.form.configurationMode === "ai"
+  ? "The page HTML is analyzed by the configured LLM and at least one title and link must be extracted before the site is saved."
+  : "The configured selectors are tested against the live page without calling an LLM. At least one title and link must be extracted.");
+const submitLabel = computed(() => {
+  if (props.form.id) return "Save site";
+  return props.form.configurationMode === "ai" ? "Analyze and register" : "Test and register";
+});
 
 const toggleWebhook = (webhookId: number, checked: boolean | string) => {
   const selected = new Set(props.form.webhookIds);

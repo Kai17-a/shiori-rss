@@ -99,7 +99,7 @@
           :form="form"
           :webhooks="webhooks"
           title="Edit custom RSS feed"
-          description="Changing the URL triggers a new LLM analysis and extraction test."
+          description="Choose AI setup or maintain the extraction selectors manually."
           :saving="saving"
           :error="saveError"
           @save="saveSite"
@@ -166,6 +166,14 @@ const form = reactive({
   iconFile: null as File | null,
   existingIconUrl: "",
   removeIcon: false,
+  configurationMode: "ai" as "ai" | "manual",
+  itemSelector: "",
+  titleSelector: "",
+  linkSelector: "",
+  linkAttribute: "href",
+  summarySelector: "",
+  publishedSelector: "",
+  publishedAttribute: "",
 });
 const articlePageCount = computed(() => Math.max(articleList.value.total_pages, 1));
 const buildArticleQuery = () => {
@@ -256,12 +264,27 @@ const openEditModal = () => {
   form.iconFile = null;
   form.existingIconUrl = site.value.icon_url || "";
   form.removeIcon = false;
+  form.configurationMode = site.value.configuration_mode;
+  form.itemSelector = site.value.scrape_config?.item_selector || "";
+  form.titleSelector = site.value.scrape_config?.title_selector || "";
+  form.linkSelector = site.value.scrape_config?.link_selector || "";
+  form.linkAttribute = site.value.scrape_config?.link_attribute || "href";
+  form.summarySelector = site.value.scrape_config?.summary_selector || "";
+  form.publishedSelector = site.value.scrape_config?.published_selector || "";
+  form.publishedAttribute = site.value.scrape_config?.published_attribute || "";
   modalOpen.value = true;
 };
 
 const saveSite = async () => {
   if (!form.url.trim() || !form.title.trim()) {
     saveError.value = "URL and title are required.";
+    return;
+  }
+  if (
+    form.configurationMode === "manual"
+    && (!form.itemSelector.trim() || !form.titleSelector.trim() || !form.linkSelector.trim())
+  ) {
+    saveError.value = "Item, title, and link selectors are required in manual mode.";
     return;
   }
   saveError.value = "";
@@ -275,6 +298,18 @@ const saveSite = async () => {
         description: form.description.trim() || null,
         webhook_ids: form.webhookIds,
         reanalyze: form.reanalyze,
+        configuration_mode: form.configurationMode,
+        ...(form.configurationMode === "manual" ? {
+          scrape_config: {
+            item_selector: form.itemSelector.trim(),
+            title_selector: form.titleSelector.trim(),
+            link_selector: form.linkSelector.trim(),
+            link_attribute: form.linkAttribute.trim() || "href",
+            summary_selector: form.summarySelector.trim() || null,
+            published_selector: form.publishedSelector.trim() || null,
+            published_attribute: form.publishedAttribute.trim() || null,
+          },
+        } : {}),
         ...(form.iconUrl.trim() ? { icon_url: form.iconUrl.trim() } : {}),
       }),
     });

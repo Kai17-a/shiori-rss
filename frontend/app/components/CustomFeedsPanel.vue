@@ -102,6 +102,14 @@ const form = reactive({
   iconFile: null as File | null,
   existingIconUrl: "",
   removeIcon: false,
+  configurationMode: "ai" as "ai" | "manual",
+  itemSelector: "",
+  titleSelector: "",
+  linkSelector: "",
+  linkAttribute: "href",
+  summarySelector: "",
+  publishedSelector: "",
+  publishedAttribute: "",
 });
 
 const resetForm = () => {
@@ -115,6 +123,14 @@ const resetForm = () => {
   form.iconFile = null;
   form.existingIconUrl = "";
   form.removeIcon = false;
+  form.configurationMode = "ai";
+  form.itemSelector = "";
+  form.titleSelector = "";
+  form.linkSelector = "";
+  form.linkAttribute = "href";
+  form.summarySelector = "";
+  form.publishedSelector = "";
+  form.publishedAttribute = "";
   saveError.value = "";
 };
 
@@ -134,6 +150,14 @@ const openEdit = (site: NewsSiteResponse) => {
   form.iconFile = null;
   form.existingIconUrl = site.icon_url || "";
   form.removeIcon = false;
+  form.configurationMode = site.configuration_mode;
+  form.itemSelector = site.scrape_config?.item_selector || "";
+  form.titleSelector = site.scrape_config?.title_selector || "";
+  form.linkSelector = site.scrape_config?.link_selector || "";
+  form.linkAttribute = site.scrape_config?.link_attribute || "href";
+  form.summarySelector = site.scrape_config?.summary_selector || "";
+  form.publishedSelector = site.scrape_config?.published_selector || "";
+  form.publishedAttribute = site.scrape_config?.published_attribute || "";
   saveError.value = "";
   modalOpen.value = true;
 };
@@ -162,6 +186,13 @@ const saveSite = async () => {
     saveError.value = "Page URL is required.";
     return;
   }
+  if (
+    form.configurationMode === "manual"
+    && (!form.itemSelector.trim() || !form.titleSelector.trim() || !form.linkSelector.trim())
+  ) {
+    saveError.value = "Item, title, and link selectors are required in manual mode.";
+    return;
+  }
   saving.value = true;
   saveError.value = "";
   try {
@@ -172,6 +203,18 @@ const saveSite = async () => {
       webhook_ids: form.webhookIds,
       ...(form.id ? { reanalyze: form.reanalyze } : {}),
       ...(form.iconUrl.trim() ? { icon_url: form.iconUrl.trim() } : {}),
+      configuration_mode: form.configurationMode,
+      ...(form.configurationMode === "manual" ? {
+        scrape_config: {
+          item_selector: form.itemSelector.trim(),
+          title_selector: form.titleSelector.trim(),
+          link_selector: form.linkSelector.trim(),
+          link_attribute: form.linkAttribute.trim() || "href",
+          summary_selector: form.summarySelector.trim() || null,
+          published_selector: form.publishedSelector.trim() || null,
+          published_attribute: form.publishedAttribute.trim() || null,
+        },
+      } : {}),
     };
     const saved = await request<NewsSiteResponse>(form.id ? `/news-sites/${form.id}` : "/news-sites", {
       method: form.id ? "PATCH" : "POST",

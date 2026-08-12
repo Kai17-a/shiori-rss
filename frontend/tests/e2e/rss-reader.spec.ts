@@ -150,6 +150,51 @@ test("scrolls the custom RSS editor when it exceeds the viewport", async ({ page
   await expect(page.getByText("Page URL is required.")).toBeVisible();
 });
 
+test("registers custom RSS with manual selectors without AI setup", async ({ page }) => {
+  let submitted: Record<string, unknown> | undefined;
+  await page.route("**/api/news-sites", async (route) => {
+    if (route.request().method() !== "POST") return route.continue();
+    submitted = route.request().postDataJSON() as Record<string, unknown>;
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: 21,
+        url: "https://example.com/news",
+        title: "Example News",
+        description: null,
+        notify_webhook_enabled: true,
+        webhook_ids: [],
+        icon_url: null,
+        icon_uploaded: false,
+        configuration_mode: "manual",
+        scrape_config: submitted.scrape_config,
+        created_at: "2026-08-12T00:00:00Z",
+        updated_at: "2026-08-12T00:00:00Z",
+      }),
+    });
+  });
+
+  await page.goto("/custom-feeds");
+  await page.getByRole("button", { name: "Add custom RSS" }).click();
+  await page.getByRole("tab", { name: "Manual setup" }).click();
+  await page.getByLabel("Site URL").fill("https://example.com/news");
+  await page.getByLabel("Title", { exact: true }).fill("Example News");
+  await page.getByLabel("Article item selector").fill("article.news-item");
+  await page.getByLabel("Title selector").fill("h2 a");
+  await page.getByLabel("Link selector").fill("h2 a");
+  await page.getByRole("button", { name: "Test and register" }).click();
+
+  await expect(page.getByText("Custom RSS created.", { exact: true })).toBeVisible();
+  expect(submitted?.configuration_mode).toBe("manual");
+  expect(submitted?.scrape_config).toMatchObject({
+    item_selector: "article.news-item",
+    title_selector: "h2 a",
+    link_selector: "h2 a",
+    link_attribute: "href",
+  });
+});
+
 test("shows the RSS feed library at its root route", async ({ page }) => {
   await page.goto("/feeds");
   await expect(page).toHaveURL(/\/feeds$/);

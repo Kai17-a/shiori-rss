@@ -296,12 +296,37 @@ def _reject_duplicate_ids(value: list[int] | None) -> list[int] | None:
     return value
 
 
+class NewsSiteScrapeConfig(BaseModel):
+    item_selector: str = PydField(min_length=1, max_length=500)
+    title_selector: str = PydField(min_length=1, max_length=500)
+    link_selector: str = PydField(min_length=1, max_length=500)
+    link_attribute: str = PydField(default="href", min_length=1, max_length=100)
+    summary_selector: str | None = PydField(default=None, max_length=500)
+    published_selector: str | None = PydField(default=None, max_length=500)
+    published_attribute: str | None = PydField(default=None, max_length=100)
+
+    @field_validator(
+        "item_selector",
+        "title_selector",
+        "link_selector",
+        "link_attribute",
+        "summary_selector",
+        "published_selector",
+        "published_attribute",
+    )
+    @classmethod
+    def normalize_selector(cls, value: str | None) -> str | None:
+        return value.strip() or None if value is not None else None
+
+
 class NewsSiteCreate(BaseModel):
     url: AnyHttpUrl
     title: str | None = PydField(default=None, min_length=1)
     description: str | None = None
     webhook_ids: list[int] | None = None
     icon_url: AnyHttpUrl | None = None
+    configuration_mode: Literal["ai", "manual"] = "ai"
+    scrape_config: "NewsSiteScrapeConfig | None" = None
 
     @field_validator("title")
     @classmethod
@@ -313,6 +338,12 @@ class NewsSiteCreate(BaseModel):
     def validate_webhook_ids(cls, value: list[int] | None) -> list[int] | None:
         return _reject_duplicate_ids(value)
 
+    @model_validator(mode="after")
+    def validate_configuration(self) -> "NewsSiteCreate":
+        if self.configuration_mode == "manual" and self.scrape_config is None:
+            raise ValueError("scrape_config is required in manual mode")
+        return self
+
 
 class NewsSiteUpdate(BaseModel):
     url: AnyHttpUrl | None = None
@@ -322,6 +353,8 @@ class NewsSiteUpdate(BaseModel):
     webhook_ids: list[int] | None = None
     reanalyze: bool = False
     icon_url: AnyHttpUrl | None = None
+    configuration_mode: Literal["ai", "manual"] | None = None
+    scrape_config: "NewsSiteScrapeConfig | None" = None
 
     @field_validator("title")
     @classmethod
@@ -346,6 +379,8 @@ class NewsSiteUpdate(BaseModel):
                 and getattr(self, field_name) is None
             ):
                 raise ValueError(f"{field_name} cannot be null")
+        if self.configuration_mode == "manual" and self.scrape_config is None:
+            raise ValueError("scrape_config is required in manual mode")
         return self
 
 
@@ -358,6 +393,8 @@ class NewsSiteResponse(BaseModel):
     webhook_ids: list[int]
     icon_url: str | None = None
     icon_uploaded: bool = False
+    configuration_mode: Literal["ai", "manual"] = "ai"
+    scrape_config: "NewsSiteScrapeConfig | None" = None
     created_at: datetime
     updated_at: datetime
 

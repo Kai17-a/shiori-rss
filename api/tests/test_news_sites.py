@@ -127,6 +127,43 @@ def test_registration_requires_llm_settings(client):
     assert "LLM settings" in response.json()["detail"]
 
 
+def test_manual_registration_uses_selectors_without_llm_settings(client):
+    response = create_site(
+        client,
+        title="Manual News",
+        configuration_mode="manual",
+        scrape_config={
+            "item_selector": ".news-item",
+            "title_selector": "h2 a",
+            "link_selector": "h2 a",
+            "link_attribute": "href",
+            "summary_selector": ".summary",
+            "published_selector": "time",
+            "published_attribute": "datetime",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["configuration_mode"] == "manual"
+    assert response.json()["scrape_config"]["item_selector"] == ".news-item"
+
+
+def test_manual_registration_rejects_selectors_that_extract_no_articles(client):
+    response = create_site(
+        client,
+        configuration_mode="manual",
+        scrape_config={
+            "item_selector": ".missing-item",
+            "title_selector": "h2",
+            "link_selector": "a",
+            "link_attribute": "href",
+        },
+    )
+
+    assert response.status_code == 422
+    assert "Manual selector extraction error" in response.json()["detail"]
+
+
 def test_news_site_icon_can_be_uploaded_and_served(client):
     configure_llm(client)
     site_id = create_site(client).json()["id"]
@@ -191,6 +228,31 @@ def test_update_can_reanalyze_unchanged_site_url(client, monkeypatch):
         ).fetchone()
     assert row is not None
     assert json.loads(row["scrape_config"]) == replacement_config
+
+
+def test_update_can_switch_from_ai_to_manual_configuration(client):
+    configure_llm(client)
+    site = create_site(client).json()
+
+    response = client.patch(
+        f"/news-sites/{site['id']}",
+        json={
+            "configuration_mode": "manual",
+            "scrape_config": {
+                "item_selector": ".news-item",
+                "title_selector": "h2 a",
+                "link_selector": "h2 a",
+                "link_attribute": "href",
+                "summary_selector": ".summary",
+                "published_selector": "time",
+                "published_attribute": "datetime",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["configuration_mode"] == "manual"
+    assert response.json()["scrape_config"]["link_attribute"] == "href"
 
 
 def test_update_without_reanalyze_keeps_current_analysis(client, monkeypatch):
@@ -399,7 +461,7 @@ def test_registration_identifies_target_site_automation_block(
 
     assert response.status_code == 422
     assert response.json()["detail"].startswith("Target-site fetch error:")
-    assert "HTTP 403 before LLM analysis" in response.json()["detail"]
+    assert "HTTP 403 before extraction setup" in response.json()["detail"]
     assert "block automated requests" in response.json()["detail"]
     assert "Reference ID:" in response.json()["detail"]
     assert "news_site_fetch_rejected" in caplog.text

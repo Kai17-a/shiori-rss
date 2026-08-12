@@ -20,8 +20,8 @@
 | GET/PUT/DELETE | `/rss-feeds/{id}/icon` | アップロードアイコンの取得・設定・削除 |
 | GET | `/rss-feeds/{id}/articles` | 記事履歴 |
 | POST | `/rss-feeds/{id}/execute` | 手動実行 |
-| POST/GET | `/news-sites` | LLMカスタムRSS作成・一覧 |
-| GET/PATCH/DELETE | `/news-sites/{id}` | カスタムRSS詳細・更新・削除 |
+| POST/GET | `/news-sites` | AI生成または手動CSSセレクタによるカスタムRSS作成・一覧 |
+| GET/PATCH/DELETE | `/news-sites/{id}` | 設定方式とセレクタを含むカスタムRSS詳細・更新・削除 |
 | GET/PUT/DELETE | `/news-sites/{id}/icon` | アップロードアイコンの取得・設定・削除 |
 | GET | `/news-sites/{id}/articles` | カスタムRSS記事履歴 |
 | POST | `/news-sites/{id}/execute` | カスタムRSS手動取得 |
