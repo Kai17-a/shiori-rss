@@ -52,9 +52,14 @@ test("shows configured feed icons in the recent news list", async ({ page }) => 
 
 test("opens the Ask AI chat modal from the floating launcher", async ({ page }) => {
   const requestBodies: Array<Record<string, unknown>> = [];
+  let releaseFirstResponse = () => {};
+  const firstResponsePending = new Promise<void>((resolve) => {
+    releaseFirstResponse = resolve;
+  });
   await page.route("**/ai/chat/stream", async (route) => {
     requestBodies.push(route.request().postDataJSON());
     const followUp = requestBodies.length === 2;
+    if (!followUp) await firstResponsePending;
     await route.fulfill({
       contentType: "application/x-ndjson",
       body: followUp ? [
@@ -87,6 +92,12 @@ test("opens the Ask AI chat modal from the floating launcher", async ({ page }) 
   await expect(page.getByText("Ask about your feed library")).toBeVisible();
   await page.getByLabel("Ask AI message").fill("Summarize agent news");
   await page.getByRole("button", { name: "Send" }).click();
+  const sendButton = page.getByRole("button", { name: "Send" });
+  await expect(sendButton.locator("[data-slot=leadingIcon]")).toHaveClass(
+    /i-lucide:loader-circle/,
+  );
+  await expect(sendButton.locator("[data-slot=leadingIcon]")).toHaveClass(/animate-spin/);
+  releaseFirstResponse();
   await expect(page.getByRole("heading", { name: "Highlights" })).toBeVisible();
   await expect(page.getByRole("listitem").filter({ hasText: "Agentic systems" })).toBeVisible();
   await expect(page.getByText("saved summary", { exact: true })).toBeVisible();

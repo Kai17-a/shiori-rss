@@ -123,11 +123,22 @@
                   label="Send"
                   aria-label="Send"
                   icon="i-lucide-send"
+                  submitted-icon="i-lucide-loader-circle"
+                  streaming-icon="i-lucide-loader-circle"
                   :status="chatStatus"
                   :disabled="!question.trim() && !loading"
                   @stop="stopStreaming"
                   @reload="submitQuestion"
-                />
+                >
+                  <template #leading>
+                    <UIcon
+                      :name="loading ? 'i-lucide-loader-circle' : 'i-lucide-send'"
+                      data-slot="leadingIcon"
+                      class="size-5"
+                      :class="{ 'animate-spin': loading }"
+                    />
+                  </template>
+                </UChatPromptSubmit>
               </div>
             </template>
           </UChatPrompt>
