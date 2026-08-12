@@ -134,6 +134,22 @@ test("lists custom RSS sources in the sidebar", async ({ page }) => {
   await expect(page.getByRole("link", { name: "LLM Daily" })).toBeHidden();
 });
 
+test("scrolls the custom RSS editor when it exceeds the viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 640, height: 480 });
+  await page.goto("/custom-feeds");
+  await page.getByRole("button", { name: "Add custom RSS" }).click();
+
+  const dialog = page.getByRole("dialog");
+  const form = dialog.locator("form");
+  await expect(dialog).toBeVisible();
+  await expect(form).toHaveCSS("overflow-y", "auto");
+  expect(await form.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+
+  await page.getByRole("button", { name: "Analyze and register" }).scrollIntoViewIfNeeded();
+  await page.getByRole("button", { name: "Analyze and register" }).click();
+  await expect(page.getByText("Page URL is required.")).toBeVisible();
+});
+
 test("shows the RSS feed library at its root route", async ({ page }) => {
   await page.goto("/feeds");
   await expect(page).toHaveURL(/\/feeds$/);

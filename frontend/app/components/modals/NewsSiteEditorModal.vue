@@ -1,7 +1,10 @@
 <template>
   <UModal v-model:open="openModel" :title="title" :description="description">
     <template #content="{ close }">
-      <form class="space-y-4 p-6" @submit.prevent="emit('save')">
+      <form
+        class="max-h-[calc(100dvh-2rem)] space-y-4 overflow-y-auto p-6 sm:max-h-[calc(100dvh-4rem)]"
+        @submit.prevent="emit('save')"
+      >
         <UFormField
           label="Site URL"
           required
