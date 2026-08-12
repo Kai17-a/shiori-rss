@@ -52,12 +52,12 @@ class ArticleSearchRepository:
             search_cte = """
                 WITH matching_articles AS (
                   SELECT source_type, article_id,
-                         bm25(article_search, 0, 0, 0, 3, 8, 4, 0, 0, 0) AS relevance
+                         bm25(article_search, 0, 0, 0, 10, 12, 4, 0, 0, 0) AS relevance
                   FROM article_search
                   WHERE article_search MATCH ?
                   UNION ALL
                   SELECT source_type, article_id,
-                         bm25(article_ai_search, 0, 0, 8, 6, 5, 5, 4) AS relevance
+                         bm25(article_ai_search, 0, 0, 3, 1, 1, 6, 8) AS relevance
                   FROM article_ai_search
                   WHERE article_ai_search MATCH ?
                 ), ranked_articles AS (
