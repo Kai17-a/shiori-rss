@@ -4,17 +4,23 @@ import os
 import shutil
 import subprocess
 import threading
+import time
 from pathlib import Path
 
 from fastapi import HTTPException
 from pydantic import ValidationError
 
-from api.model.models import SettingsAIArticleAnalysisRunResponse
+from api.database import get_db
+from api.model.models import (
+    SettingsAIArticleAnalysisRunResponse,
+    SettingsAIArticleAnalysisStatusResponse,
+)
 
 _manual_run_lock = threading.Lock()
 _REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 _logger = logging.getLogger("uvicorn.error")
 _RUN_TIMEOUT_SECONDS = 7200
+_RUN_LOCK_KEY = "ai_article_analysis_running"
 
 
 def _batch_command() -> list[str]:
@@ -41,12 +47,96 @@ def _batch_command() -> list[str]:
     )
 
 
+def _parse_run_lock(value: str) -> tuple[int, int | None] | None:
+    parts = value.split(":", 1)
+    try:
+        started_at = int(parts[0])
+        process_id = int(parts[1]) if len(parts) == 2 else None
+    except ValueError:
+        return None
+    return started_at, process_id
+
+
+def _process_is_alive(process_id: int) -> bool:
+    try:
+        os.kill(process_id, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _legacy_batch_is_alive() -> bool:
+    proc = Path("/proc")
+    if not proc.is_dir():
+        return True
+    for entry in proc.iterdir():
+        if not entry.name.isdigit() or int(entry.name) == os.getpid():
+            continue
+        try:
+            command = (entry / "cmdline").read_bytes().replace(b"\0", b" ")
+        except (FileNotFoundError, PermissionError, ProcessLookupError):
+            continue
+        if b"shiori-feed-batch" in command:
+            return True
+    return False
+
+
+def _delete_run_lock(value: str) -> None:
+    with get_db() as conn:
+        conn.execute(
+            "DELETE FROM app_settings WHERE key = ? AND value = ?",
+            (_RUN_LOCK_KEY, value),
+        )
+
+
+def _clear_process_run_lock(process_id: int) -> None:
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT value FROM app_settings WHERE key = ?", (_RUN_LOCK_KEY,)
+        ).fetchone()
+        if row is None:
+            return
+        value = str(row["value"])
+        parsed = _parse_run_lock(value)
+        if parsed is not None and parsed[1] == process_id:
+            conn.execute(
+                "DELETE FROM app_settings WHERE key = ? AND value = ?",
+                (_RUN_LOCK_KEY, value),
+            )
+
+
 class ArticleAnalysisService:
+    def status(self) -> SettingsAIArticleAnalysisStatusResponse:
+        if _manual_run_lock.locked():
+            return SettingsAIArticleAnalysisStatusResponse(running=True)
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT value FROM app_settings WHERE key = ?", (_RUN_LOCK_KEY,)
+            ).fetchone()
+        if row is None:
+            return SettingsAIArticleAnalysisStatusResponse(running=False)
+        value = str(row["value"])
+        parsed = _parse_run_lock(value)
+        if parsed is None:
+            return SettingsAIArticleAnalysisStatusResponse(running=False)
+        started_at, process_id = parsed
+        running = 0 <= int(time.time()) - started_at < _RUN_TIMEOUT_SECONDS
+        if running and process_id is not None and not _process_is_alive(process_id):
+            _delete_run_lock(value)
+            running = False
+        if running and process_id is None and not _legacy_batch_is_alive():
+            _delete_run_lock(value)
+            running = False
+        return SettingsAIArticleAnalysisStatusResponse(running=running)
+
     def run_manual(self) -> SettingsAIArticleAnalysisRunResponse:
         if not _manual_run_lock.acquire(blocking=False):
             raise HTTPException(
                 status_code=409, detail="Article analysis is already running"
             )
+        process: subprocess.Popen[str] | None = None
         try:
             try:
                 process = subprocess.Popen(
@@ -119,4 +209,6 @@ class ArticleAnalysisService:
             )
             return report
         finally:
+            if process is not None:
+                _clear_process_run_lock(process.pid)
             _manual_run_lock.release()

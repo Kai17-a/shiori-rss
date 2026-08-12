@@ -155,6 +155,13 @@ const primaryLinks = computed<NavigationMenuItem[]>(() => [
 
 const secondaryLinks = computed<NavigationMenuItem[]>(() => [
   {
+    label: "AI analysis data",
+    icon: "i-lucide-database",
+    to: "/ai-data",
+    active: isActive("/ai-data"),
+    onSelect: closeSidebar,
+  },
+  {
     label: "Preferences",
     icon: "i-lucide-sliders-horizontal",
     to: "/settings",

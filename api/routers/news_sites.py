@@ -1,4 +1,7 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
+from fastapi.responses import Response
+
+from api.routers.rss_feeds import _validate_public_icon_url
 
 from api.dependencies import get_news_site_service
 from api.model.models import (
@@ -47,6 +50,40 @@ def get_news_site(
     site_id: int, service: NewsSiteService = Depends(get_news_site_service)
 ):
     return service.get(site_id)
+
+
+@router.put("/{site_id}/icon", response_model=NewsSiteResponse)
+async def upload_news_site_icon(
+    site_id: int,
+    file: UploadFile = File(...),
+    public_url: str = Form(...),
+    service: NewsSiteService = Depends(get_news_site_service),
+):
+    return service.set_icon(
+        site_id,
+        content=await file.read(),
+        media_type=file.content_type or "",
+        public_url=_validate_public_icon_url(public_url),
+    )
+
+
+@router.get("/{site_id}/icon")
+def get_news_site_icon(
+    site_id: int, service: NewsSiteService = Depends(get_news_site_service)
+):
+    content, media_type = service.get_icon(site_id)
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Cache-Control": "no-cache"},
+    )
+
+
+@router.delete("/{site_id}/icon", response_model=NewsSiteResponse)
+def delete_news_site_icon(
+    site_id: int, service: NewsSiteService = Depends(get_news_site_service)
+):
+    return service.clear_icon(site_id)
 
 
 @router.get(

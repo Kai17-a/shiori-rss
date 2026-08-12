@@ -17,10 +17,12 @@
 | GET | `/dashboard` | リクエスト時点から直近24時間のホームサマリーと記事一覧（`limit` は1〜100件） |
 | POST/GET | `/rss-feeds` | フィード作成・一覧 |
 | GET/PATCH/DELETE | `/rss-feeds/{id}` | フィード詳細・更新・削除 |
+| GET/PUT/DELETE | `/rss-feeds/{id}/icon` | アップロードアイコンの取得・設定・削除 |
 | GET | `/rss-feeds/{id}/articles` | 記事履歴 |
 | POST | `/rss-feeds/{id}/execute` | 手動実行 |
 | POST/GET | `/news-sites` | LLMカスタムRSS作成・一覧 |
 | GET/PATCH/DELETE | `/news-sites/{id}` | カスタムRSS詳細・更新・削除 |
+| GET/PUT/DELETE | `/news-sites/{id}/icon` | アップロードアイコンの取得・設定・削除 |
 | GET | `/news-sites/{id}/articles` | カスタムRSS記事履歴 |
 | POST | `/news-sites/{id}/execute` | カスタムRSS手動取得 |
 | GET/POST | `/settings/webhooks` | Webhook 一覧・作成 |
@@ -33,8 +35,10 @@
 | POST | `/settings/llm/test` | LLM疎通テスト |
 | GET/PUT | `/settings/ai-article-analysis` | AI記事事前解析の有効化と上限設定 |
 | POST | `/settings/ai-article-analysis/execute` | 定期実行設定に依存しないAI記事解析の手動実行 |
+| GET | `/settings/ai-article-analysis/status` | API手動実行ロックとSQLiteバッチロックを統合したAI記事解析の実行状態 |
 | POST | `/ai/chat` | 保存済み記事の横断検索と根拠付きLLM回答 |
 | POST | `/ai/chat/stream` | 出典とLLM回答差分をNDJSONで逐次返すAsk AI |
+| GET | `/ai/article-analyses` | 保存済みAI記事解析データの検索・絞り込み・ページング一覧 |
 
 ## Ask AI フロー
 
@@ -42,7 +46,7 @@
 2. SQLite FTS5の三文字トークナイザーで、両記事テーブルと解析済みAIメタデータから同期された検索インデックスを検索する。
 3. 一致しない場合は、質問文中の略語・製品名を含む全キーワードの部分一致へ自動的に広げる。それでも一致せず期間指定がある場合は、期間を解除して再検索する。
 4. 上位候補の記事タイトル、保存済みサマリー、利用可能なAI要約・要点・トピック、出典情報をLLMへ渡す。
-5. LLMは候補の関連性を判断し、参照番号付きで回答する。
+5. LLMは候補の関連性を判断する。一覧・検索要求では要求トピックを主題とする記事を選び、事実質問では回答材料になる記事を選ぶ。一覧要求に明記された4文字以上の製品・組織・サービス名が配信元、タイトル、本文、AIメタデータに完全一致する候補は、LLMの空判定だけでは除外しない。
 6. APIは回答と候補記事のURLを返し、画面は出典リンクを表示する。
 7. ストリーミングAPIは回答本文をLLMから受信した単位で逐次転送し、回答完了後に本文で実際に引用された出典だけを返す。画面はNuxt UI Chatのstreaming状態と自動スクロールを使用する。
 
@@ -52,7 +56,7 @@
 2. RSS フィードを読み、Webhook設定の有無に関係なく巡回する。
 3. フィードを取得し RSS / Atom を解析する。
 4. `rss_feed_articles` に存在しない記事を未通知として保存する。
-5. 通知が有効で送信先がある場合、保存済みの未通知記事を送る。
+5. 通知が有効で送信先がある場合、保存済みの未通知記事を送る。DiscordではフィードのアイコンURLをWebhookの `avatar_url` に使う。
 6. 少なくとも1つの送信先で成功した記事を通知済みに更新する。
 7. AI記事解析が有効なら、対象期間内の未解析・更新済み記事を上限件数までLLMで解析する。
 8. 利用量を呼び出し単位で記録し、1日のトークン上限に達する前に解析を停止する。

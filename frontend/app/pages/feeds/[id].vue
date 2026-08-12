@@ -14,9 +14,15 @@
       >
         <template #title>
           <div class="flex items-center gap-3">
-            <span class="grid size-12 shrink-0 place-items-center rounded-2xl bg-primary text-inverted shadow-sm">
-              <UIcon name="i-lucide-rss" class="size-6" />
-            </span>
+            <UAvatar
+              :src="feed?.icon_url || undefined"
+              :alt="feed?.title || 'RSS feed'"
+              icon="i-lucide-rss"
+              size="2xl"
+              color="primary"
+              class="shrink-0 rounded-2xl shadow-sm"
+              :ui="{ icon: 'size-6' }"
+            />
             <div>
               <p class="text-xs font-semibold uppercase tracking-[0.16em] text-primary">Feed channel</p>
               <h1 class="mt-1 text-3xl font-bold tracking-tight text-highlighted">{{ feed?.title }}</h1>
@@ -162,6 +168,10 @@ const feedForm = reactive({
   url: "",
   description: "",
   webhookIds: [] as number[],
+  iconUrl: "",
+  iconFile: null as File | null,
+  existingIconUrl: "",
+  removeIcon: false,
 });
 
 const articlePageCount = computed(() => Math.max(articleList.value.total_pages, 1));
@@ -282,6 +292,10 @@ const openEditModal = () => {
   feedForm.url = feed.value.url;
   feedForm.description = feed.value.description || "";
   feedForm.webhookIds = [...feed.value.webhook_ids];
+  feedForm.iconUrl = feed.value.icon_uploaded ? "" : (feed.value.icon_url || "");
+  feedForm.iconFile = null;
+  feedForm.existingIconUrl = feed.value.icon_url || "";
+  feedForm.removeIcon = false;
   modalOpen.value = true;
 };
 
@@ -292,6 +306,10 @@ const closeModal = () => {
   feedForm.url = "";
   feedForm.description = "";
   feedForm.webhookIds = [];
+  feedForm.iconUrl = "";
+  feedForm.iconFile = null;
+  feedForm.existingIconUrl = "";
+  feedForm.removeIcon = false;
 };
 
 const saveFeed = async () => {
@@ -301,15 +319,24 @@ const saveFeed = async () => {
 
   saving.value = true;
   try {
-    await request(`/rss-feeds/${feedForm.id}`, {
+    const updated = await request<RSSFeedResponse>(`/rss-feeds/${feedForm.id}`, {
       method: "PATCH",
       body: JSON.stringify({
         url,
         title,
         description: feedForm.description || null,
         webhook_ids: feedForm.webhookIds,
+        ...(feedForm.iconUrl.trim() ? { icon_url: feedForm.iconUrl.trim() } : {}),
       }),
     });
+    if (feedForm.iconFile) {
+      const body = new FormData();
+      body.append("file", feedForm.iconFile);
+      body.append("public_url", `${window.location.origin}/api/rss-feeds/${updated.id}/icon`);
+      await request(`/rss-feeds/${updated.id}/icon`, { method: "PUT", body });
+    } else if (feedForm.removeIcon) {
+      await request(`/rss-feeds/${updated.id}/icon`, { method: "DELETE" });
+    }
     closeModal();
     await loadFeed();
     await loadFeedArticles();

@@ -1,14 +1,24 @@
 <template>
   <article class="space-y-4 rounded-2xl border border-default bg-elevated/40 p-4">
     <div class="flex items-start justify-between gap-4">
-      <div class="min-w-0">
+      <div class="flex min-w-0 items-start gap-3">
         <NuxtLink
           :to="`/custom-feeds/${site.id}`"
-          class="block truncate text-base font-semibold text-default hover:underline"
+          class="grid size-11 shrink-0 place-items-center overflow-hidden rounded-2xl bg-primary/10 text-primary"
+          :aria-label="`Open ${site.title}`"
         >
-          {{ site.title }}
+          <img v-if="site.icon_url" :src="site.icon_url" alt="" class="size-full object-cover" />
+          <UIcon v-else name="i-lucide-wand-sparkles" class="size-4" />
         </NuxtLink>
-        <p class="mt-1 break-all text-sm text-muted">{{ site.url }}</p>
+        <div class="min-w-0">
+          <NuxtLink
+            :to="`/custom-feeds/${site.id}`"
+            class="block truncate text-base font-semibold text-default hover:underline"
+          >
+            {{ site.title }}
+          </NuxtLink>
+          <p class="mt-1 break-all text-sm text-muted">{{ site.url }}</p>
+        </div>
       </div>
       <UBadge color="info" variant="soft">LLM Custom RSS</UBadge>
     </div>

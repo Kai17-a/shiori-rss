@@ -162,6 +162,10 @@ const feedForm = reactive({
   url: "",
   description: "",
   webhookIds: [] as number[],
+  iconUrl: "",
+  iconFile: null as File | null,
+  existingIconUrl: "",
+  removeIcon: false,
 });
 
 const pageCount = computed(() => Math.max(feedList.value.total_pages, 1));
@@ -194,6 +198,10 @@ const openCreateModal = () => {
   feedForm.title = "";
   feedForm.description = "";
   feedForm.webhookIds = [];
+  feedForm.iconUrl = "";
+  feedForm.iconFile = null;
+  feedForm.existingIconUrl = "";
+  feedForm.removeIcon = false;
   modalOpen.value = true;
 };
 
@@ -203,6 +211,10 @@ const openEditModal = (feed: RSSFeedResponse) => {
   feedForm.title = feed.title;
   feedForm.description = feed.description || "";
   feedForm.webhookIds = [...feed.webhook_ids];
+  feedForm.iconUrl = feed.icon_uploaded ? "" : (feed.icon_url || "");
+  feedForm.iconFile = null;
+  feedForm.existingIconUrl = feed.icon_url || "";
+  feedForm.removeIcon = false;
   modalOpen.value = true;
 };
 
@@ -281,9 +293,11 @@ const saveFeed = async () => {
       title,
       description: feedForm.description.trim() || null,
       webhook_ids: feedForm.webhookIds,
+      ...(feedForm.iconUrl.trim() ? { icon_url: feedForm.iconUrl.trim() } : {}),
     };
+    let saved: RSSFeedResponse;
     if (feedForm.id) {
-      await request(`/rss-feeds/${feedForm.id}`, { method: "PATCH", body: JSON.stringify(body) });
+      saved = await request<RSSFeedResponse>(`/rss-feeds/${feedForm.id}`, { method: "PATCH", body: JSON.stringify(body) });
       await refreshSidebarCatalog(true);
       toast.show({
         title: "RSS feed updated.",
@@ -291,8 +305,16 @@ const saveFeed = async () => {
         icon: "i-lucide-check",
       });
     } else {
-      await request("/rss-feeds", { method: "POST", body: JSON.stringify(body) });
+      saved = await request<RSSFeedResponse>("/rss-feeds", { method: "POST", body: JSON.stringify(body) });
       await refreshSidebarCatalog(true);
+    }
+    if (feedForm.iconFile) {
+      const iconBody = new FormData();
+      iconBody.append("file", feedForm.iconFile);
+      iconBody.append("public_url", `${window.location.origin}/api/rss-feeds/${saved.id}/icon`);
+      await request(`/rss-feeds/${saved.id}/icon`, { method: "PUT", body: iconBody });
+    } else if (feedForm.removeIcon && feedForm.id) {
+      await request(`/rss-feeds/${saved.id}/icon`, { method: "DELETE" });
     }
     closeModal();
     await loadFeeds(false);

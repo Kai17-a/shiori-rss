@@ -120,6 +120,7 @@ def build_rss_notification_payload(
     chunk_index: int = 1,
     chunk_count: int = 1,
     include_summary: bool = True,
+    icon_url: str | None = None,
 ) -> dict[str, object]:
     if webhook_service == "discord":
         article_count = total_articles if total_articles is not None else len(articles)
@@ -142,7 +143,12 @@ def build_rss_notification_payload(
         content = f"**{feed_title}** - **New articles** ({article_count} items)"
         if chunk_count > 1:
             content = f"{content} [{chunk_index}]"
-        return {"username": "Shiori Feed", "content": content, "embeds": embeds}
+        return {
+            "username": "Shiori Feed",
+            "content": content,
+            "embeds": embeds,
+            **({"avatar_url": icon_url} if icon_url else {}),
+        }
 
     if webhook_service == "slack":
         article_count = total_articles if total_articles is not None else len(articles)
@@ -196,7 +202,7 @@ def build_rss_notification_payload(
             article_body: list[dict[str, object]] = [
                 {
                     "type": "TextBlock",
-                    "text": f"• [{title}]({url})",
+                    "text": f"- [{title}]({url})",
                     "weight": "Bolder",
                     "wrap": True,
                 }

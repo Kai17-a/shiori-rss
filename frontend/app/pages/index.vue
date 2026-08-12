@@ -47,8 +47,15 @@
               :key="`${article.source_type}-${article.source_id}-${article.url}`"
               class="group flex items-start gap-4 p-5 transition hover:bg-elevated/50"
             >
-              <span class="mt-0.5 grid size-9 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+              <span class="mt-0.5 grid size-9 shrink-0 place-items-center overflow-hidden rounded-xl bg-primary/10 text-primary">
+                <img
+                  v-if="article.source_icon_url"
+                  :src="article.source_icon_url"
+                  :alt="`${article.source_title} icon`"
+                  class="block size-full object-cover"
+                />
                 <UIcon
+                  v-else
                   :name="article.source_type === 'rss' ? 'i-lucide-rss' : 'i-lucide-wand-sparkles'"
                   class="size-4"
                 />

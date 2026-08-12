@@ -9,6 +9,7 @@ from api.model.models import (
     LLMSettingsUpdate,
     SettingsAIArticleAnalysisResponse,
     SettingsAIArticleAnalysisRunResponse,
+    SettingsAIArticleAnalysisStatusResponse,
     SettingsAIArticleAnalysisUpdate,
     SettingsRssExecutionResponse,
     SettingsRssExecutionUpdate,
@@ -27,6 +28,17 @@ from api.services.settings_service import SettingsService
 from api.services.article_analysis_service import ArticleAnalysisService
 
 router = APIRouter(prefix="/settings", tags=["settings"])
+
+
+@router.get(
+    "/ai-article-analysis/status",
+    status_code=200,
+    response_model=SettingsAIArticleAnalysisStatusResponse,
+)
+def get_ai_article_analysis_status(
+    service: ArticleAnalysisService = Depends(get_article_analysis_service),
+):
+    return service.status()
 
 
 @router.post(

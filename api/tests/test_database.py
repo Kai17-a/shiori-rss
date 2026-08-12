@@ -83,11 +83,13 @@ def test_initialize_database_applies_every_migration_idempotently(tmp_path):
         "202608081400",
         "202608090945",
         "202608091010",
+        "202608101000",
     }
     assert "published" in article_columns
     assert "summary" in article_columns
     assert "webhook_notified" in article_columns
     assert "notify_webhook_enabled" in feed_columns
+    assert {"icon_url", "icon_data", "icon_media_type"} <= feed_columns
     assert "enabled" in webhook_columns
 
 

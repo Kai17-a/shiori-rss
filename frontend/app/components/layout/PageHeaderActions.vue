@@ -3,6 +3,9 @@
     <template #leading>
       <UDashboardSidebarCollapse />
     </template>
+    <template v-if="$slots.default" #right>
+      <slot />
+    </template>
   </UDashboardNavbar>
 </template>
 

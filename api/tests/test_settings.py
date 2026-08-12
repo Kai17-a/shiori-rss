@@ -17,6 +17,7 @@ def client(tmp_path, monkeypatch):
     build_test_db(db_path)
 
     import api.database as db_module
+    import api.services.article_analysis_service as analysis_module
     import api.services.settings_service as settings_module
 
     @contextmanager
@@ -34,6 +35,7 @@ def client(tmp_path, monkeypatch):
             conn.close()
 
     monkeypatch.setattr(db_module, "get_db", patched_get_db)
+    monkeypatch.setattr(analysis_module, "get_db", patched_get_db)
     monkeypatch.setattr(settings_module, "get_db", patched_get_db)
 
     with TestClient(app) as c:
@@ -355,6 +357,8 @@ def test_ai_article_analysis_can_run_manually_while_schedule_is_disabled(
     monkeypatch.setenv("SHIORI_FEED_BATCH_BIN", "/tmp/mock-shiori-feed-batch")
 
     class BatchProcess:
+        pid = 4242
+
         def __init__(self):
             self.stdout = io.StringIO(
                 "Analyzing article rss:1 (1/20)\n"
@@ -388,6 +392,91 @@ def test_ai_article_analysis_can_run_manually_while_schedule_is_disabled(
         "failed": 0,
         "skipped_current": 3,
         "stopped_by_token_limit": False,
+    }
+
+
+def test_ai_article_analysis_status_reports_manual_run(client):
+    import api.services.article_analysis_service as analysis_module
+
+    assert client.get("/settings/ai-article-analysis/status").json() == {
+        "running": False
+    }
+    assert analysis_module._manual_run_lock.acquire(blocking=False)
+    try:
+        response = client.get("/settings/ai-article-analysis/status")
+        assert response.status_code == 200
+        assert response.json() == {"running": True}
+    finally:
+        analysis_module._manual_run_lock.release()
+
+
+def test_ai_article_analysis_status_reports_batch_lock(client):
+    import api.services.article_analysis_service as analysis_module
+
+    with analysis_module.get_db() as conn:
+        conn.execute(
+            "INSERT INTO app_settings (key, value) VALUES (?, ?)",
+            (
+                "ai_article_analysis_running",
+                f"{int(analysis_module.time.time())}:{analysis_module.os.getpid()}",
+            ),
+        )
+
+    response = client.get("/settings/ai-article-analysis/status")
+
+    assert response.status_code == 200
+    assert response.json() == {"running": True}
+
+
+def test_ai_article_analysis_status_clears_legacy_orphan_lock(client, monkeypatch):
+    import api.services.article_analysis_service as analysis_module
+
+    monkeypatch.setattr(analysis_module, "_legacy_batch_is_alive", lambda: False)
+    with analysis_module.get_db() as conn:
+        conn.execute(
+            "INSERT INTO app_settings (key, value) VALUES (?, ?)",
+            ("ai_article_analysis_running", str(int(analysis_module.time.time()))),
+        )
+
+    response = client.get("/settings/ai-article-analysis/status")
+
+    assert response.status_code == 200
+    assert response.json() == {"running": False}
+
+
+def test_ai_article_analysis_clears_its_batch_lock_after_failure(client, monkeypatch):
+    import api.services.article_analysis_service as analysis_module
+
+    monkeypatch.setenv("SHIORI_FEED_BATCH_BIN", "/tmp/mock-shiori-feed-batch")
+
+    class FailedBatchProcess:
+        pid = 4243
+        stdout = io.StringIO("LLM request failed\n")
+
+        def wait(self):
+            return 1
+
+        def kill(self):
+            return None
+
+    def open_batch(*_args, **_kwargs):
+        with analysis_module.get_db() as conn:
+            conn.execute(
+                "INSERT INTO app_settings (key, value) VALUES (?, ?)",
+                (
+                    "ai_article_analysis_running",
+                    f"{int(analysis_module.time.time())}:{FailedBatchProcess.pid}",
+                ),
+            )
+        return FailedBatchProcess()
+
+    monkeypatch.setattr(analysis_module.subprocess, "Popen", open_batch)
+
+    response = client.post("/settings/ai-article-analysis/execute")
+
+    assert response.status_code == 502
+    assert client.get("/settings/ai-article-analysis/status").json() == {
+        "running": False
     }
 
 

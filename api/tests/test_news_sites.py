@@ -127,6 +127,24 @@ def test_registration_requires_llm_settings(client):
     assert "LLM settings" in response.json()["detail"]
 
 
+def test_news_site_icon_can_be_uploaded_and_served(client):
+    configure_llm(client)
+    site_id = create_site(client).json()["id"]
+    response = client.put(
+        f"/news-sites/{site_id}/icon",
+        data={"public_url": f"https://feeds.example.com/api/news-sites/{site_id}/icon"},
+        files={"file": ("icon.webp", b"webp-bytes", "image/webp")},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["icon_uploaded"] is True
+
+    icon = client.get(f"/news-sites/{site_id}/icon")
+    assert icon.status_code == 200
+    assert icon.content == b"webp-bytes"
+    assert icon.headers["content-type"] == "image/webp"
+
+
 def test_registration_analyzes_and_tests_scraping_before_saving(client):
     assert configure_llm(client).status_code == 200
 

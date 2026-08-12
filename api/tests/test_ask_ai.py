@@ -163,6 +163,57 @@ def test_ask_ai_removes_unrelated_candidates_before_answering(monkeypatch):
     assert [row["title"] for row in selected] == ["OpenAI launches a model"]
 
 
+def test_ask_ai_keeps_explicit_article_list_topic_when_llm_returns_empty(monkeypatch):
+    import api.services.ask_ai_service as ask_ai_module
+
+    rows = [
+        {
+            "source_title": "さくらのクラウドニュース",
+            "title": "IAMロール追加のお知らせ",
+            "summary": "さくらのクラウドにIAMロールが追加されました。",
+        },
+        {
+            "source_title": "Example feed",
+            "title": "What’s new in Svelte",
+            "summary": "A frontend framework update.",
+        },
+    ]
+    monkeypatch.setattr(
+        ask_ai_module,
+        "chat_completion",
+        lambda *args, **kwargs: '{"references":[]}',
+    )
+
+    selected = AskAIService()._select_relevant_rows(
+        object(), "さくらのクラウドに関する記事を教えて", rows
+    )
+
+    assert [row["title"] for row in selected] == ["IAMロール追加のお知らせ"]
+
+
+def test_ask_ai_does_not_force_short_broad_article_topics(monkeypatch):
+    import api.services.ask_ai_service as ask_ai_module
+
+    rows = [
+        {
+            "source_title": "Svelte",
+            "title": "What’s new in Svelte",
+            "summary": "Includes an incidental AI tool.",
+        }
+    ]
+    monkeypatch.setattr(
+        ask_ai_module,
+        "chat_completion",
+        lambda *args, **kwargs: '{"references":[]}',
+    )
+
+    selected = AskAIService()._select_relevant_rows(
+        object(), "AIに関する記事を教えて", rows
+    )
+
+    assert selected == []
+
+
 def test_ask_ai_rejects_empty_questions(client):
     response = client.post("/ai/chat", json={"message": "  "})
 

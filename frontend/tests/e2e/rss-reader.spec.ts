@@ -13,6 +13,43 @@ test("opens the rolling 24-hour news summary as the app home", async ({ page }) 
   await expect(page.getByRole("link", { name: "Bookmarks" })).toHaveCount(0);
 });
 
+test("shows configured feed icons in the recent news list", async ({ page }) => {
+  await page.route("**/api/dashboard", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        generated_at: "2026-08-10T01:00:00Z",
+        window_started_at: "2026-08-09T01:00:00Z",
+        summary: {
+          rss_feed_count: 1,
+          custom_feed_count: 0,
+          recent_article_count: 1,
+          pending_notification_count: 0,
+        },
+        articles: [{
+          source_type: "rss",
+          source_id: 3,
+          source_title: "Tech Feed",
+          source_icon_url: "https://cdn.example.com/tech-feed.png",
+          url: "https://example.com/article",
+          title: "Recent article",
+          summary: null,
+          published: "2026-08-10T00:00:00Z",
+          created_at: "2026-08-10T00:00:00Z",
+          webhook_notified: true,
+        }],
+      }),
+    });
+  });
+
+  await page.goto("/");
+
+  await expect(page.getByRole("img", { name: "Tech Feed icon" })).toHaveAttribute(
+    "src",
+    "https://cdn.example.com/tech-feed.png",
+  );
+});
+
 test("opens the Ask AI chat modal from the floating launcher", async ({ page }) => {
   await page.route("**/ai/chat/stream", async (route) => {
     await route.fulfill({
@@ -190,37 +227,93 @@ test("shows the LLM connection settings used by custom RSS", async ({ page }) =>
   await expect(page.getByLabel("Analyze saved articles")).toBeDisabled();
 });
 
+test("opens and displays saved AI article analysis data", async ({ page }) => {
+  await page.route(/\/api\/ai\/article-analyses/, async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        items: [
+          {
+            id: 1,
+            source_type: "rss",
+            article_id: 12,
+            source_id: 3,
+            source_title: "Tech Feed",
+            article_title: "OpenAI platform update",
+            article_url: "https://example.com/openai-update",
+            article_published: "2026-08-09T08:00:00Z",
+            model: "example-model",
+            prompt_version: "v1",
+            ai_summary: "The platform added new agent capabilities.",
+            key_points: ["New agent APIs were announced."],
+            topics: ["AI"],
+            keywords: ["OpenAI"],
+            entities: [
+              "OpenAI",
+              `https://example.com/${"unbroken-path-segment".repeat(30)}`,
+            ],
+            input_tokens: 120,
+            output_tokens: 40,
+            status: "completed",
+            error_message: null,
+            attempt_count: 1,
+            analyzed_at: "2026-08-10T01:00:00Z",
+            updated_at: "2026-08-10T01:00:00Z",
+          },
+        ],
+        total: 1,
+        page: 1,
+        per_page: 20,
+        total_pages: 1,
+      }),
+    });
+  });
+
+  await page.goto("/settings?tab=llm");
+  await page.getByRole("link", { name: "AI analysis data", exact: true }).click();
+
+  await expect(page).toHaveURL(/\/ai-data$/);
+  await expect(page.getByRole("heading", { name: "Analyzed articles" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "OpenAI platform update" })).toBeVisible();
+  await expect(page.getByText("The platform added new agent capabilities.")).toBeVisible();
+  await expect(page.getByText("Tokens: 120 in / 40 out")).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+    ),
+  ).toBe(false);
+});
+
 test("runs article analysis manually with a loading state", async ({ page }) => {
   let executionRequests = 0;
+  let jobRunning = false;
   let releaseAnalysis = () => {};
   const analysisPending = new Promise<void>((resolve) => {
     releaseAnalysis = resolve;
   });
-  await page.route(/\/api\/settings\/llm\/?$/, async (route) => {
+  await page.route(/\/api\/ai\/article-analyses/, async (route) => {
     await route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
-        provider: "openai",
-        base_url: "https://llm.example.com/v1",
-        api_key_configured: true,
-        model: "example-model",
+        items: [],
+        total: 0,
+        page: 1,
+        per_page: 20,
+        total_pages: 0,
       }),
     });
   });
-  await page.route(/\/api\/settings\/ai-article-analysis\/?$/, async (route) => {
+  await page.route(/\/api\/settings\/ai-article-analysis\/status\/?$/, async (route) => {
     await route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({
-        enabled: false,
-        max_articles_per_run: 20,
-        daily_token_limit: 50000,
-        lookback_days: 30,
-      }),
+      body: JSON.stringify({ running: jobRunning }),
     });
   });
   await page.route(/\/api\/settings\/ai-article-analysis\/execute\/?$/, async (route) => {
     executionRequests += 1;
+    jobRunning = true;
     await analysisPending;
+    jobRunning = false;
     await route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
@@ -233,7 +326,8 @@ test("runs article analysis manually with a loading state", async ({ page }) => 
     });
   });
 
-  await page.goto("/settings?tab=llm");
+  await page.goto("/ai-data");
+  await expect(page.getByRole("heading", { name: "Analyzed articles" })).toBeVisible();
   const runButton = page.getByRole("button", { name: "Run analysis now" });
   await expect(runButton).toBeEnabled();
   await runButton.evaluate((button: HTMLButtonElement) => {
@@ -243,10 +337,78 @@ test("runs article analysis manually with a loading state", async ({ page }) => 
 
   await expect(runButton).toBeDisabled();
   await expect(runButton.locator(".animate-spin")).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("Article analysis is running");
   expect(executionRequests).toBe(1);
   releaseAnalysis();
   await expect(page.getByText("Article analysis completed.", { exact: true })).toBeVisible();
   await expect(runButton).toBeEnabled();
+  await expect(page.getByRole("status")).toBeHidden();
+});
+
+test("disables manual analysis while the server reports a running job", async ({ page }) => {
+  await page.route(/\/api\/ai\/article-analyses/, async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        items: [],
+        total: 0,
+        page: 1,
+        per_page: 20,
+        total_pages: 0,
+      }),
+    });
+  });
+  await page.route(/\/api\/settings\/ai-article-analysis\/status\/?$/, async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ running: true }),
+    });
+  });
+
+  await page.goto("/ai-data");
+
+  const runButton = page.getByRole("button", { name: "Run analysis now" });
+  await expect(runButton).toBeDisabled();
+  await expect(runButton).toContainText("Analysis running");
+  await expect(runButton.locator(".animate-spin")).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("Article analysis is running");
+});
+
+test("shows an alert when manual article analysis stops with an error", async ({ page }) => {
+  await page.route(/\/api\/ai\/article-analyses/, async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        items: [],
+        total: 0,
+        page: 1,
+        per_page: 20,
+        total_pages: 0,
+      }),
+    });
+  });
+  await page.route(/\/api\/settings\/ai-article-analysis\/status\/?$/, async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ running: false }),
+    });
+  });
+  await page.route(/\/api\/settings\/ai-article-analysis\/execute\/?$/, async (route) => {
+    await route.fulfill({
+      status: 502,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "The LLM provider stopped responding." }),
+    });
+  });
+
+  await page.goto("/ai-data");
+  await page.getByRole("button", { name: "Run analysis now" }).click();
+
+  const alert = page.getByRole("alert").filter({ hasText: "Article analysis stopped" });
+  await expect(alert).toBeVisible();
+  await expect(alert).toContainText("The LLM provider stopped responding.");
+  await alert.getByRole("button", { name: "Dismiss" }).click();
+  await expect(alert).toBeHidden();
 });
 
 test("groups automation controls under the settings tabs", async ({ page }) => {

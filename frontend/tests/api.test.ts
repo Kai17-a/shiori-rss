@@ -16,6 +16,7 @@ describe("API helpers", () => {
     expect(buildRequestHeaders({ body: "{}" }).headers).toEqual({
       "Content-Type": "application/json",
     });
+    expect(buildRequestHeaders({ body: new FormData() }).headers).toEqual({});
   });
 
   it("normalizes API errors", () => {

@@ -11,7 +11,18 @@ class RSSFeedRepository:
 
     def _with_webhook_ids(self, row: dict) -> dict:
         row["webhook_ids"] = self.find_webhook_ids(int(row["id"]))
+        row["icon_uploaded"] = row.get("icon_data") is not None
+        row.pop("icon_data", None)
+        row.pop("icon_media_type", None)
         return row
+
+    def find_icon(self, feed_id: int) -> tuple[bytes, str] | None:
+        row = self.conn.execute(
+            "SELECT icon_data, icon_media_type FROM rss_feeds WHERE id = ?", (feed_id,)
+        ).fetchone()
+        if row is None or row["icon_data"] is None:
+            return None
+        return bytes(row["icon_data"]), str(row["icon_media_type"])
 
     def find_webhook_ids(self, feed_id: int) -> list[int]:
         rows = self.conn.execute(
@@ -40,13 +51,14 @@ class RSSFeedRepository:
         title: str,
         description: str | None,
         notify_webhook_enabled: bool,
+        icon_url: str | None,
     ) -> dict:
         cursor = self.conn.execute(
             """
-            INSERT INTO rss_feeds (url, title, description, notify_webhook_enabled)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO rss_feeds (url, title, description, notify_webhook_enabled, icon_url)
+            VALUES (?, ?, ?, ?, ?)
             """,
-            (url, title, description, int(notify_webhook_enabled)),
+            (url, title, description, int(notify_webhook_enabled), icon_url),
         )
         row = self.conn.execute(
             "SELECT * FROM rss_feeds WHERE id = ?", (cursor.lastrowid,)
@@ -110,7 +122,9 @@ class RSSFeedRepository:
         has_summary = self._has_column("rss_feed_articles", "summary")
         has_notified = self._has_column("rss_feed_articles", "webhook_notified")
         summary_select = ", summary" if has_summary else ", NULL AS summary"
-        notified_select = ", webhook_notified" if has_notified else ", 1 AS webhook_notified"
+        notified_select = (
+            ", webhook_notified" if has_notified else ", 1 AS webhook_notified"
+        )
         query = f"""
             SELECT id, feed_id, url, title{summary_select}{published_select}{notified_select}, created_at
             FROM rss_feed_articles
@@ -131,7 +145,9 @@ class RSSFeedRepository:
     ) -> int:
         clauses = ["feed_id = ?"]
         params: list = [feed_id]
-        clauses, params = self._append_article_date_filters(clauses, params, published_from, published_to)
+        clauses, params = self._append_article_date_filters(
+            clauses, params, published_from, published_to
+        )
         row = self.conn.execute(
             f"SELECT COUNT(*) AS total FROM rss_feed_articles WHERE {' AND '.join(clauses)}",
             params,
@@ -150,11 +166,13 @@ class RSSFeedRepository:
         published_select = ", published" if has_published else ", NULL AS published"
         clauses = ["feed_id = ?"]
         params: list = [feed_id]
-        clauses, params = self._append_article_date_filters(clauses, params, published_from, published_to)
+        clauses, params = self._append_article_date_filters(
+            clauses, params, published_from, published_to
+        )
         query = f"""
             SELECT id, feed_id, url, title{published_select}, created_at
             FROM rss_feed_articles
-            WHERE {' AND '.join(clauses)}
+            WHERE {" AND ".join(clauses)}
             ORDER BY published IS NULL ASC, published DESC, id DESC
             LIMIT ? OFFSET ?
             """

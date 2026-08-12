@@ -38,6 +38,8 @@
           />
         </UFormField>
 
+        <FeedIconField :form="form" />
+
         <div class="flex justify-end gap-3">
           <UButton type="button" color="neutral" variant="ghost" @click="close"> Cancel </UButton>
           <UButton type="submit" :loading="saving">
@@ -60,6 +62,10 @@ const props = defineProps<{
     url: string;
     description: string;
     webhookIds: number[];
+    iconUrl: string;
+    iconFile: File | null;
+    existingIconUrl: string;
+    removeIcon: boolean;
   };
   webhooks: SettingsWebhookResponse[];
   title: string;

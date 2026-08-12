@@ -98,6 +98,10 @@ const form = reactive({
   description: "",
   webhookIds: [] as number[],
   reanalyze: false,
+  iconUrl: "",
+  iconFile: null as File | null,
+  existingIconUrl: "",
+  removeIcon: false,
 });
 
 const resetForm = () => {
@@ -107,6 +111,10 @@ const resetForm = () => {
   form.description = "";
   form.webhookIds = [];
   form.reanalyze = false;
+  form.iconUrl = "";
+  form.iconFile = null;
+  form.existingIconUrl = "";
+  form.removeIcon = false;
   saveError.value = "";
 };
 
@@ -122,6 +130,10 @@ const openEdit = (site: NewsSiteResponse) => {
   form.description = site.description || "";
   form.webhookIds = [...site.webhook_ids];
   form.reanalyze = false;
+  form.iconUrl = site.icon_uploaded ? "" : (site.icon_url || "");
+  form.iconFile = null;
+  form.existingIconUrl = site.icon_url || "";
+  form.removeIcon = false;
   saveError.value = "";
   modalOpen.value = true;
 };
@@ -159,11 +171,20 @@ const saveSite = async () => {
       description: form.description.trim() || null,
       webhook_ids: form.webhookIds,
       ...(form.id ? { reanalyze: form.reanalyze } : {}),
+      ...(form.iconUrl.trim() ? { icon_url: form.iconUrl.trim() } : {}),
     };
-    await request(form.id ? `/news-sites/${form.id}` : "/news-sites", {
+    const saved = await request<NewsSiteResponse>(form.id ? `/news-sites/${form.id}` : "/news-sites", {
       method: form.id ? "PATCH" : "POST",
       body: JSON.stringify(body),
     });
+    if (form.iconFile) {
+      const iconBody = new FormData();
+      iconBody.append("file", form.iconFile);
+      iconBody.append("public_url", `${window.location.origin}/api/news-sites/${saved.id}/icon`);
+      await request(`/news-sites/${saved.id}/icon`, { method: "PUT", body: iconBody });
+    } else if (form.removeIcon && form.id) {
+      await request(`/news-sites/${saved.id}/icon`, { method: "DELETE" });
+    }
     modalOpen.value = false;
     await Promise.all([loadSites(), refreshSidebarCatalog(true)]);
     toast.show({

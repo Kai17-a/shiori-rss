@@ -30,6 +30,8 @@ from api.services.webhook_service import (
 )
 
 logger = logging.getLogger(__name__)
+ALLOWED_ICON_MEDIA_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
+MAX_ICON_BYTES = 1024 * 1024
 
 
 class RSSFeedService:
@@ -296,6 +298,7 @@ class RSSFeedService:
                     data.title,
                     data.description,
                     data.notify_webhook_enabled,
+                    str(data.icon_url) if data.icon_url else None,
                 )
             except sqlite3.IntegrityError:
                 raise HTTPException(
@@ -438,8 +441,61 @@ class RSSFeedService:
                 )
             if "webhook_ids" in payload:
                 self._sync_webhook_endpoints(repo, feed_id, payload["webhook_ids"])
+            if "icon_url" in payload:
+                fields["icon_url"] = (
+                    str(payload["icon_url"]) if payload["icon_url"] else None
+                )
+                fields["icon_data"] = None
+                fields["icon_media_type"] = None
             row = repo.update(feed_id, fields)
             assert row is not None
+            return RSSFeedResponse(**row)
+
+    def set_icon(
+        self, feed_id: int, *, content: bytes, media_type: str, public_url: str
+    ) -> RSSFeedResponse:
+        if media_type not in ALLOWED_ICON_MEDIA_TYPES:
+            raise HTTPException(
+                status_code=422, detail="Icon must be PNG, JPEG, GIF, or WebP"
+            )
+        if not content or len(content) > MAX_ICON_BYTES:
+            raise HTTPException(
+                status_code=422, detail="Icon must be between 1 byte and 1 MB"
+            )
+        with get_db() as conn:
+            repo = RSSFeedRepository(conn)
+            row = repo.update(
+                feed_id,
+                {
+                    "icon_url": public_url,
+                    "icon_data": content,
+                    "icon_media_type": media_type,
+                },
+            )
+            if row is None:
+                raise HTTPException(status_code=404, detail="RSS feed not found")
+            return RSSFeedResponse(**row)
+
+    def get_icon(self, feed_id: int) -> tuple[bytes, str]:
+        with get_db() as conn:
+            icon = RSSFeedRepository(conn).find_icon(feed_id)
+            if icon is None:
+                raise HTTPException(status_code=404, detail="RSS feed icon not found")
+            return icon
+
+    def clear_icon(self, feed_id: int) -> RSSFeedResponse:
+        with get_db() as conn:
+            repo = RSSFeedRepository(conn)
+            row = repo.update(
+                feed_id,
+                {
+                    "icon_url": None,
+                    "icon_data": None,
+                    "icon_media_type": None,
+                },
+            )
+            if row is None:
+                raise HTTPException(status_code=404, detail="RSS feed not found")
             return RSSFeedResponse(**row)
 
     def delete(self, feed_id: int) -> None:
@@ -541,6 +597,9 @@ class RSSFeedService:
                             chunk_index=index,
                             chunk_count=len(article_chunks),
                             include_summary=include_summary,
+                            icon_url=str(row["icon_url"])
+                            if row.get("icon_url")
+                            else None,
                         )
                         response = send_webhook(webhook_url, payload)
                         if response.status_code >= 400:

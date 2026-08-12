@@ -97,6 +97,52 @@ def test_create_rss_feed_returns_201(client):
     assert "id" in body
 
 
+def test_rss_feed_icon_can_be_uploaded_and_served(client):
+    feed_id = create_feed(client).json()["id"]
+    response = client.put(
+        f"/rss-feeds/{feed_id}/icon",
+        data={"public_url": f"https://feeds.example.com/api/rss-feeds/{feed_id}/icon"},
+        files={"file": ("icon.png", b"png-bytes", "image/png")},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["icon_uploaded"] is True
+    assert response.json()["icon_url"].endswith(f"/rss-feeds/{feed_id}/icon")
+
+    icon = client.get(f"/rss-feeds/{feed_id}/icon")
+    assert icon.status_code == 200
+    assert icon.content == b"png-bytes"
+    assert icon.headers["content-type"] == "image/png"
+
+
+def test_rss_feed_accepts_external_icon_url(client):
+    response = client.post(
+        "/rss-feeds",
+        json={
+            "url": "https://example.com/feed.xml",
+            "title": "Example",
+            "icon_url": "https://cdn.example.com/feed.png",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["icon_url"] == "https://cdn.example.com/feed.png"
+    assert response.json()["icon_uploaded"] is False
+
+
+def test_discord_rss_payload_uses_feed_icon():
+    from api.services.webhook_service import build_rss_notification_payload
+
+    payload = build_rss_notification_payload(
+        "discord",
+        feed_title="Example",
+        articles=[],
+        icon_url="https://cdn.example.com/feed.png",
+    )
+
+    assert payload["avatar_url"] == "https://cdn.example.com/feed.png"
+
+
 def test_register_webhook_accepts_slack_webhook_url(client):
     resp = client.post(
         "/settings/webhooks",
@@ -142,7 +188,7 @@ def test_execute_rss_feed_supports_microsoft_teams_adaptive_cards(client, monkey
     first_article = card["body"][1]["items"]
     assert card["body"][1]["spacing"] == "Medium"
     assert "separator" not in card["body"][1]
-    assert first_article[0]["text"] == "• [Item 1](https://example.com/item-1)"
+    assert first_article[0]["text"] == "- [Item 1](https://example.com/item-1)"
     assert not any(item["type"] == "ActionSet" for item in first_article)
 
     summary_payload = webhook_module.build_rss_notification_payload(
