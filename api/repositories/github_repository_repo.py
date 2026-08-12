@@ -30,13 +30,14 @@ class GitHubRepositoryRepository:
             INSERT INTO github_repositories (
                 owner, repository, repository_url, latest_release_name,
                 latest_release_tag, latest_release_url, latest_release_body,
-                latest_release_published_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                latest_release_published_at, latest_notified_release_tag
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             tuple(values[key] for key in (
                 "owner", "repository", "repository_url", "latest_release_name",
                 "latest_release_tag", "latest_release_url", "latest_release_body",
                 "latest_release_published_at",
+                "latest_release_tag",
             )),
         )
         assert cursor.lastrowid is not None

@@ -238,7 +238,7 @@ CREATE TABLE github_repositories (
     fetched_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
-);
+, latest_notified_release_tag TEXT);
 CREATE UNIQUE INDEX idx_github_repositories_url_unique
     ON github_repositories(repository_url);
 -- Dbmate schema migrations
@@ -260,4 +260,5 @@ INSERT INTO "schema_migrations" (version) VALUES
   ('202608090945'),
   ('202608091010'),
   ('202608101000'),
-  ('202608121631');
+  ('202608121631'),
+  ('202608121710');

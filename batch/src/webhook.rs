@@ -235,6 +235,47 @@ pub async fn send_rss_webhook_with_icon(
     .await
 }
 
+pub async fn send_github_release_webhook(
+    webhook_url: &str,
+    repository_name: &str,
+    repository_url: &str,
+    release_name: &str,
+    release_tag: &str,
+    release_url: &str,
+    release_body: &str,
+) -> Result<(), Box<dyn Error>> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()?;
+    let service = detect_webhook_service(webhook_url).unwrap_or("discord");
+    let content = format!("**{}** - **New GitHub release**", repository_name);
+    let description = if release_body.is_empty() {
+        release_tag.to_string()
+    } else {
+        format!(
+            "{}\n\n{}",
+            release_tag,
+            truncate(release_body, MAX_EMBED_SUMMARY_LEN)
+        )
+    };
+    let payload = build_payload(
+        service,
+        content,
+        vec![serde_json::json!({
+            "title": release_name, "url": release_url, "description": description,
+        })],
+    );
+    let response = post_with_retry(&client, webhook_url, &payload).await.map_err(|error| io::Error::other(format!("Skipping GitHub repository {repository_url}: failed to notify webhook after 3 attempts: {error}")))?;
+    if !response.status().is_success() {
+        return Err(io::Error::other(format!(
+            "Skipping GitHub repository {repository_url}: webhook returned {}",
+            response.status()
+        ))
+        .into());
+    }
+    Ok(())
+}
+
 async fn send_article_webhook(
     webhook_url: &str,
     source_title: &str,
