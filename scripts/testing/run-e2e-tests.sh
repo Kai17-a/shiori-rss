@@ -2,10 +2,24 @@
 set -eu
 
 repo_root=$(cd "$(dirname "$0")/../.." && pwd)
+temporary_directory=""
 
-frontend_port=${FRONTEND_PORT:-3001}
-api_port=${API_PORT:-8001}
-database_path=${DATABASE_URL:-/tmp/rss-feeder-e2e/data.db}
+available_port() {
+    python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()'
+}
+
+frontend_port=${FRONTEND_PORT:-$(available_port)}
+api_port=${API_PORT:-$(available_port)}
+if [ "$frontend_port" = "$api_port" ]; then
+    api_port=$(available_port)
+fi
+
+if [ -n "${DATABASE_URL:-}" ]; then
+    database_path=$DATABASE_URL
+else
+    temporary_directory=$(mktemp -d /tmp/rss-feeder-e2e.XXXXXX)
+    database_path="$temporary_directory/data.db"
+fi
 
 cleanup() {
     if [ -n "${api_pid:-}" ]; then
@@ -14,17 +28,25 @@ cleanup() {
     if [ -n "${frontend_pid:-}" ]; then
         kill "$frontend_pid" 2>/dev/null || true
     fi
+    if [ -n "$temporary_directory" ]; then
+        rm -rf "$temporary_directory"
+    fi
 }
 
 trap cleanup EXIT INT TERM
 
 wait_for_url() {
     url=$1
-    attempts=${2:-30}
+    process_id=$2
+    attempts=${3:-30}
 
     for i in $(seq 1 "$attempts"); do
         if curl -fsS "$url" >/dev/null; then
             return 0
+        fi
+        if ! kill -0 "$process_id" 2>/dev/null; then
+            echo "Process $process_id stopped while waiting for $url" >&2
+            return 1
         fi
         sleep 2
     done
@@ -57,11 +79,11 @@ cd "$repo_root/frontend"
 bunx playwright install chromium
 
 start_api_server
-wait_for_url "http://127.0.0.1:$api_port/health"
+wait_for_url "http://127.0.0.1:$api_port/health" "$api_pid"
 start_frontend_server
 
-wait_for_url "http://127.0.0.1:$api_port/health"
-wait_for_url "http://127.0.0.1:$frontend_port"
+wait_for_url "http://127.0.0.1:$api_port/health" "$api_pid"
+wait_for_url "http://127.0.0.1:$frontend_port" "$frontend_pid"
 
 PLAYWRIGHT_API_BASE_URL="http://127.0.0.1:$api_port" \
 PLAYWRIGHT_FRONTEND_BASE_URL="http://127.0.0.1:$frontend_port" \

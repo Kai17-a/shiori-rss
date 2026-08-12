@@ -18,6 +18,7 @@ Nuxt 4 SPA は RSS 専用 UI を提供する。
 - 全画面の右下に `Ask AI` ボタンを固定表示し、クリックすると保存済み記事の横断検索・要約チャット用モーダルを開く。直近4往復と直前回答の出典を次の質問へ渡し、`S9の内容` のような継続質問に対応する。履歴はモーダル状態だけに保持し、サーバーへ永続保存しない。LLMの回答は読み取り専用のNuxt UI EditorでMarkdown表示し、回答が実際に引用した通常RSS・カスタムRSSの記事だけを参照番号付きリンクとして表示する。回答はNDJSONストリームから逐次反映し、Nuxt UIの `ChatMessages` による自動スクロールと `ChatPromptSubmit` のsubmitted・streaming・error状態を使用する。submitted・streaming中の送信ボタンは、停止操作を維持したまま回転する `loader-circle` を表示する。
 - 一覧と設定画面は宣伝的なヒーローやキャッチコピーを置かず、操作対象を先頭に表示する。
 - 非同期処理を実行する `UButton` は `loading-icon="i-lucide-loader-circle"` を明示し、処理中アイコンを画面間で統一する。アイコン操作と更新操作は既存の共通ボタンを使用する。
+- E2Eヘルパーは実行ごとに空きポートと一時SQLite DBを確保し、並行・残留プロセスとの競合を避ける。明示した `FRONTEND_PORT`、`API_PORT`、`DATABASE_URL` はそのまま使用する。
 - サイドバーには Home、RSS feeds、Custom RSS、GitHub、AI analysis data、Preferencesを表示する。
 - 旧 `/rss` と `/rss/{id}` ルートは提供しない。
 - API 呼び出しは `useApi` と `/api` reverse proxy を通す。
