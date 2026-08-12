@@ -29,7 +29,12 @@ export interface AIArticleAnalysisResponse {
 export interface AIArticleAnalysisListResponse {
   items: AIArticleAnalysisResponse[];
   total: number;
+  failed_total: number;
   page: number;
   per_page: number;
   total_pages: number;
+}
+
+export interface AIArticleAnalysisDeleteFailedResponse {
+  deleted_count: number;
 }

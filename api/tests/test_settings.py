@@ -653,6 +653,25 @@ def test_clear_ai_analysis_results_is_blocked_while_running(client, monkeypatch)
     assert "running" in response.json()["detail"]
 
 
+def test_delete_failed_ai_analysis_results_is_blocked_while_running(
+    client, monkeypatch
+):
+    import api.services.article_analysis_service as analysis_module
+
+    monkeypatch.setattr(
+        analysis_module.ArticleAnalysisService,
+        "status",
+        lambda _self: analysis_module.SettingsAIArticleAnalysisStatusResponse(
+            running=True
+        ),
+    )
+
+    response = client.delete("/ai/article-analyses/failed")
+
+    assert response.status_code == 409
+    assert "running" in response.json()["detail"]
+
+
 def test_llm_settings_are_not_saved_when_connection_test_fails(client, monkeypatch):
     from fastapi import HTTPException
     import api.services.settings_service as settings_module

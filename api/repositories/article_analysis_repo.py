@@ -71,3 +71,9 @@ class ArticleAnalysisRepository:
             [*params, limit, offset],
         ).fetchall()
         return [dict(row) for row in rows]
+
+    def delete_failed(self) -> int:
+        cursor = self.conn.execute(
+            "DELETE FROM article_ai_analyses WHERE status = 'failed'"
+        )
+        return cursor.rowcount

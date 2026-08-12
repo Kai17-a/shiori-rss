@@ -61,6 +61,7 @@ def test_lists_saved_ai_article_analysis_data(tmp_path, monkeypatch):
     result = AIArticleDataService().list(q="OpenAI", status="completed")
 
     assert result.total == 1
+    assert result.failed_total == 0
     item = result.items[0]
     assert item.source_title == "Example Feed"
     assert item.article_title == "OpenAI update"
@@ -94,3 +95,53 @@ def test_ai_article_analysis_filters_can_return_empty_page(tmp_path, monkeypatch
     assert result.items == []
     assert result.total == 0
     assert result.total_pages == 0
+    assert result.failed_total == 0
+
+
+def test_deletes_only_failed_analysis_results_and_keeps_usage(tmp_path, monkeypatch):
+    db_path = str(tmp_path / "delete-failed-ai-data.db")
+    initialize_database(db_path)
+    with sqlite3.connect(db_path) as conn:
+        conn.executemany(
+            """
+            INSERT INTO article_ai_analyses (
+                source_type, article_id, content_hash, model, prompt_version, status
+            ) VALUES ('rss', ?, 'hash', 'model', 'v1', ?)
+            """,
+            [(1, "completed"), (2, "failed"), (3, "failed")],
+        )
+        conn.execute(
+            """
+            INSERT INTO article_ai_analysis_usage (
+                source_type, article_id, input_tokens, output_tokens, successful
+            ) VALUES ('rss', 2, 100, 0, 0)
+            """
+        )
+
+    import api.services.ai_article_data_service as service_module
+
+    @contextmanager
+    def patched_get_db(database_url=db_path):
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            yield conn
+            conn.commit()
+        finally:
+            conn.close()
+
+    monkeypatch.setattr(service_module, "get_db", patched_get_db)
+
+    result = AIArticleDataService().delete_failed()
+
+    assert result.deleted_count == 2
+    with sqlite3.connect(db_path) as conn:
+        assert conn.execute(
+            "SELECT COUNT(*) FROM article_ai_analyses WHERE status = 'completed'"
+        ).fetchone()[0] == 1
+        assert conn.execute(
+            "SELECT COUNT(*) FROM article_ai_analyses WHERE status = 'failed'"
+        ).fetchone()[0] == 0
+        assert conn.execute(
+            "SELECT COUNT(*) FROM article_ai_analysis_usage"
+        ).fetchone()[0] == 1

@@ -676,9 +676,14 @@ class AIArticleAnalysisResponse(BaseModel):
 class AIArticleAnalysisListResponse(BaseModel):
     items: list[AIArticleAnalysisResponse]
     total: int
+    failed_total: int
     page: int
     per_page: int
     total_pages: int
+
+
+class AIArticleAnalysisDeleteFailedResponse(BaseModel):
+    deleted_count: int
 
 
 class DashboardSummary(BaseModel):

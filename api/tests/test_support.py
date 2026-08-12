@@ -26,6 +26,7 @@ from api.model.models import (
     SettingsWebhookUpdate,
 )
 from api.services.ask_ai_service import AskAIService
+from api.services.ai_article_data_service import AIArticleDataService
 from api.services.article_analysis_service import ArticleAnalysisService
 from api.services.rss_feed_service import RSSFeedService
 from api.services.dashboard_service import DashboardService
@@ -151,6 +152,27 @@ class CompatTestClient:
             .ask(body.message, body.history, body.context_sources)
             .model_dump(mode="json")
         )
+
+    def _ai_article_data_response(self, method: str, path: str, query):
+        service = AIArticleDataService()
+        if method == "GET" and path == "/ai/article-analyses":
+            return self._ok(
+                service.list(
+                    q=query.get("q", [None])[0],
+                    source_type=query.get("source_type", [None])[0],
+                    status=query.get("status", [None])[0],
+                    page=int(query.get("page", [1])[0]),
+                    per_page=int(query.get("per_page", [20])[0]),
+                ).model_dump(mode="json")
+            )
+        if method == "DELETE" and path == "/ai/article-analyses/failed":
+            if ArticleAnalysisService().status().running:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Article analysis is running. Stop it before deleting failed results.",
+                )
+            return self._ok(service.delete_failed().model_dump())
+        return None
 
     def _news_site_response(self, method: str, path: str, query, json, kwargs):
         service = NewsSiteService()
@@ -308,6 +330,9 @@ class CompatTestClient:
             if response is not None:
                 return response
             response = self._ask_ai_response(method, parsed.path, json)
+            if response is not None:
+                return response
+            response = self._ai_article_data_response(method, parsed.path, query)
             if response is not None:
                 return response
             response = self._rss_response(method, parsed.path, query, json, kwargs)

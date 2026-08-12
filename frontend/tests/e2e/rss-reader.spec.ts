@@ -377,6 +377,45 @@ test("opens and displays saved AI article analysis data", async ({ page }) => {
   ).toBe(false);
 });
 
+test("deletes failed AI analysis results after confirmation", async ({ page }) => {
+  let deleted = false;
+  await page.route(/\/api\/ai\/article-analyses\/?(?:\?.*)?$/, async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        items: [],
+        total: 0,
+        failed_total: deleted ? 0 : 2,
+        page: 1,
+        per_page: 20,
+        total_pages: 0,
+      }),
+    });
+  });
+  await page.route(/\/api\/ai\/article-analyses\/failed\/?$/, async (route) => {
+    deleted = true;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ deleted_count: 2 }),
+    });
+  });
+  await page.route(/\/api\/settings\/ai-article-analysis\/status\/?$/, async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ running: false, stopping: false }),
+    });
+  });
+
+  await page.goto("/ai-data");
+  await page.getByRole("button", { name: "Delete failed analyses" }).click();
+  const dialog = page.getByRole("dialog", { name: "Delete failed analyses" });
+  await expect(dialog).toContainText("Successful analyses and token usage history will be kept.");
+  await dialog.getByRole("button", { name: "Delete failed analyses" }).click();
+
+  await expect(page.getByText("Failed analyses deleted.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Delete failed analyses" })).toBeHidden();
+});
+
 test("runs article analysis manually with a loading state", async ({ page }) => {
   let executionRequests = 0;
   let releaseAnalysis = () => {};

@@ -31,6 +31,16 @@
             <div class="flex flex-wrap items-center gap-2">
               <RefreshButton :loading="loading" @click="loadAnalyses(true)" />
               <UButton
+                v-if="analyses.failed_total > 0"
+                :label="`Delete failed (${analyses.failed_total})`"
+                aria-label="Delete failed analyses"
+                icon="i-lucide-trash-2"
+                color="error"
+                variant="soft"
+                :disabled="analysisRunning"
+                @click="deleteFailedOpen = true"
+              />
+              <UButton
                 :label="analysisRunning ? 'Analysis running' : 'Run analysis now'"
                 aria-label="Run analysis now"
                 icon="i-lucide-play"
@@ -243,6 +253,15 @@
           />
         </UPageCard>
       </div>
+      <DeleteConfirmModal
+        v-model:open="deleteFailedOpen"
+        title="Delete failed analyses"
+        description="Successful analyses and token usage history will be kept."
+        confirm-label="Delete failed analyses"
+        :loading="deletingFailed"
+        prompt="Delete every failed analysis result? The affected articles can be retried on the next analysis run."
+        @confirm="deleteFailedAnalyses"
+      />
     </template>
   </UDashboardPanel>
 </template>
@@ -252,6 +271,7 @@ import type {
   AIAnalysisSourceType,
   AIAnalysisStatus,
   AIArticleAnalysisListResponse,
+  AIArticleAnalysisDeleteFailedResponse,
   SettingsAIArticleAnalysisRunResponse,
   SettingsAIArticleAnalysisCancelResponse,
   SettingsAIArticleAnalysisStatusResponse,
@@ -263,6 +283,8 @@ const loading = ref(false);
 const analysisRunning = ref(false);
 const analysisRequestRunning = ref(false);
 const analysisStopping = ref(false);
+const deleteFailedOpen = ref(false);
+const deletingFailed = ref(false);
 const emptyAnalysisStatus = (): SettingsAIArticleAnalysisStatusResponse => ({
   running: false,
   stopping: false,
@@ -287,6 +309,7 @@ const page = ref(1);
 const analyses = ref<AIArticleAnalysisListResponse>({
   items: [],
   total: 0,
+  failed_total: 0,
   page: 1,
   per_page: 20,
   total_pages: 0,
@@ -315,6 +338,35 @@ const formatDateTime = (value: string) => {
   return new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(
     new Date(normalized),
   );
+};
+
+const deleteFailedAnalyses = async () => {
+  if (deletingFailed.value || analysisRunning.value) return;
+  deletingFailed.value = true;
+  try {
+    const response = await request<AIArticleAnalysisDeleteFailedResponse>(
+      "/ai/article-analyses/failed",
+      { method: "DELETE" },
+    );
+    deleteFailedOpen.value = false;
+    page.value = 1;
+    await loadAnalyses();
+    toast.show({
+      title: "Failed analyses deleted.",
+      description: `${response.deleted_count} failed result${response.deleted_count === 1 ? "" : "s"} removed.`,
+      color: "success",
+      icon: "i-lucide-check",
+    });
+  } catch (error) {
+    toast.show({
+      title: "Failed to delete analysis results.",
+      description: error instanceof Error ? error.message : undefined,
+      color: "error",
+      icon: "i-lucide-circle-alert",
+    });
+  } finally {
+    deletingFailed.value = false;
+  }
 };
 
 const loadAnalyses = async (showToast = false) => {

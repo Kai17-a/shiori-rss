@@ -1,10 +1,20 @@
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
-from api.dependencies import get_ai_article_data_service, get_ask_ai_service
-from api.model.models import AIArticleAnalysisListResponse, AskAIRequest, AskAIResponse
+from api.dependencies import (
+    get_ai_article_data_service,
+    get_article_analysis_service,
+    get_ask_ai_service,
+)
+from api.model.models import (
+    AIArticleAnalysisDeleteFailedResponse,
+    AIArticleAnalysisListResponse,
+    AskAIRequest,
+    AskAIResponse,
+)
+from api.services.article_analysis_service import ArticleAnalysisService
 from api.services.ai_article_data_service import AIArticleDataService
 from api.services.ask_ai_service import AskAIService
 
@@ -27,6 +37,22 @@ def list_article_analyses(
         page=page,
         per_page=per_page,
     )
+
+
+@router.delete(
+    "/article-analyses/failed",
+    response_model=AIArticleAnalysisDeleteFailedResponse,
+)
+def delete_failed_article_analyses(
+    service: AIArticleDataService = Depends(get_ai_article_data_service),
+    analysis_service: ArticleAnalysisService = Depends(get_article_analysis_service),
+):
+    if analysis_service.status().running:
+        raise HTTPException(
+            status_code=409,
+            detail="Article analysis is running. Stop it before deleting failed results.",
+        )
+    return service.delete_failed()
 
 
 @router.post("/chat", status_code=200, response_model=AskAIResponse)
