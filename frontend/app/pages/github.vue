@@ -2,8 +2,8 @@
   <UDashboardPanel id="github-releases" class="min-w-0">
     <template #header><PageHeaderActions title="GitHub" /></template>
     <template #body>
-      <div class="mx-auto w-full min-w-0 max-w-7xl space-y-6 overflow-hidden pb-10">
-        <UPageCard class="min-w-0 max-w-full overflow-hidden" :ui="{ body: 'min-w-0 max-w-full space-y-5 overflow-hidden' }">
+      <div class="mx-auto w-full min-w-0 max-w-7xl space-y-6 pb-10">
+        <UPageCard class="min-w-0 max-w-full" :ui="{ body: 'min-w-0 max-w-full space-y-5' }">
           <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
             <div>
               <p class="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Releases</p>
@@ -21,7 +21,7 @@
           </p>
 
           <div v-if="repositories.items.length" class="grid gap-4 lg:grid-cols-2">
-            <article v-for="repository in repositories.items" :key="repository.id" class="min-w-0 max-w-full space-y-4 overflow-hidden rounded-2xl border border-default bg-elevated/30 p-4 sm:p-5">
+            <article v-for="repository in repositories.items" :key="repository.id" class="min-w-0 max-w-full space-y-4 rounded-2xl border border-default bg-elevated/30 p-4 sm:p-5">
               <div class="flex min-w-0 items-start justify-between gap-3">
                 <div class="min-w-0">
                   <a :href="repository.repository_url" target="_blank" rel="noreferrer" class="block max-w-full font-semibold text-highlighted [overflow-wrap:anywhere] hover:text-primary hover:underline">

@@ -60,12 +60,12 @@ test("keeps Home, Custom RSS, and GitHub within a mobile viewport", async ({ pag
         generated_at: "2026-08-13T01:00:00Z",
         window_started_at: "2026-08-12T01:00:00Z",
         summary: { rss_feed_count: 1, custom_feed_count: 1, recent_article_count: 1, pending_notification_count: 0 },
-        articles: [{
+        articles: Array.from({ length: 8 }, (_, index) => ({
           source_type: "rss", source_id: 1, source_title: longText,
-          source_icon_url: null, url: `https://example.com/${longText}`,
+          source_icon_url: null, url: `https://example.com/${index}/${longText}`,
           title: longText, summary: longText, published: "2026-08-13T00:00:00Z",
           created_at: "2026-08-13T00:00:00Z", webhook_notified: true,
-        }],
+        })),
       }),
     });
   });
@@ -73,13 +73,13 @@ test("keeps Home, Custom RSS, and GitHub within a mobile viewport", async ({ pag
     await route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
-        items: [{
-          id: 1, url: `https://example.com/${longText}`, title: longText,
+        items: Array.from({ length: 8 }, (_, index) => ({
+          id: index + 1, url: `https://example.com/${index}/${longText}`, title: longText,
           description: longText, notify_webhook_enabled: false, webhook_ids: [],
           icon_url: null, icon_uploaded: false, configuration_mode: "manual",
           scrape_config: null, created_at: "2026-08-13T00:00:00Z", updated_at: "2026-08-13T00:00:00Z",
-        }],
-        total: 1, page: 1, per_page: 20, total_pages: 1,
+        })),
+        total: 8, page: 1, per_page: 20, total_pages: 1,
       }),
     });
   });
@@ -87,15 +87,15 @@ test("keeps Home, Custom RSS, and GitHub within a mobile viewport", async ({ pag
     await route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
-        items: [{
-          id: 1, owner: longText, repository: longText,
+        items: Array.from({ length: 8 }, (_, index) => ({
+          id: index + 1, owner: longText, repository: longText,
           repository_url: `https://github.com/${longText}/${longText}`,
           latest_release_name: longText, latest_release_tag: longText,
           latest_release_url: `https://github.com/example/releases/${longText}`,
           latest_release_body: longText, latest_release_published_at: "2026-08-13T00:00:00Z",
           fetched_at: "2026-08-13T00:00:00Z", created_at: "2026-08-13T00:00:00Z",
           updated_at: "2026-08-13T00:00:00Z", webhook_ids: [],
-        }], total: 1,
+        })), total: 8,
       }),
     });
   });
@@ -108,6 +108,17 @@ test("keeps Home, Custom RSS, and GitHub within a mobile viewport", async ({ pag
     await expect.poll(() => page.evaluate(
       () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
     )).toBe(true);
+    await expect.poll(() => page.evaluate(() => {
+      const scrollable = Array.from(document.querySelectorAll<HTMLElement>("*"))
+        .find((element) => {
+          const overflowY = window.getComputedStyle(element).overflowY;
+          return ["auto", "scroll"].includes(overflowY)
+            && element.scrollHeight > element.clientHeight;
+        });
+      if (!scrollable) return false;
+      scrollable.scrollTop = 100;
+      return scrollable.scrollTop > 0;
+    })).toBe(true);
   }
 });
 

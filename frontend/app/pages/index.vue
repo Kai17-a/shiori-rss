@@ -5,7 +5,7 @@
     </template>
 
     <template #body>
-      <div class="mx-auto w-full min-w-0 max-w-7xl space-y-6 overflow-hidden pb-10">
+      <div class="mx-auto w-full min-w-0 max-w-7xl space-y-6 pb-10">
         <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <UPageCard
             v-for="item in summaryItems"
@@ -19,8 +19,8 @@
         </div>
 
         <UPageCard
-          class="min-w-0 max-w-full overflow-hidden"
-          :ui="{ body: 'min-w-0 max-w-full space-y-4 overflow-hidden' }"
+          class="min-w-0 max-w-full"
+          :ui="{ body: 'min-w-0 max-w-full space-y-4' }"
         >
           <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>

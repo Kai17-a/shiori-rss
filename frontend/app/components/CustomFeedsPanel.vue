@@ -1,7 +1,7 @@
 <template>
   <UPageCard
-    class="min-w-0 max-w-full overflow-hidden"
-    :ui="{ body: 'min-w-0 max-w-full space-y-5 overflow-hidden' }"
+    class="min-w-0 max-w-full"
+    :ui="{ body: 'min-w-0 max-w-full space-y-5' }"
   >
     <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
       <div>

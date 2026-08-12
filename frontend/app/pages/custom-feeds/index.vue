@@ -5,7 +5,7 @@
     </template>
 
     <template #body>
-      <div class="mx-auto w-full min-w-0 max-w-7xl overflow-hidden pb-10">
+      <div class="mx-auto w-full min-w-0 max-w-7xl pb-10">
         <CustomFeedsPanel :webhooks="webhooks" />
       </div>
     </template>

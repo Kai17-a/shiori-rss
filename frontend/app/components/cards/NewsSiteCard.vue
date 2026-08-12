@@ -1,5 +1,5 @@
 <template>
-  <article class="min-w-0 max-w-full space-y-4 overflow-hidden rounded-2xl border border-default bg-elevated/40 p-4">
+  <article class="min-w-0 max-w-full space-y-4 rounded-2xl border border-default bg-elevated/40 p-4">
     <div class="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
       <div class="flex min-w-0 items-start gap-3">
         <NuxtLink
