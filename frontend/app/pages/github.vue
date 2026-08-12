@@ -31,7 +31,7 @@
                 </div>
                 <div class="flex gap-1">
                   <UButton icon="i-lucide-pencil" aria-label="Edit notification webhooks" color="neutral" variant="ghost" size="sm" @click="openEdit(repository)" />
-                  <UButton icon="i-lucide-trash-2" aria-label="Delete repository" color="error" variant="ghost" size="sm" :loading="deletingId === repository.id" @click="askDelete(repository)" />
+                  <UButton icon="i-lucide-trash-2" aria-label="Delete repository" color="error" variant="ghost" size="sm" :loading="deletingId === repository.id" loading-icon="i-lucide-loader-circle" @click="askDelete(repository)" />
                 </div>
               </div>
               <div>
@@ -70,7 +70,7 @@
               </UFormField>
               <div class="flex justify-end gap-2">
                 <UButton label="Cancel" color="neutral" variant="ghost" @click="modalOpen = false" />
-                <UButton type="submit" :label="form.id ? 'Save notifications' : 'Add repository'" :icon="form.id ? 'i-lucide-save' : 'i-lucide-plus'" :loading="saving" />
+                <UButton type="submit" :label="form.id ? 'Save notifications' : 'Add repository'" :icon="form.id ? 'i-lucide-save' : 'i-lucide-plus'" :loading="saving" loading-icon="i-lucide-loader-circle" />
               </div>
             </UForm>
           </template>

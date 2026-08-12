@@ -157,11 +157,12 @@
                 variant="ghost"
                 icon="i-lucide-plug-zap"
                 :loading="llmTesting"
+                loading-icon="i-lucide-loader-circle"
                 @click="testLlmSettings"
               >
                 Test
               </UButton>
-              <UButton type="submit" icon="i-lucide-save" :loading="llmSaving">
+              <UButton type="submit" icon="i-lucide-save" :loading="llmSaving" loading-icon="i-lucide-loader-circle">
                 Save LLM settings
               </UButton>
               <UButton
@@ -261,6 +262,7 @@
                 type="submit"
                 icon="i-lucide-save"
                 :loading="aiAnalysisLoading || aiAnalysisSaving"
+                loading-icon="i-lucide-loader-circle"
               >
                 Save article analysis settings
               </UButton>
@@ -330,6 +332,7 @@
               label="Save limit"
               icon="i-lucide-save"
               :loading="webhookArticleLimitLoading || webhookArticleLimitSaving"
+              loading-icon="i-lucide-loader-circle"
             />
           </form>
 
@@ -365,11 +368,12 @@
                 variant="ghost"
                 icon="i-lucide-bell-ring"
                 :loading="testingNewWebhook"
+                loading-icon="i-lucide-loader-circle"
                 @click="pingWebhook(webhookForm.webhookUrl.trim(), 'new')"
               >
                 Test
               </UButton>
-              <UButton type="submit" icon="i-lucide-plus" :loading="webhookSaving">
+              <UButton type="submit" icon="i-lucide-plus" :loading="webhookSaving" loading-icon="i-lucide-loader-circle">
                 Add webhook
               </UButton>
             </div>
@@ -398,6 +402,7 @@
                   variant="ghost"
                   icon="i-lucide-bell-ring"
                   :loading="testingWebhookId === webhook.id"
+                  loading-icon="i-lucide-loader-circle"
                   @click="pingWebhook(webhook.webhook_url, webhook.id)"
                 >
                   Test

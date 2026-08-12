@@ -54,6 +54,7 @@
             variant="soft"
             size="xs"
             :loading="healthChecking"
+            loading-icon="i-lucide-loader-circle"
             @click="retryApiConnection"
           />
         </template>

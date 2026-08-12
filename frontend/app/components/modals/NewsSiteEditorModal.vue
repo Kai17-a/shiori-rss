@@ -129,7 +129,11 @@
           <UButton type="button" color="neutral" variant="ghost" @click="close">
             Cancel
           </UButton>
-          <UButton type="submit" :loading="saving">
+          <UButton
+            type="submit"
+            :loading="saving"
+            loading-icon="i-lucide-loader-circle"
+          >
             {{ submitLabel }}
           </UButton>
         </div>
