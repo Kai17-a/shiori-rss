@@ -485,6 +485,14 @@ class SettingsWebhookSummaryUpdate(BaseModel):
     enabled: bool
 
 
+class SettingsWebhookArticleLimitResponse(BaseModel):
+    max_articles: int
+
+
+class SettingsWebhookArticleLimitUpdate(BaseModel):
+    max_articles: int = PydField(ge=1, le=100)
+
+
 class LLMSettingsUpdate(BaseModel):
     provider: Literal["vllm", "ollama", "openai"]
     base_url: AnyHttpUrl

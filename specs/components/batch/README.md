@@ -6,6 +6,7 @@ Rust batch は RSS / Atom フィードだけを定期巡回し、通常RSSとカ
 - 通常RSSの定期実行が無効ならRSS巡回を行わない。定期通知が無効でも、定期実行が有効なら取得と未通知記事の保存は行う。
 - 取得と送信はタイムアウトを設け、Webhook の 429 / 5xx を最大3回試行する。
 - 未通知記事をフィードごとの選択先へ送り、選択がなければ有効な全送信先へ送る。
+- 1回の定期実行でフィードごとに通知する記事数は `webhook_max_articles_per_run`（既定20件、1〜100件）までとし、超過した未通知記事は次回実行へ残す。
 - 通常RSSにアイコンURLがある場合、Discord Webhookの `avatar_url` に設定する。SlackとTeamsには通知アイコンを追加しない。
 - Microsoft Teams通知の記事リンクは、Adaptive CardのTextBlock内でMarkdownの `- [title](url)` リストとして送る。
 - Webhookがなくても記事を未通知として記録し、1件以上の送信成功後だけ通知済みに更新する。

@@ -19,6 +19,7 @@ from api.model.models import (
     SettingsAIArticleAnalysisUpdate,
     SettingsRssExecutionUpdate,
     SettingsRssWebhookNotificationUpdate,
+    SettingsWebhookArticleLimitUpdate,
     SettingsWebhookCreate,
     SettingsWebhookPingRequest,
     SettingsWebhookSummaryUpdate,
@@ -270,6 +271,11 @@ class CompatTestClient:
                 service.get_webhook_summary,
                 service.set_webhook_summary,
                 SettingsWebhookSummaryUpdate,
+            ),
+            "/settings/webhook-article-limit": (
+                service.get_webhook_article_limit,
+                service.set_webhook_article_limit,
+                SettingsWebhookArticleLimitUpdate,
             ),
         }
         route = setting_routes.get(path)

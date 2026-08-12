@@ -426,3 +426,15 @@ test("groups automation controls under the settings tabs", async ({ page }) => {
   await expect(page.getByLabel("Webhook delivery")).toBeVisible();
   await expect(page.getByText("Theme", { exact: true })).toHaveCount(0);
 });
+
+test("configures the webhook article limit", async ({ page }) => {
+  await page.goto("/settings?tab=webhooks");
+
+  const limitInput = page.getByLabel("Maximum articles per webhook run");
+  await expect(limitInput).toHaveValue("20");
+  await limitInput.fill("3");
+  await page.getByRole("button", { name: "Save limit" }).click();
+
+  await expect(page.getByText("Webhook article limit updated.", { exact: true })).toBeVisible();
+  await expect(limitInput).toHaveValue("3");
+});

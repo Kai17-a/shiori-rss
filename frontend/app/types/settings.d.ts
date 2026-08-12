@@ -36,6 +36,10 @@ export interface SettingsWebhookSummaryResponse {
   enabled: boolean;
 }
 
+export interface SettingsWebhookArticleLimitResponse {
+  max_articles: number;
+}
+
 export interface SettingsAIArticleAnalysisResponse {
   enabled: boolean;
   max_articles_per_run: number;

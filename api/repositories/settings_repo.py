@@ -12,6 +12,13 @@ class SettingsRepository:
         ).fetchone()
         return str(row["value"]) if row else None
 
+    def get_int(self, key: str, default: int) -> int:
+        value = self.get(key)
+        try:
+            return int(value) if value is not None else default
+        except ValueError:
+            return default
+
     def set(self, key: str, value: str) -> str:
         self.conn.execute(
             """

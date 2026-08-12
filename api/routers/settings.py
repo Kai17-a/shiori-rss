@@ -15,6 +15,8 @@ from api.model.models import (
     SettingsRssExecutionUpdate,
     SettingsRssWebhookNotificationResponse,
     SettingsRssWebhookNotificationUpdate,
+    SettingsWebhookArticleLimitResponse,
+    SettingsWebhookArticleLimitUpdate,
     SettingsWebhookSummaryResponse,
     SettingsWebhookSummaryUpdate,
     SettingsWebhookCreate,
@@ -208,3 +210,26 @@ def set_webhook_summary(
     service: SettingsService = Depends(get_settings_service),
 ):
     return service.set_webhook_summary(body)
+
+
+@router.get(
+    "/webhook-article-limit",
+    status_code=200,
+    response_model=SettingsWebhookArticleLimitResponse,
+)
+def get_webhook_article_limit(
+    service: SettingsService = Depends(get_settings_service),
+):
+    return service.get_webhook_article_limit()
+
+
+@router.put(
+    "/webhook-article-limit",
+    status_code=200,
+    response_model=SettingsWebhookArticleLimitResponse,
+)
+def set_webhook_article_limit(
+    body: SettingsWebhookArticleLimitUpdate,
+    service: SettingsService = Depends(get_settings_service),
+):
+    return service.set_webhook_article_limit(body)

@@ -99,6 +99,20 @@ pub fn webhook_summary_enabled(conn: &Connection) -> Result<bool> {
     Ok(value.as_deref().unwrap_or("1") != "0")
 }
 
+pub fn webhook_article_limit(conn: &Connection) -> Result<usize> {
+    let value = conn
+        .query_row(
+            "SELECT value FROM app_settings WHERE key = 'webhook_max_articles_per_run'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()?;
+    Ok(value
+        .and_then(|stored| stored.parse::<usize>().ok())
+        .filter(|limit| (1..=100).contains(limit))
+        .unwrap_or(20))
+}
+
 pub fn fetch_rss_feeds(conn: &Connection) -> Result<Vec<RSSFeed>> {
     let has_notify_webhook_enabled = has_column(conn, "rss_feeds", "notify_webhook_enabled")?;
     let has_icon_url = has_column(conn, "rss_feeds", "icon_url")?;

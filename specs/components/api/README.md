@@ -7,7 +7,7 @@ FastAPI は `/health`、`/dashboard`、`/rss-feeds`、`/news-sites`、`/settings
 - Feed icon: 通常RSS・Custom RSSの外部画像URLを作成・更新APIで受け付け、`/{id}/icon` のGET/PUT/DELETEでアップロード画像を配信・設定・削除する。アップロードはPNG・JPEG・GIF・WebP、最大1 MBとし、公開HTTP(S) URLを同時に保存する
 - RSS記事の公開日時はXMLの `pubDate` / `published` を優先し、元のUTCオフセットを保ったISO 8601形式で保存・返却する。
 - Dashboard: リクエスト受信時刻を基準に、通常RSS・カスタムRSSの件数、直近24時間の記事数、未通知数、直近24時間の記事を集約して返す。各記事は配信元の設定済みアイコンURLを `source_icon_url` として返す
-- Settings: Webhook CRUD・疎通確認、定期実行、定期通知、記事概要、デフォルトOFFのAI記事解析と利用上限の設定
+- Settings: Webhook CRUD・疎通確認、定期実行、定期通知、記事概要、1回のフィード実行で通知する記事上限（既定20件、1〜100件）、デフォルトOFFのAI記事解析と利用上限の設定
 - AI article analysis execution: `POST /settings/ai-article-analysis/execute` からRustバッチのAI解析専用モードを同期実行し、処理・成功・失敗・解析済みスキップ件数と日次上限到達状態を返す
 - AI article analysis status: `GET /settings/ai-article-analysis/status` はAPIプロセス内の手動実行ロックとSQLiteの有効なバッチロックを確認し、手動・定期のどちらかが実行中なら `running: true` を返す。バッチロックは開始時刻とプロセスIDを保持し、所有プロセスが存在しない場合は孤立ロックを削除する。APIから起動したプロセスの終了時にも成功・失敗を問わず、そのプロセス自身のロックだけを削除する。旧形式の開始時刻だけのロックは、実際のバッチプロセスが存在しない場合に孤立ロックとして削除する
 - AI article analysis data: `GET /ai/article-analyses` は記事・配信元情報と解析済みの要約、要点、トピック、キーワード、固有表現、モデル、トークン数、状態、失敗内容を結合して返す。記事・配信元・AI要約の検索、通常RSS・Custom RSSの種別、成功・失敗状態、ページングで絞り込める
@@ -19,6 +19,7 @@ FastAPI は `/health`、`/dashboard`、`/rss-feeds`、`/news-sites`、`/settings
 - エラー: `{"detail": ...}`。入力不正は 422、未検出は 404、重複は 409、外部通知失敗は 502 とする。
 - 一覧: `items`, `total`, `page`, `per_page`, `total_pages` を返す。
 - Webhook: Discord通知ではフィードの `icon_url` を `avatar_url` に設定する。Incoming Webhookでアイコンを上書きできないSlackとTeamsには追加しない。
+- Webhook article limit: `GET/PUT /settings/webhook-article-limit` で `max_articles` を取得・更新する。通常RSSの定期・手動実行とCustom RSSの手動実行は古い未通知記事から上限件数だけを送り、超過分は次回へ残す。
 - Microsoft Teams通知の記事リンクは、Adaptive CardのTextBlock内でMarkdownの `- [title](url)` リストとして送る。
 
 詳細な利用者要件は [product requirements](../../product/requirements.md)、ルート一覧は [system design](../../architecture/system-design.md) を参照する。

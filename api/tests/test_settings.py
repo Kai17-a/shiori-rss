@@ -294,6 +294,23 @@ def test_webhook_summary_setting_defaults_to_true_and_can_toggle(client):
     assert last.json()["enabled"] is False
 
 
+def test_webhook_article_limit_defaults_to_twenty_and_validates_range(client):
+    first = client.get("/settings/webhook-article-limit")
+    assert first.status_code == 200
+    assert first.json()["max_articles"] == 20
+
+    updated = client.put(
+        "/settings/webhook-article-limit", json={"max_articles": 7}
+    )
+    assert updated.status_code == 200
+    assert updated.json()["max_articles"] == 7
+
+    invalid = client.put(
+        "/settings/webhook-article-limit", json={"max_articles": 101}
+    )
+    assert invalid.status_code == 422
+
+
 def test_ai_article_analysis_defaults_to_disabled(client):
     response = client.get("/settings/ai-article-analysis")
 

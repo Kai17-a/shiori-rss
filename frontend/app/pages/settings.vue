@@ -298,6 +298,32 @@
             />
           </div>
 
+          <form
+            class="flex flex-col gap-4 rounded-lg border border-default p-4 sm:flex-row sm:items-end sm:justify-between"
+            @submit.prevent="saveWebhookArticleLimit"
+          >
+            <UFormField
+              label="Maximum articles per run"
+              description="Send this many pending articles per feed execution. Remaining articles stay pending for the next run."
+              class="w-full sm:max-w-md"
+            >
+              <UInput
+                v-model.number="webhookArticleLimit"
+                type="number"
+                :min="1"
+                :max="100"
+                class="w-full"
+                aria-label="Maximum articles per webhook run"
+              />
+            </UFormField>
+            <UButton
+              type="submit"
+              label="Save limit"
+              icon="i-lucide-save"
+              :loading="webhookArticleLimitLoading || webhookArticleLimitSaving"
+            />
+          </form>
+
           <form class="space-y-4" @submit.prevent="addWebhook">
             <UFormField
               label="Name"
@@ -419,6 +445,7 @@ import type {
   SettingsWebhookPingResponse,
   SettingsWebhookResponse,
   SettingsWebhookSummaryResponse,
+  SettingsWebhookArticleLimitResponse,
   SettingsRssExecutionResponse,
   SettingsRssWebhookNotificationResponse,
   SettingsAIArticleAnalysisResponse,
@@ -474,6 +501,9 @@ const webhookForm = reactive({ name: "", webhookUrl: "" });
 const webhookSummaryEnabled = ref(true);
 const webhookSummaryLoading = ref(false);
 const webhookSummarySaving = ref(false);
+const webhookArticleLimit = ref(20);
+const webhookArticleLimitLoading = ref(false);
+const webhookArticleLimitSaving = ref(false);
 const rssExecutionEnabled = ref(false);
 const rssExecutionLoading = ref(false);
 const rssExecutionSaving = ref(false);
@@ -853,6 +883,63 @@ const setWebhookSummary = async (enabled: boolean) => {
   }
 };
 
+const loadWebhookArticleLimit = async () => {
+  webhookArticleLimitLoading.value = true;
+  try {
+    const response = await request<SettingsWebhookArticleLimitResponse>(
+      "/settings/webhook-article-limit",
+    );
+    webhookArticleLimit.value = response.max_articles;
+  } catch (err) {
+    toast.show({
+      title: "Failed to load webhook article limit.",
+      description: err instanceof Error ? err.message : undefined,
+      color: "error",
+      icon: "i-lucide-circle-alert",
+    });
+  } finally {
+    webhookArticleLimitLoading.value = false;
+  }
+};
+
+const saveWebhookArticleLimit = async () => {
+  const maxArticles = Number(webhookArticleLimit.value);
+  if (!Number.isInteger(maxArticles) || maxArticles < 1 || maxArticles > 100) {
+    toast.show({
+      title: "Webhook article limit must be between 1 and 100.",
+      color: "error",
+      icon: "i-lucide-circle-alert",
+    });
+    return;
+  }
+
+  webhookArticleLimitSaving.value = true;
+  try {
+    const response = await request<SettingsWebhookArticleLimitResponse>(
+      "/settings/webhook-article-limit",
+      {
+        method: "PUT",
+        body: JSON.stringify({ max_articles: maxArticles }),
+      },
+    );
+    webhookArticleLimit.value = response.max_articles;
+    toast.show({
+      title: "Webhook article limit updated.",
+      color: "success",
+      icon: "i-lucide-check",
+    });
+  } catch (err) {
+    toast.show({
+      title: "Failed to update webhook article limit.",
+      description: err instanceof Error ? err.message : undefined,
+      color: "error",
+      icon: "i-lucide-circle-alert",
+    });
+  } finally {
+    webhookArticleLimitSaving.value = false;
+  }
+};
+
 const addWebhook = async () => {
   const name = webhookForm.name.trim();
   const webhookUrl = webhookForm.webhookUrl.trim();
@@ -1009,6 +1096,7 @@ onMounted(async () => {
     loadLlmSettings(),
     loadWebhooks(),
     loadWebhookSummary(),
+    loadWebhookArticleLimit(),
     loadRssExecution(),
     loadRssWebhookNotification(),
     loadAiAnalysisSettings(),

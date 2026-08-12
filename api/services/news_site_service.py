@@ -35,6 +35,10 @@ from api.services.webhook_service import (
     detect_webhook_service,
     send_webhook,
 )
+from api.services.settings_service import (
+    WEBHOOK_ARTICLE_LIMIT_DEFAULT,
+    WEBHOOK_ARTICLE_LIMIT_SETTING_KEY,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -636,6 +640,10 @@ class NewsSiteService:
             include_summary = SettingsRepository(conn).get_bool(
                 "webhook_include_summary_enabled", default=True
             )
+            webhook_article_limit = SettingsRepository(conn).get_int(
+                WEBHOOK_ARTICLE_LIMIT_SETTING_KEY,
+                WEBHOOK_ARTICLE_LIMIT_DEFAULT,
+            )
 
         html = self._fetch_page(str(row["url"]))
         try:
@@ -679,9 +687,10 @@ class NewsSiteService:
                 message="No new articles found.",
             )
 
+        notification_articles = pending_articles[:webhook_article_limit]
         chunks = [
-            pending_articles[index : index + 10]
-            for index in range(0, len(pending_articles), 10)
+            notification_articles[index : index + 10]
+            for index in range(0, len(notification_articles), 10)
         ]
         delivered_count = 0
         for webhook in webhook_rows:
@@ -696,7 +705,7 @@ class NewsSiteService:
                             service,
                             feed_title=str(row["title"]),
                             articles=chunk,
-                            total_articles=len(pending_articles),
+                            total_articles=len(notification_articles),
                             chunk_index=index,
                             chunk_count=len(chunks),
                             include_summary=include_summary,
@@ -717,11 +726,13 @@ class NewsSiteService:
             raise HTTPException(status_code=502, detail="Failed to notify webhook")
 
         with get_db() as conn:
-            NewsSiteRepository(conn).mark_articles_notified(site_id, pending_articles)
+            NewsSiteRepository(conn).mark_articles_notified(
+                site_id, notification_articles
+            )
         return NewsSiteExecuteResponse(
             site_id=site_id,
             title=str(row["title"]),
             delivered=True,
             delivered_count=delivered_count,
-            message=f"Posted {len(pending_articles)} pending article(s).",
+            message=f"Posted {len(notification_articles)} pending article(s).",
         )

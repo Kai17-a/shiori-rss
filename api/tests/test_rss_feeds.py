@@ -1237,6 +1237,31 @@ def test_execute_rss_feed_without_webhook_saves_and_later_notifies_pending_artic
     assert all(item["webhook_notified"] for item in articles)
 
 
+def test_execute_rss_feed_leaves_articles_over_webhook_limit_pending(client):
+    client.put("/settings/webhook-article-limit", json={"max_articles": 1})
+    client.post(
+        "/settings/webhooks",
+        json={
+            "name": "Limited",
+            "webhook_url": "https://discord.com/api/webhooks/1/token",
+        },
+    )
+    feed_id = create_feed(client).json()["id"]
+
+    first = client.post(f"/rss-feeds/{feed_id}/execute")
+    first_articles = client.get(f"/rss-feeds/{feed_id}/articles").json()["items"]
+
+    assert first.status_code == 200
+    assert first.json()["message"] == "Posted 1 pending article(s)."
+    assert sum(item["webhook_notified"] for item in first_articles) == 1
+
+    second = client.post(f"/rss-feeds/{feed_id}/execute")
+    second_articles = client.get(f"/rss-feeds/{feed_id}/articles").json()["items"]
+
+    assert second.json()["message"] == "Posted 1 pending article(s)."
+    assert all(item["webhook_notified"] for item in second_articles)
+
+
 def test_execute_rss_feed_delivers_to_all_registered_webhooks(client, monkeypatch):
     import api.services.webhook_service as webhook_module
 

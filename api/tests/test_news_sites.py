@@ -442,6 +442,48 @@ def test_manual_execution_notifies_and_records_only_new_articles(client, monkeyp
     assert articles.json()["items"][0]["title"] == "Second article"
 
 
+def test_manual_execution_leaves_articles_over_webhook_limit_pending(
+    client, monkeypatch
+):
+    import api.services.news_site_service as news_module
+
+    configure_llm(client)
+    client.put("/settings/webhook-article-limit", json={"max_articles": 1})
+    webhook = client.post(
+        "/settings/webhooks",
+        json={
+            "name": "Limited",
+            "webhook_url": "https://discord.com/api/webhooks/1/token",
+        },
+    )
+    site = create_site(client, webhook_ids=[webhook.json()["id"]])
+
+    class WebhookResponse:
+        status_code = 204
+
+    monkeypatch.setattr(
+        news_module,
+        "send_webhook",
+        lambda url, payload: WebhookResponse(),
+    )
+
+    first = client.post(f"/news-sites/{site.json()['id']}/execute")
+    first_articles = client.get(
+        f"/news-sites/{site.json()['id']}/articles"
+    ).json()["items"]
+
+    assert first.json()["message"] == "Posted 1 pending article(s)."
+    assert sum(article["webhook_notified"] for article in first_articles) == 1
+
+    second = client.post(f"/news-sites/{site.json()['id']}/execute")
+    second_articles = client.get(
+        f"/news-sites/{site.json()['id']}/articles"
+    ).json()["items"]
+
+    assert second.json()["message"] == "Posted 1 pending article(s)."
+    assert all(article["webhook_notified"] for article in second_articles)
+
+
 def test_manual_execution_saves_pending_articles_when_webhook_is_disabled(
     client, monkeypatch
 ):

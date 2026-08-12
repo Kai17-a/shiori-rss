@@ -28,6 +28,10 @@ from api.services.webhook_service import (
     detect_webhook_service,
     send_webhook,
 )
+from api.services.settings_service import (
+    WEBHOOK_ARTICLE_LIMIT_DEFAULT,
+    WEBHOOK_ARTICLE_LIMIT_SETTING_KEY,
+)
 
 logger = logging.getLogger(__name__)
 ALLOWED_ICON_MEDIA_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
@@ -522,6 +526,10 @@ class RSSFeedService:
             include_summary = SettingsRepository(conn).get_bool(
                 "webhook_include_summary_enabled", default=True
             )
+            webhook_article_limit = SettingsRepository(conn).get_int(
+                WEBHOOK_ARTICLE_LIMIT_SETTING_KEY,
+                WEBHOOK_ARTICLE_LIMIT_DEFAULT,
+            )
             try:
                 response = httpx.get(row["url"], timeout=5.0, follow_redirects=True)
             except httpx.HTTPError as exc:
@@ -580,7 +588,8 @@ class RSSFeedService:
                     message="No new articles found.",
                 )
 
-            article_chunks = self._chunk_embeds(pending_articles) or [[]]
+            notification_articles = pending_articles[:webhook_article_limit]
+            article_chunks = self._chunk_embeds(notification_articles) or [[]]
             delivered_count = 0
             last_failed_service: str | None = None
             last_failed_response: httpx.Response | None = None
@@ -593,7 +602,7 @@ class RSSFeedService:
                             webhook_service,
                             feed_title=feed_title,
                             articles=chunk,
-                            total_articles=len(pending_articles),
+                            total_articles=len(notification_articles),
                             chunk_index=index,
                             chunk_count=len(article_chunks),
                             include_summary=include_summary,
@@ -620,12 +629,12 @@ class RSSFeedService:
                     last_failed_service or "webhook", last_failed_response
                 )
 
-            self._mark_articles_notified(conn, feed_id, pending_articles)
+            self._mark_articles_notified(conn, feed_id, notification_articles)
 
             return RSSFeedExecuteResponse(
                 feed_id=feed_id,
                 title=row["title"],
                 delivered=True,
                 delivered_count=delivered_count,
-                message=f"Posted {len(pending_articles)} pending article(s).",
+                message=f"Posted {len(notification_articles)} pending article(s).",
             )

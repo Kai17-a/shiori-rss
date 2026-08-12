@@ -1,7 +1,7 @@
 use rusqlite::Connection;
 use shiori_feed_batch::{
     fetch_rss_feeds, fetch_webhook_endpoints, rss_periodic_execution_enabled,
-    rss_webhook_notification_enabled, run_batch, webhook_summary_enabled,
+    rss_webhook_notification_enabled, run_batch, webhook_article_limit, webhook_summary_enabled,
 };
 
 fn create_in_memory_test_db(enabled: i64) -> Connection {
@@ -120,6 +120,23 @@ fn webhook_summary_defaults_to_enabled_and_can_be_disabled() {
     .expect("insert summary setting");
 
     assert!(!webhook_summary_enabled(&conn).expect("read disabled summary setting"));
+}
+
+#[test]
+fn webhook_article_limit_defaults_to_twenty_and_can_be_configured() {
+    let conn = create_in_memory_test_db(1);
+    assert_eq!(
+        webhook_article_limit(&conn).expect("read default limit"),
+        20
+    );
+
+    conn.execute(
+        "INSERT INTO app_settings (key, value) VALUES ('webhook_max_articles_per_run', '7')",
+        [],
+    )
+    .expect("insert webhook article limit");
+
+    assert_eq!(webhook_article_limit(&conn).expect("read stored limit"), 7);
 }
 
 #[test]

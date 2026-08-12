@@ -11,7 +11,7 @@ use std::time::Duration;
 use crate::{
     analysis::run_article_analysis, fetch_rss_feeds, fetch_webhook_endpoints,
     rss_periodic_execution_enabled, rss_webhook_notification_enabled, webhook,
-    webhook_summary_enabled,
+    webhook_article_limit, webhook_summary_enabled,
 };
 
 #[derive(Debug, PartialEq)]
@@ -130,6 +130,7 @@ async fn run_rss_batch(conn: &Connection) -> Result<(), Box<dyn Error>> {
 
     let notification_enabled = rss_webhook_notification_enabled(conn)?;
     let include_summary = webhook_summary_enabled(conn)?;
+    let article_limit = webhook_article_limit(conn)?;
 
     let webhook_endpoints = fetch_webhook_endpoints(conn)?;
 
@@ -210,7 +211,7 @@ async fn run_rss_batch(conn: &Connection) -> Result<(), Box<dyn Error>> {
             continue;
         }
 
-        let pending_articles = match webhook::load_pending_articles(conn, rss_feed.id) {
+        let mut pending_articles = match webhook::load_pending_articles(conn, rss_feed.id) {
             Ok(articles) => articles,
             Err(err) => {
                 eprintln!(
@@ -223,6 +224,7 @@ async fn run_rss_batch(conn: &Connection) -> Result<(), Box<dyn Error>> {
         if pending_articles.is_empty() {
             continue;
         }
+        pending_articles.truncate(article_limit);
 
         let embeds: Vec<webhook::Embed<'_>> = pending_articles
             .iter()

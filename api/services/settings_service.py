@@ -15,6 +15,8 @@ from api.model.models import (
     SettingsRssExecutionUpdate,
     SettingsRssWebhookNotificationResponse,
     SettingsRssWebhookNotificationUpdate,
+    SettingsWebhookArticleLimitResponse,
+    SettingsWebhookArticleLimitUpdate,
     SettingsWebhookSummaryResponse,
     SettingsWebhookSummaryUpdate,
     SettingsWebhookCreate,
@@ -42,6 +44,8 @@ from api.services.webhook_service import (
 RSS_EXECUTION_SETTING_KEY = "rss_periodic_execution_enabled"
 RSS_WEBHOOK_NOTIFICATION_SETTING_KEY = "rss_webhook_notification_enabled"
 WEBHOOK_SUMMARY_SETTING_KEY = "webhook_include_summary_enabled"
+WEBHOOK_ARTICLE_LIMIT_SETTING_KEY = "webhook_max_articles_per_run"
+WEBHOOK_ARTICLE_LIMIT_DEFAULT = 20
 AI_ARTICLE_ANALYSIS_ENABLED_KEY = "ai_article_analysis_enabled"
 AI_ARTICLE_ANALYSIS_MAX_ARTICLES_KEY = "ai_article_analysis_max_articles_per_run"
 AI_ARTICLE_ANALYSIS_DAILY_TOKEN_LIMIT_KEY = "ai_article_analysis_daily_token_limit"
@@ -54,11 +58,7 @@ AI_ARTICLE_ANALYSIS_DEFAULT_LOOKBACK_DAYS = 30
 class SettingsService:
     @staticmethod
     def _get_int_setting(repo: SettingsRepository, key: str, default: int) -> int:
-        value = repo.get(key)
-        try:
-            return int(value) if value is not None else default
-        except ValueError:
-            return default
+        return repo.get_int(key, default)
 
     def _validate_webhook_url(self, webhook_url: str) -> None:
         from urllib.parse import urlparse
@@ -324,3 +324,21 @@ class SettingsService:
             return SettingsWebhookSummaryResponse(
                 enabled=repo.set_bool(WEBHOOK_SUMMARY_SETTING_KEY, data.enabled)
             )
+
+    def get_webhook_article_limit(self) -> SettingsWebhookArticleLimitResponse:
+        with get_db() as conn:
+            max_articles = SettingsRepository(conn).get_int(
+                WEBHOOK_ARTICLE_LIMIT_SETTING_KEY,
+                WEBHOOK_ARTICLE_LIMIT_DEFAULT,
+            )
+        return SettingsWebhookArticleLimitResponse(max_articles=max_articles)
+
+    def set_webhook_article_limit(
+        self, data: SettingsWebhookArticleLimitUpdate
+    ) -> SettingsWebhookArticleLimitResponse:
+        with get_db() as conn:
+            stored = SettingsRepository(conn).set(
+                WEBHOOK_ARTICLE_LIMIT_SETTING_KEY,
+                str(data.max_articles),
+            )
+        return SettingsWebhookArticleLimitResponse(max_articles=int(stored))
