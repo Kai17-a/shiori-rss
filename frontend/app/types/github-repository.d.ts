@@ -11,6 +11,7 @@ export interface GitHubRepository {
   fetched_at: string;
   created_at: string;
   updated_at: string;
+  webhook_ids: number[];
 }
 
 export interface GitHubRepositoryListResponse {

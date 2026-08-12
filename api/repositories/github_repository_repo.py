@@ -9,20 +9,20 @@ class GitHubRepositoryRepository:
         rows = self.conn.execute(
             "SELECT * FROM github_repositories ORDER BY owner, repository, id"
         ).fetchall()
-        return [dict(row) for row in rows]
+        return [self._with_webhook_ids(dict(row)) for row in rows]
 
     def find_by_id(self, repository_id: int) -> dict | None:
         row = self.conn.execute(
             "SELECT * FROM github_repositories WHERE id = ?", (repository_id,)
         ).fetchone()
-        return dict(row) if row else None
+        return self._with_webhook_ids(dict(row)) if row else None
 
     def find_by_url(self, repository_url: str) -> dict | None:
         row = self.conn.execute(
             "SELECT * FROM github_repositories WHERE repository_url = ?",
             (repository_url,),
         ).fetchone()
-        return dict(row) if row else None
+        return self._with_webhook_ids(dict(row)) if row else None
 
     def insert(self, values: dict[str, object]) -> dict:
         cursor = self.conn.execute(
@@ -71,3 +71,20 @@ class GitHubRepositoryRepository:
             "DELETE FROM github_repositories WHERE id = ?", (repository_id,)
         )
         return cursor.rowcount > 0
+    def _with_webhook_ids(self, row: dict) -> dict:
+        row["webhook_ids"] = self.find_webhook_ids(int(row["id"]))
+        return row
+
+    def find_webhook_ids(self, repository_id: int) -> list[int]:
+        rows = self.conn.execute(
+            "SELECT webhook_id FROM github_repository_webhooks WHERE repository_id = ? ORDER BY webhook_id",
+            (repository_id,),
+        ).fetchall()
+        return [int(row["webhook_id"]) for row in rows]
+
+    def set_webhook_ids(self, repository_id: int, webhook_ids: list[int]) -> None:
+        self.conn.execute("DELETE FROM github_repository_webhooks WHERE repository_id = ?", (repository_id,))
+        self.conn.executemany(
+            "INSERT INTO github_repository_webhooks (repository_id, webhook_id) VALUES (?, ?)",
+            [(repository_id, webhook_id) for webhook_id in webhook_ids],
+        )

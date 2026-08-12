@@ -14,6 +14,8 @@ erDiagram
     NEWS_SITE_ARTICLES ||--o| ARTICLE_AI_ANALYSES : analyzed_as
     ARTICLE_AI_ANALYSES ||--o{ ARTICLE_AI_ANALYSIS_USAGE : records_usage
     ARTICLE_AI_ANALYSES ||--o| ARTICLE_AI_SEARCH : indexed_in
+    GITHUB_REPOSITORIES ||--o{ GITHUB_REPOSITORY_WEBHOOKS : selects
+    WEBHOOK_ENDPOINTS ||--o{ GITHUB_REPOSITORY_WEBHOOKS : receives
 
     GITHUB_REPOSITORIES {
         INTEGER id PK
@@ -29,6 +31,10 @@ erDiagram
         TEXT fetched_at
         TEXT created_at
         TEXT updated_at
+    }
+    GITHUB_REPOSITORY_WEBHOOKS {
+        INTEGER repository_id PK,FK
+        INTEGER webhook_id PK,FK
     }
 
     RSS_FEEDS {
@@ -154,4 +160,4 @@ erDiagram
 
 `article_ai_analyses` は通常RSS・カスタムRSSの記事ごとに、`source_type` と `article_id` の組を一意として、入力内容のハッシュ、モデル、プロンプト版、AI要約、要点、トピック、キーワード、固有表現、使用トークン、試行回数、成功・失敗状態とエラーを保持する。`article_ai_analysis_usage` は日次上限判定用に呼び出し単位の使用量を保持し、`article_ai_search` は成功した解析結果を三文字単位で索引化する。元記事の削除時は解析結果もトリガーで削除する。これらはSQLite上の論理的な関連であり、記事テーブルへの外部キー制約は持たない。
 
-`github_repositories` はRSSデータとは独立し、登録リポジトリとGitHub APIから最後に取得した最新公開リリース1件をキャッシュする。`latest_notified_release_tag` はWebhook送信が1件以上成功した最後のタグを保持し、画面用キャッシュのタグとは分離して重複通知と通知漏れを防ぐ。
+`github_repositories` はRSSデータとは独立し、登録リポジトリとGitHub APIから最後に取得した最新公開リリース1件をキャッシュする。`github_repository_webhooks` はリポジトリごとの通知先を保持し、未選択は通知無効を表す。`latest_notified_release_tag` はWebhook送信が1件以上成功した最後のタグを保持し、画面用キャッシュのタグとは分離して重複通知と通知漏れを防ぐ。

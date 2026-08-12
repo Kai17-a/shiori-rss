@@ -241,6 +241,11 @@ CREATE TABLE github_repositories (
 , latest_notified_release_tag TEXT);
 CREATE UNIQUE INDEX idx_github_repositories_url_unique
     ON github_repositories(repository_url);
+CREATE TABLE github_repository_webhooks (
+    repository_id INTEGER NOT NULL REFERENCES github_repositories(id) ON DELETE CASCADE,
+    webhook_id INTEGER NOT NULL REFERENCES webhook_endpoints(id) ON DELETE CASCADE,
+    PRIMARY KEY (repository_id, webhook_id)
+);
 -- Dbmate schema migrations
 INSERT INTO "schema_migrations" (version) VALUES
   ('010'),
@@ -261,4 +266,5 @@ INSERT INTO "schema_migrations" (version) VALUES
   ('202608091010'),
   ('202608101000'),
   ('202608121631'),
-  ('202608121710');
+  ('202608121710'),
+  ('202608121720');

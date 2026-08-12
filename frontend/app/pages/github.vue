@@ -12,7 +12,7 @@
             </div>
             <div class="flex flex-wrap gap-2">
               <RefreshButton :loading="refreshing" @click="refreshAll" />
-              <UButton label="Add repository" icon="i-lucide-plus" @click="modalOpen = true" />
+              <UButton label="Add repository" icon="i-lucide-plus" @click="openCreate" />
             </div>
           </div>
 
@@ -29,7 +29,10 @@
                   </a>
                   <p class="mt-1 text-xs text-muted">Updated {{ formatDate(repository.fetched_at) }}</p>
                 </div>
-                <UButton icon="i-lucide-trash-2" aria-label="Delete repository" color="error" variant="ghost" size="sm" :loading="deletingId === repository.id" @click="askDelete(repository)" />
+                <div class="flex gap-1">
+                  <UButton icon="i-lucide-pencil" aria-label="Edit notification webhooks" color="neutral" variant="ghost" size="sm" @click="openEdit(repository)" />
+                  <UButton icon="i-lucide-trash-2" aria-label="Delete repository" color="error" variant="ghost" size="sm" :loading="deletingId === repository.id" @click="askDelete(repository)" />
+                </div>
               </div>
               <div>
                 <div class="flex flex-wrap items-center gap-2">
@@ -37,6 +40,7 @@
                   <UBadge color="neutral" variant="soft">{{ repository.latest_release_tag }}</UBadge>
                 </div>
                 <p class="mt-1 text-xs text-muted">Published {{ formatDate(repository.latest_release_published_at) }}</p>
+                <p class="mt-2 text-xs text-muted">{{ webhookLabel(repository) }}</p>
                 <p v-if="repository.latest_release_body" class="mt-3 line-clamp-3 whitespace-pre-line text-sm text-muted">{{ repository.latest_release_body }}</p>
               </div>
               <UButton :to="repository.latest_release_url" target="_blank" label="View release" trailing-icon="i-lucide-external-link" color="neutral" variant="soft" />
@@ -52,15 +56,21 @@
           </div>
         </UPageCard>
 
-        <UModal v-model:open="modalOpen" title="Add GitHub repository" description="The latest published release is fetched when you save.">
+        <UModal v-model:open="modalOpen" :title="form.id ? 'Edit GitHub notifications' : 'Add GitHub repository'" :description="form.id ? 'Choose where new releases are sent.' : 'The latest published release is fetched when you save.'">
           <template #body>
             <UForm :state="form" class="space-y-5" @submit="saveRepository">
               <UFormField label="Repository URL" name="repository_url" required>
-                <UInput v-model="form.repository_url" placeholder="https://github.com/owner/repository" class="w-full" />
+                <UInput v-model="form.repository_url" placeholder="https://github.com/owner/repository" class="w-full" :disabled="Boolean(form.id)" />
+              </UFormField>
+              <UFormField label="Notification webhooks" description="With none selected, release notifications are disabled.">
+                <div v-if="webhooks.length" class="space-y-2">
+                  <UCheckbox v-for="webhook in webhooks" :key="webhook.id" :label="webhook.name" :model-value="form.webhook_ids.includes(webhook.id)" @update:model-value="toggleWebhook(webhook.id, $event)" />
+                </div>
+                <p v-else class="text-sm text-muted">No webhooks are registered. Add one from Preferences.</p>
               </UFormField>
               <div class="flex justify-end gap-2">
                 <UButton label="Cancel" color="neutral" variant="ghost" @click="modalOpen = false" />
-                <UButton type="submit" label="Add repository" icon="i-lucide-plus" :loading="saving" />
+                <UButton type="submit" :label="form.id ? 'Save notifications' : 'Add repository'" :icon="form.id ? 'i-lucide-save' : 'i-lucide-plus'" :loading="saving" />
               </div>
             </UForm>
           </template>
@@ -73,7 +83,7 @@
 </template>
 
 <script setup lang="ts">
-import type { GitHubRepository, GitHubRepositoryListResponse } from "~/types";
+import type { GitHubRepository, GitHubRepositoryListResponse, SettingsWebhookListResponse, SettingsWebhookResponse } from "~/types";
 
 const { request } = useApi();
 const toast = useSingleToast();
@@ -86,13 +96,24 @@ const loadError = ref("");
 const modalOpen = ref(false);
 const deleteOpen = ref(false);
 const pendingRepository = ref<GitHubRepository | null>(null);
-const form = reactive({ repository_url: "" });
+const webhooks = ref<SettingsWebhookResponse[]>([]);
+const form = reactive({ id: 0, repository_url: "", webhook_ids: [] as number[] });
 
 const formatDate = (value: string) => new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
 const errorMessage = (error: unknown, fallback: string) => {
   const detail = (error as { data?: { detail?: string } })?.data?.detail;
   return typeof detail === "string" ? detail : fallback;
 };
+const webhookLabel = (repository: GitHubRepository) => repository.webhook_ids.length
+  ? `Notifies ${repository.webhook_ids.map((id) => webhooks.value.find((item) => item.id === id)?.name || `Webhook ${id}`).join(", ")}`
+  : "Notifications disabled";
+const toggleWebhook = (id: number, checked: boolean | string) => {
+  const selected = new Set(form.webhook_ids);
+  if (checked === true) selected.add(id); else selected.delete(id);
+  form.webhook_ids = [...selected];
+};
+const openCreate = () => { form.id = 0; form.repository_url = ""; form.webhook_ids = []; modalOpen.value = true; };
+const openEdit = (repository: GitHubRepository) => { form.id = repository.id; form.repository_url = repository.repository_url; form.webhook_ids = [...repository.webhook_ids]; modalOpen.value = true; };
 const loadRepositories = async () => {
   loading.value = true; loadError.value = "";
   try { repositories.value = await request<GitHubRepositoryListResponse>("/github-repositories"); }
@@ -111,12 +132,12 @@ const saveRepository = async () => {
   if (!form.repository_url.trim()) return;
   saving.value = true;
   try {
-    await request("/github-repositories", {
-      method: "POST",
-      body: JSON.stringify({ repository_url: form.repository_url.trim() }),
+    await request(form.id ? `/github-repositories/${form.id}` : "/github-repositories", {
+      method: form.id ? "PATCH" : "POST",
+      body: JSON.stringify(form.id ? { webhook_ids: form.webhook_ids } : { repository_url: form.repository_url.trim(), webhook_ids: form.webhook_ids }),
     });
-    form.repository_url = ""; modalOpen.value = false; await loadRepositories();
-    toast.show({ title: "GitHub repository added.", color: "success", icon: "i-lucide-check" });
+    modalOpen.value = false; await loadRepositories();
+    toast.show({ title: form.id ? "Notification destinations updated." : "GitHub repository added.", color: "success", icon: "i-lucide-check" });
   } catch (error) { toast.show({ title: errorMessage(error, "Could not add repository."), color: "error", icon: "i-lucide-circle-alert" }); }
   finally { saving.value = false; }
 };
@@ -132,5 +153,11 @@ const confirmDelete = async () => {
   finally { deletingId.value = null; }
 };
 
-onMounted(loadRepositories);
+onMounted(async () => {
+  const [, webhookResponse] = await Promise.all([
+    loadRepositories(),
+    request<SettingsWebhookListResponse>("/settings/webhooks"),
+  ]);
+  webhooks.value = webhookResponse.items;
+});
 </script>

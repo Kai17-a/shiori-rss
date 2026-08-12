@@ -20,6 +20,10 @@ fn database(api_server: &MockServer) -> Connection {
         CREATE TABLE webhook_endpoints (
             id INTEGER PRIMARY KEY, url TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1
         );
+        CREATE TABLE github_repository_webhooks (
+            repository_id INTEGER NOT NULL, webhook_id INTEGER NOT NULL,
+            PRIMARY KEY (repository_id, webhook_id)
+        );
         CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         "#,
     )
@@ -33,6 +37,13 @@ fn database(api_server: &MockServer) -> Connection {
         [format!("{}/hook", api_server.uri())],
     )
     .expect("insert webhook");
+    conn.execute("INSERT INTO github_repository_webhooks VALUES (1, 1)", [])
+        .expect("select webhook");
+    conn.execute(
+        "INSERT INTO webhook_endpoints VALUES (2, ?, 1)",
+        [format!("{}/unselected", api_server.uri())],
+    )
+    .expect("insert unselected webhook");
     conn
 }
 

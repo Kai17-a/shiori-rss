@@ -86,6 +86,7 @@ def test_initialize_database_applies_every_migration_idempotently(tmp_path):
             "202608101000",
             "202608121631",
             "202608121710",
+            "202608121720",
         }
     assert "published" in article_columns
     assert "summary" in article_columns

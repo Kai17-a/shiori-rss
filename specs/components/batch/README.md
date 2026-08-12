@@ -1,6 +1,6 @@
 # Batch 仕様
 
-定期処理は通常RSS巡回に加え、登録済みGitHubリポジトリの最新公開リリースを確認する。最新タグが最後に通知成功したタグと異なる場合、既存の有効なDiscord・Slack・Microsoft Teams Webhookへ通知する。1件以上への送信成功後だけ通知済みタグを更新し、重複通知を防ぐ。`GITHUB_TOKEN` があればGitHub API認証に利用する。
+定期処理は通常RSS巡回に加え、登録済みGitHubリポジトリの最新公開リリースを確認する。最新タグが最後に通知成功したタグと異なる場合、リポジトリに選択された有効なDiscord・Slack・Microsoft Teams Webhookへ通知する。未選択なら通知せず、1件以上への送信成功後だけ通知済みタグを更新して重複通知を防ぐ。`GITHUB_TOKEN` があればGitHub API認証に利用する。
 
 Rust batch は RSS / Atom フィードだけを定期巡回し、通常RSSとカスタムRSSの保存済み記事をAI事前解析する。カスタムRSSの取得はAPIの手動実行が担当する。
 

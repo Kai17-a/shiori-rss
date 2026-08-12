@@ -13,6 +13,7 @@ struct Repository {
     name: String,
     repository_url: String,
     latest_notified_release_tag: Option<String>,
+    webhook_ids: Vec<u32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -35,16 +36,25 @@ fn fetch_repositories(conn: &Connection) -> Result<Vec<Repository>, rusqlite::Er
     let mut stmt = conn.prepare(
         "SELECT id, owner, repository, repository_url, latest_notified_release_tag FROM github_repositories ORDER BY id",
     )?;
-    stmt.query_map([], |row| {
-        Ok(Repository {
-            id: row.get(0)?,
-            owner: row.get(1)?,
-            name: row.get(2)?,
-            repository_url: row.get(3)?,
-            latest_notified_release_tag: row.get(4)?,
-        })
-    })?
-    .collect()
+    let mut repositories: Vec<Repository> = stmt
+        .query_map([], |row| {
+            Ok(Repository {
+                id: row.get(0)?,
+                owner: row.get(1)?,
+                name: row.get(2)?,
+                repository_url: row.get(3)?,
+                latest_notified_release_tag: row.get(4)?,
+                webhook_ids: Vec::new(),
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    for repository in &mut repositories {
+        let mut link_stmt = conn.prepare("SELECT webhook_id FROM github_repository_webhooks WHERE repository_id = ? ORDER BY webhook_id")?;
+        repository.webhook_ids = link_stmt
+            .query_map([repository.id], |row| row.get(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+    }
+    Ok(repositories)
 }
 
 fn update_release(
@@ -150,7 +160,10 @@ pub async fn run_github_release_batch_with_base(
         let is_new = repository.latest_notified_release_tag.as_deref() != Some(&release.tag_name);
         let mut delivered = false;
         if is_new {
-            for endpoint in &endpoints {
+            for endpoint in endpoints
+                .iter()
+                .filter(|endpoint| repository.webhook_ids.contains(&endpoint.id))
+            {
                 match webhook::send_github_release_webhook(
                     &endpoint.url,
                     &format!("{}/{}", repository.owner, repository.name),

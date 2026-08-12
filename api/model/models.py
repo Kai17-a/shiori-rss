@@ -678,6 +678,25 @@ class DashboardResponse(BaseModel):
 
 class GitHubRepositoryCreate(BaseModel):
     repository_url: AnyHttpUrl
+    webhook_ids: list[int] = PydField(default_factory=list)
+
+    @field_validator("webhook_ids")
+    @classmethod
+    def validate_webhook_ids(cls, value: list[int]) -> list[int]:
+        if len(value) != len(set(value)):
+            raise ValueError("webhook_ids must not contain duplicates")
+        return value
+
+
+class GitHubRepositoryUpdate(BaseModel):
+    webhook_ids: list[int]
+
+    @field_validator("webhook_ids")
+    @classmethod
+    def validate_webhook_ids(cls, value: list[int]) -> list[int]:
+        if len(value) != len(set(value)):
+            raise ValueError("webhook_ids must not contain duplicates")
+        return value
 
 
 class GitHubRepositoryResponse(BaseModel):
@@ -693,6 +712,7 @@ class GitHubRepositoryResponse(BaseModel):
     fetched_at: datetime
     created_at: datetime
     updated_at: datetime
+    webhook_ids: list[int]
 
 
 class GitHubRepositoryListResponse(BaseModel):

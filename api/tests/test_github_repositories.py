@@ -45,6 +45,7 @@ def test_create_lists_and_normalizes_repository_url(service):
 
     assert created.repository_url == "https://github.com/acme/tool"
     assert created.latest_release_tag == "v1.2.3"
+    assert created.webhook_ids == []
     assert service.list().total == 1
 
 

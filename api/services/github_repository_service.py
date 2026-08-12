@@ -9,11 +9,17 @@ from api.model.models import (
     GitHubRepositoryCreate,
     GitHubRepositoryListResponse,
     GitHubRepositoryResponse,
+    GitHubRepositoryUpdate,
 )
 from api.repositories.github_repository_repo import GitHubRepositoryRepository
 
 
 class GitHubRepositoryService:
+    def _verify_webhooks(self, conn, webhook_ids: list[int]) -> None:
+        for webhook_id in webhook_ids:
+            if conn.execute("SELECT 1 FROM webhook_endpoints WHERE id = ?", (webhook_id,)).fetchone() is None:
+                raise HTTPException(status_code=422, detail="Webhook endpoint not found")
+
     def _parse_url(self, value: str) -> tuple[str, str, str]:
         parsed = urlparse(value)
         if parsed.scheme != "https" or parsed.hostname not in {"github.com", "www.github.com"}:
@@ -76,7 +82,22 @@ class GitHubRepositoryService:
             repo = GitHubRepositoryRepository(conn)
             if repo.find_by_url(repository_url):
                 raise HTTPException(status_code=409, detail="GitHub repository already exists")
+            self._verify_webhooks(conn, body.webhook_ids)
             row = repo.insert({"owner": owner, "repository": repository, "repository_url": repository_url, **release})
+            repo.set_webhook_ids(int(row["id"]), body.webhook_ids)
+            row = repo.find_by_id(int(row["id"]))
+            assert row is not None
+        return GitHubRepositoryResponse(**row)
+
+    def update(self, repository_id: int, body: GitHubRepositoryUpdate) -> GitHubRepositoryResponse:
+        with get_db() as conn:
+            repo = GitHubRepositoryRepository(conn)
+            if repo.find_by_id(repository_id) is None:
+                raise HTTPException(status_code=404, detail="GitHub repository not found")
+            self._verify_webhooks(conn, body.webhook_ids)
+            repo.set_webhook_ids(repository_id, body.webhook_ids)
+            row = repo.find_by_id(repository_id)
+            assert row is not None
         return GitHubRepositoryResponse(**row)
 
     def refresh_all(self) -> GitHubRepositoryListResponse:
