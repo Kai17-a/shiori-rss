@@ -21,6 +21,7 @@ _REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 _logger = logging.getLogger("uvicorn.error")
 _RUN_TIMEOUT_SECONDS = 7200
 _RUN_LOCK_KEY = "ai_article_analysis_running"
+_PROGRESS_KEY = "ai_article_analysis_progress"
 
 
 def _batch_command() -> list[str]:
@@ -89,6 +90,7 @@ def _delete_run_lock(value: str) -> None:
             "DELETE FROM app_settings WHERE key = ? AND value = ?",
             (_RUN_LOCK_KEY, value),
         )
+        conn.execute("DELETE FROM app_settings WHERE key = ?", (_PROGRESS_KEY,))
 
 
 def _clear_process_run_lock(process_id: int) -> None:
@@ -105,22 +107,41 @@ def _clear_process_run_lock(process_id: int) -> None:
                 "DELETE FROM app_settings WHERE key = ? AND value = ?",
                 (_RUN_LOCK_KEY, value),
             )
+            conn.execute("DELETE FROM app_settings WHERE key = ?", (_PROGRESS_KEY,))
 
 
 class ArticleAnalysisService:
+    def _status_response(self, running: bool) -> SettingsAIArticleAnalysisStatusResponse:
+        if not running:
+            return SettingsAIArticleAnalysisStatusResponse(running=False)
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT value FROM app_settings WHERE key = ?", (_PROGRESS_KEY,)
+            ).fetchone()
+        if row is None:
+            return SettingsAIArticleAnalysisStatusResponse(running=True)
+        try:
+            progress = json.loads(str(row["value"]))
+            return SettingsAIArticleAnalysisStatusResponse(
+                running=True,
+                **progress,
+            )
+        except (TypeError, ValueError, ValidationError):
+            return SettingsAIArticleAnalysisStatusResponse(running=True)
+
     def status(self) -> SettingsAIArticleAnalysisStatusResponse:
         if _manual_run_lock.locked():
-            return SettingsAIArticleAnalysisStatusResponse(running=True)
+            return self._status_response(True)
         with get_db() as conn:
             row = conn.execute(
                 "SELECT value FROM app_settings WHERE key = ?", (_RUN_LOCK_KEY,)
             ).fetchone()
         if row is None:
-            return SettingsAIArticleAnalysisStatusResponse(running=False)
+            return self._status_response(False)
         value = str(row["value"])
         parsed = _parse_run_lock(value)
         if parsed is None:
-            return SettingsAIArticleAnalysisStatusResponse(running=False)
+            return self._status_response(False)
         started_at, process_id = parsed
         running = 0 <= int(time.time()) - started_at < _RUN_TIMEOUT_SECONDS
         if running and process_id is not None and not _process_is_alive(process_id):
@@ -129,7 +150,7 @@ class ArticleAnalysisService:
         if running and process_id is None and not _legacy_batch_is_alive():
             _delete_run_lock(value)
             running = False
-        return SettingsAIArticleAnalysisStatusResponse(running=running)
+        return self._status_response(running)
 
     def run_manual(self) -> SettingsAIArticleAnalysisRunResponse:
         if not _manual_run_lock.acquire(blocking=False):
@@ -138,6 +159,8 @@ class ArticleAnalysisService:
             )
         process: subprocess.Popen[str] | None = None
         try:
+            with get_db() as conn:
+                conn.execute("DELETE FROM app_settings WHERE key = ?", (_PROGRESS_KEY,))
             try:
                 process = subprocess.Popen(
                     _batch_command(),

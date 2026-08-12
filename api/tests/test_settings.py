@@ -1,6 +1,7 @@
 """Unit tests for Settings API endpoints."""
 
 import io
+import json
 import sqlite3
 from contextlib import contextmanager
 
@@ -415,14 +416,12 @@ def test_ai_article_analysis_can_run_manually_while_schedule_is_disabled(
 def test_ai_article_analysis_status_reports_manual_run(client):
     import api.services.article_analysis_service as analysis_module
 
-    assert client.get("/settings/ai-article-analysis/status").json() == {
-        "running": False
-    }
+    assert client.get("/settings/ai-article-analysis/status").json()["running"] is False
     assert analysis_module._manual_run_lock.acquire(blocking=False)
     try:
         response = client.get("/settings/ai-article-analysis/status")
         assert response.status_code == 200
-        assert response.json() == {"running": True}
+        assert response.json()["running"] is True
     finally:
         analysis_module._manual_run_lock.release()
 
@@ -442,7 +441,54 @@ def test_ai_article_analysis_status_reports_batch_lock(client):
     response = client.get("/settings/ai-article-analysis/status")
 
     assert response.status_code == 200
-    assert response.json() == {"running": True}
+    assert response.json()["running"] is True
+
+
+def test_ai_article_analysis_status_returns_batch_progress(client):
+    import api.services.article_analysis_service as analysis_module
+
+    with analysis_module.get_db() as conn:
+        conn.executemany(
+            "INSERT INTO app_settings (key, value) VALUES (?, ?)",
+            [
+                (
+                    "ai_article_analysis_running",
+                    f"{int(analysis_module.time.time())}:{analysis_module.os.getpid()}",
+                ),
+                (
+                    "ai_article_analysis_progress",
+                    json.dumps(
+                        {
+                            "total": 10,
+                            "processed": 4,
+                            "succeeded": 3,
+                            "failed": 1,
+                            "skipped_current": 2,
+                            "current_article_title": "Vue 3.5 released",
+                            "tokens_used_today": 1250,
+                            "daily_token_limit": 50000,
+                            "started_at": 1786492800,
+                        }
+                    ),
+                ),
+            ],
+        )
+
+    response = client.get("/settings/ai-article-analysis/status")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "running": True,
+        "total": 10,
+        "processed": 4,
+        "succeeded": 3,
+        "failed": 1,
+        "skipped_current": 2,
+        "current_article_title": "Vue 3.5 released",
+        "tokens_used_today": 1250,
+        "daily_token_limit": 50000,
+        "started_at": 1786492800,
+    }
 
 
 def test_ai_article_analysis_status_clears_legacy_orphan_lock(client, monkeypatch):
@@ -458,7 +504,7 @@ def test_ai_article_analysis_status_clears_legacy_orphan_lock(client, monkeypatc
     response = client.get("/settings/ai-article-analysis/status")
 
     assert response.status_code == 200
-    assert response.json() == {"running": False}
+    assert response.json()["running"] is False
 
 
 def test_ai_article_analysis_clears_its_batch_lock_after_failure(client, monkeypatch):
@@ -492,9 +538,7 @@ def test_ai_article_analysis_clears_its_batch_lock_after_failure(client, monkeyp
     response = client.post("/settings/ai-article-analysis/execute")
 
     assert response.status_code == 502
-    assert client.get("/settings/ai-article-analysis/status").json() == {
-        "running": False
-    }
+    assert client.get("/settings/ai-article-analysis/status").json()["running"] is False
 
 
 def test_llm_settings_are_tested_before_save_and_do_not_expose_api_key(

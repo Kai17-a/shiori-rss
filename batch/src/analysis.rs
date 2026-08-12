@@ -10,6 +10,7 @@ const PROMPT_VERSION: &str = "article-analysis-v1";
 const MAX_INPUT_CHARS: usize = 12_000;
 const RESERVED_OUTPUT_TOKENS: i64 = 600;
 const ANALYSIS_LOCK_KEY: &str = "ai_article_analysis_running";
+const ANALYSIS_PROGRESS_KEY: &str = "ai_article_analysis_progress";
 const ANALYSIS_LOCK_TTL_SECONDS: u64 = 7200;
 
 #[derive(Debug, Default, Serialize)]
@@ -19,6 +20,19 @@ pub struct AnalysisRunReport {
     pub failed: usize,
     pub skipped_current: usize,
     pub stopped_by_token_limit: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct AnalysisProgress<'a> {
+    total: usize,
+    processed: usize,
+    succeeded: usize,
+    failed: usize,
+    skipped_current: usize,
+    current_article_title: Option<&'a str>,
+    tokens_used_today: i64,
+    daily_token_limit: i64,
+    started_at: u64,
 }
 
 #[derive(Debug)]
@@ -70,7 +84,24 @@ impl Drop for AnalysisRunLock<'_> {
             "DELETE FROM app_settings WHERE key = ? AND value = ?",
             params![ANALYSIS_LOCK_KEY, self.token],
         );
+        let _ = self.conn.execute(
+            "DELETE FROM app_settings WHERE key = ?",
+            [ANALYSIS_PROGRESS_KEY],
+        );
     }
+}
+
+fn save_progress(conn: &Connection, progress: &AnalysisProgress<'_>) -> rusqlite::Result<()> {
+    let value = serde_json::to_string(progress)
+        .map_err(|error| rusqlite::Error::ToSqlConversionFailure(Box::new(error)))?;
+    conn.execute(
+        r#"
+        INSERT INTO app_settings (key, value) VALUES (?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+        "#,
+        params![ANALYSIS_PROGRESS_KEY, value],
+    )?;
+    Ok(())
 }
 
 fn acquire_run_lock(conn: &Connection) -> rusqlite::Result<Option<AnalysisRunLock<'_>>> {
@@ -88,6 +119,12 @@ fn acquire_run_lock(conn: &Connection) -> rusqlite::Result<Option<AnalysisRunLoc
         "#,
         params![ANALYSIS_LOCK_KEY, token, stale_before],
     )?;
+    if changed == 1 {
+        conn.execute(
+            "DELETE FROM app_settings WHERE key = ?",
+            [ANALYSIS_PROGRESS_KEY],
+        )?;
+    }
     Ok((changed == 1).then_some(AnalysisRunLock { conn, token }))
 }
 
@@ -467,18 +504,12 @@ async fn run_article_analysis_with_mode(
     let candidates = load_candidates(conn, &settings)?;
     let mut used_tokens = used_tokens_today(conn)?;
     let mut report = AnalysisRunReport::default();
-    eprintln!(
-        "Starting AI article analysis: candidates={}, max_articles={}, tokens_used_today={}, daily_token_limit={}",
-        candidates.len(),
-        settings.max_articles_per_run,
-        used_tokens,
-        settings.daily_token_limit
-    );
-
+    let started_at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let mut articles_to_analyze = Vec::new();
     for article in candidates {
-        if report.processed >= settings.max_articles_per_run {
-            break;
-        }
         let hash = content_hash(&article);
         let current = article.existing_hash.as_deref() == Some(&hash)
             && article.existing_model.as_deref() == Some(&config.model)
@@ -488,6 +519,32 @@ async fn run_article_analysis_with_mode(
             report.skipped_current += 1;
             continue;
         }
+        articles_to_analyze.push((article, hash));
+        if articles_to_analyze.len() >= settings.max_articles_per_run {
+            break;
+        }
+    }
+    let analysis_total = articles_to_analyze.len();
+    save_progress(
+        conn,
+        &AnalysisProgress {
+            total: analysis_total,
+            processed: 0,
+            succeeded: 0,
+            failed: 0,
+            skipped_current: report.skipped_current,
+            current_article_title: None,
+            tokens_used_today: used_tokens,
+            daily_token_limit: settings.daily_token_limit,
+            started_at,
+        },
+    )?;
+    eprintln!(
+        "Starting AI article analysis: candidates={}, max_articles={}, tokens_used_today={}, daily_token_limit={}",
+        analysis_total, settings.max_articles_per_run, used_tokens, settings.daily_token_limit
+    );
+
+    for (article, hash) in articles_to_analyze {
         let input = format!("{}\n{}", article.title, article.summary);
         let estimated_input = estimated_tokens(&truncate(&input, MAX_INPUT_CHARS));
         if used_tokens + estimated_input + RESERVED_OUTPUT_TOKENS > settings.daily_token_limit {
@@ -495,6 +552,20 @@ async fn run_article_analysis_with_mode(
             report.stopped_by_token_limit = true;
             break;
         }
+        save_progress(
+            conn,
+            &AnalysisProgress {
+                total: analysis_total,
+                processed: report.processed,
+                succeeded: report.succeeded,
+                failed: report.failed,
+                skipped_current: report.skipped_current,
+                current_article_title: Some(&article.title),
+                tokens_used_today: used_tokens,
+                daily_token_limit: settings.daily_token_limit,
+                started_at,
+            },
+        )?;
         eprintln!(
             "Analyzing article {}:{} ({}/{})",
             article.source_type,
@@ -536,6 +607,20 @@ async fn run_article_analysis_with_mode(
             }
         }
         report.processed += 1;
+        save_progress(
+            conn,
+            &AnalysisProgress {
+                total: analysis_total,
+                processed: report.processed,
+                succeeded: report.succeeded,
+                failed: report.failed,
+                skipped_current: report.skipped_current,
+                current_article_title: None,
+                tokens_used_today: used_tokens,
+                daily_token_limit: settings.daily_token_limit,
+                started_at,
+            },
+        )?;
     }
     eprintln!(
         "AI article analysis finished: processed={}, succeeded={}, failed={}, skipped_current={}, stopped_by_token_limit={}",
@@ -560,13 +645,54 @@ pub async fn run_article_analysis_manual(
 
 #[cfg(test)]
 mod tests {
-    use super::{extract_json, run_article_analysis, run_article_analysis_manual, truncate};
+    use super::{
+        AnalysisProgress, extract_json, run_article_analysis, run_article_analysis_manual,
+        save_progress, truncate,
+    };
     use rusqlite::Connection;
     use serde_json::json;
     use wiremock::{
         Mock, MockServer, ResponseTemplate,
         matchers::{method, path},
     };
+
+    #[test]
+    fn saves_analysis_progress_as_json() {
+        let conn = Connection::open_in_memory().expect("open database");
+        conn.execute(
+            "CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+            [],
+        )
+        .expect("create settings table");
+
+        save_progress(
+            &conn,
+            &AnalysisProgress {
+                total: 8,
+                processed: 3,
+                succeeded: 2,
+                failed: 1,
+                skipped_current: 4,
+                current_article_title: Some("Current article"),
+                tokens_used_today: 1200,
+                daily_token_limit: 50000,
+                started_at: 1786492800,
+            },
+        )
+        .expect("save progress");
+
+        let stored: String = conn
+            .query_row(
+                "SELECT value FROM app_settings WHERE key = 'ai_article_analysis_progress'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read progress");
+        let progress: serde_json::Value = serde_json::from_str(&stored).expect("parse progress");
+        assert_eq!(progress["total"], 8);
+        assert_eq!(progress["processed"], 3);
+        assert_eq!(progress["current_article_title"], "Current article");
+    }
 
     #[tokio::test]
     async fn article_analysis_is_disabled_by_default() {

@@ -57,6 +57,15 @@ export interface SettingsAIArticleAnalysisRunResponse {
 
 export interface SettingsAIArticleAnalysisStatusResponse {
   running: boolean;
+  total: number;
+  processed: number;
+  succeeded: number;
+  failed: number;
+  skipped_current: number;
+  current_article_title: string | null;
+  tokens_used_today: number;
+  daily_token_limit: number;
+  started_at: number | null;
 }
 
 export type LLMProvider = "vllm" | "ollama" | "openai";

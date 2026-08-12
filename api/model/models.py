@@ -512,6 +512,15 @@ class SettingsAIArticleAnalysisRunResponse(BaseModel):
 
 class SettingsAIArticleAnalysisStatusResponse(BaseModel):
     running: bool
+    total: int = 0
+    processed: int = 0
+    succeeded: int = 0
+    failed: int = 0
+    skipped_current: int = 0
+    current_article_title: str | None = None
+    tokens_used_today: int = 0
+    daily_token_limit: int = 0
+    started_at: int | None = None
 
 
 class SettingsWebhookSummaryResponse(BaseModel):

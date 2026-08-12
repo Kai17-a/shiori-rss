@@ -47,12 +47,47 @@
             role="status"
             aria-live="polite"
             title="Article analysis is running"
-            description="Saved articles are being analyzed. This page will update when the run finishes."
+            :description="analysisProgressDescription"
             color="info"
             variant="soft"
             icon="i-lucide-loader-circle"
             :ui="{ leadingIcon: 'animate-spin' }"
           />
+
+          <div
+            v-if="analysisRunning && analysisStatus.total > 0"
+            class="space-y-3 rounded-2xl border border-default bg-elevated/30 p-4"
+          >
+            <div class="flex flex-wrap items-center justify-between gap-2 text-sm">
+              <span class="font-semibold text-default">
+                {{ analysisStatus.processed }} / {{ analysisStatus.total }} articles
+              </span>
+              <span class="text-muted">{{ analysisProgressPercent }}%</span>
+            </div>
+            <UProgress
+              :model-value="analysisStatus.processed"
+              :max="analysisStatus.total"
+              color="primary"
+              size="md"
+              role="progressbar"
+              aria-label="Article analysis progress"
+              :aria-valuenow="analysisStatus.processed"
+              aria-valuemin="0"
+              :aria-valuemax="analysisStatus.total"
+            />
+            <p v-if="analysisStatus.current_article_title" class="truncate text-sm text-default">
+              Current: {{ analysisStatus.current_article_title }}
+            </p>
+            <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
+              <span>{{ analysisStatus.succeeded }} succeeded</span>
+              <span>{{ analysisStatus.failed }} failed</span>
+              <span>{{ analysisStatus.skipped_current }} already current</span>
+              <span v-if="analysisStatus.daily_token_limit">
+                {{ analysisStatus.tokens_used_today.toLocaleString() }} /
+                {{ analysisStatus.daily_token_limit.toLocaleString() }} tokens today
+              </span>
+            </div>
+          </div>
 
           <UAlert
             v-if="analysisRunError"
@@ -213,6 +248,19 @@ const { request } = useApi();
 const toast = useSingleToast();
 const loading = ref(false);
 const analysisRunning = ref(false);
+const emptyAnalysisStatus = (): SettingsAIArticleAnalysisStatusResponse => ({
+  running: false,
+  total: 0,
+  processed: 0,
+  succeeded: 0,
+  failed: 0,
+  skipped_current: 0,
+  current_article_title: null,
+  tokens_used_today: 0,
+  daily_token_limit: 0,
+  started_at: null,
+});
+const analysisStatus = ref<SettingsAIArticleAnalysisStatusResponse>(emptyAnalysisStatus());
 const analysisRunError = ref("");
 let statusPoll: ReturnType<typeof setInterval> | undefined;
 const loadError = ref("");
@@ -239,6 +287,12 @@ const statusOptions = [
   { label: "Failed", value: "failed" },
 ];
 const pageCount = computed(() => Math.max(analyses.value.total_pages, 1));
+const analysisProgressPercent = computed(() => analysisStatus.value.total
+  ? Math.round((analysisStatus.value.processed / analysisStatus.value.total) * 100)
+  : 0);
+const analysisProgressDescription = computed(() => analysisStatus.value.total
+  ? `Analyzing saved articles: ${analysisStatus.value.processed} of ${analysisStatus.value.total} processed.`
+  : "Preparing saved articles for analysis. This page updates automatically.");
 
 const formatDateTime = (value: string) => {
   const normalized = /(?:Z|[+-]\d{2}:\d{2})$/.test(value) ? value : `${value}Z`;
@@ -278,6 +332,7 @@ const loadAnalysisStatus = async () => {
     const response = await request<SettingsAIArticleAnalysisStatusResponse>(
       "/settings/ai-article-analysis/status",
     );
+    analysisStatus.value = response;
     analysisRunning.value = response.running;
   } catch {
     // Keep the last known state when a background status check fails.
@@ -318,6 +373,7 @@ const runAnalysis = async () => {
     });
   } finally {
     analysisRunning.value = false;
+    analysisStatus.value = emptyAnalysisStatus();
   }
 };
 

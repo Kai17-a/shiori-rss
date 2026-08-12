@@ -422,7 +422,18 @@ test("disables manual analysis while the server reports a running job", async ({
   await page.route(/\/api\/settings\/ai-article-analysis\/status\/?$/, async (route) => {
     await route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ running: true }),
+      body: JSON.stringify({
+        running: true,
+        total: 10,
+        processed: 4,
+        succeeded: 3,
+        failed: 1,
+        skipped_current: 2,
+        current_article_title: "Vue 3.5 released",
+        tokens_used_today: 1250,
+        daily_token_limit: 50000,
+        started_at: 1786492800,
+      }),
     });
   });
 
@@ -433,6 +444,15 @@ test("disables manual analysis while the server reports a running job", async ({
   await expect(runButton).toContainText("Analysis running");
   await expect(runButton.locator(".animate-spin")).toBeVisible();
   await expect(page.getByRole("status")).toContainText("Article analysis is running");
+  await expect(page.getByText("4 / 10 articles")).toBeVisible();
+  await expect(page.getByText("40%")).toBeVisible();
+  await expect(page.getByText("Current: Vue 3.5 released")).toBeVisible();
+  await expect(page.getByText("3 succeeded")).toBeVisible();
+  await expect(page.getByText("1,250 / 50,000 tokens today")).toBeVisible();
+  await expect(page.getByLabel("Article analysis progress")).toHaveAttribute(
+    "aria-valuenow",
+    "4",
+  );
 });
 
 test("shows an alert when manual article analysis stops with an error", async ({ page }) => {
