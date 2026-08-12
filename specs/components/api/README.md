@@ -19,7 +19,7 @@ FastAPI は `/health`、`/dashboard`、`/rss-feeds`、`/news-sites`、`/settings
 - エラー: `{"detail": ...}`。入力不正は 422、未検出は 404、重複は 409、外部通知失敗は 502 とする。
 - 一覧: `items`, `total`, `page`, `per_page`, `total_pages` を返す。
 - Webhook: Discord通知ではフィードの `icon_url` を `avatar_url` に設定する。Incoming Webhookでアイコンを上書きできないSlackとTeamsには追加しない。
-- Webhook article limit: `GET/PUT /settings/webhook-article-limit` で `max_articles` を取得・更新する。通常RSSの定期・手動実行とCustom RSSの手動実行は古い未通知記事から上限件数だけを送り、超過分は次回へ残す。
+- Webhook article limit: `GET/PUT /settings/webhook-article-limit` で `max_articles` を取得・更新する。通常RSSの定期・手動実行とCustom RSSの手動実行は未通知記事を公開日時の新しい順に並べ、最新の上限件数だけを送る。送信成功後は同じバックログの古い記事も処理済みにして次回送信せず、送信失敗時は未通知のまま最新記事から再試行する。
 - Microsoft Teams通知の記事リンクは、Adaptive CardのTextBlock内でMarkdownの `- [title](url)` リストとして送る。
 
 詳細な利用者要件は [product requirements](../../product/requirements.md)、ルート一覧は [system design](../../architecture/system-design.md) を参照する。

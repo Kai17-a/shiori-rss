@@ -205,7 +205,7 @@ class NewsSiteRepository:
             SELECT url, title, summary, published
             FROM news_site_articles
             WHERE site_id = ? AND webhook_notified = 0
-            ORDER BY id ASC
+            ORDER BY datetime(coalesce(published, created_at)) DESC, id DESC
             """,
             (site_id,),
         ).fetchall()

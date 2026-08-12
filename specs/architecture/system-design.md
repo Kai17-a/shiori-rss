@@ -31,7 +31,7 @@
 | GET/PUT | `/settings/rss-execution` | 定期実行設定 |
 | GET/PUT | `/settings/rss-webhook-notification` | 定期通知設定 |
 | GET/PUT | `/settings/webhook-summary` | 概要通知設定 |
-| GET/PUT | `/settings/webhook-article-limit` | 1回のフィード実行で通知する記事上限（1〜100件） |
+| GET/PUT | `/settings/webhook-article-limit` | 1回のフィード実行で通知する最新記事数（1〜100件） |
 | GET/PUT/DELETE | `/settings/llm` | LLM接続設定の取得・検証付き保存・削除 |
 | POST | `/settings/llm/test` | LLM疎通テスト |
 | GET/PUT | `/settings/ai-article-analysis` | AI記事事前解析の有効化と上限設定 |
@@ -57,7 +57,7 @@
 2. RSS フィードを読み、Webhook設定の有無に関係なく巡回する。
 3. フィードを取得し RSS / Atom を解析する。
 4. `rss_feed_articles` に存在しない記事を未通知として保存する。
-5. 通知が有効で送信先がある場合、保存済みの未通知記事を古い順に設定上限まで送る。上限超過分は未通知のまま次回へ残す。DiscordではフィードのアイコンURLをWebhookの `avatar_url` に使う。
+5. 通知が有効で送信先がある場合、保存済みの未通知記事を公開日時の新しい順に設定上限まで送る。送信成功後は同じバックログ全体を処理済みにして、上限から外れた古い記事を次回送らない。送信失敗時は未処理のまま最新記事から再試行する。DiscordではフィードのアイコンURLをWebhookの `avatar_url` に使う。
 6. 少なくとも1つの送信先で成功した記事を通知済みに更新する。
 7. AI記事解析が有効なら、対象期間内の未解析・更新済み記事を上限件数までLLMで解析する。
 8. 利用量を呼び出し単位で記録し、1日のトークン上限に達する前に解析を停止する。

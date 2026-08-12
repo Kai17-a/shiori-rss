@@ -132,7 +132,7 @@ erDiagram
     }
 ```
 
-`rss_feeds` と `news_sites` のアイコンは、外部画像の場合は `icon_url` のみ、アップロードの場合は公開用API URLと `icon_data` / `icon_media_type` を保持する。`rss_feed_articles.published` はRSS XMLの公開日時をISO 8601形式で保持し、XMLに含まれるUTCオフセットを維持する。`rss_feed_articles.webhook_notified` と `news_site_articles.webhook_notified` は1件以上の送信先への通知成功後だけ真になる。未通知行はWebhook登録後の実行で再送対象になり、`webhook_max_articles_per_run` の上限超過分は次回実行へ残る。`app_settings` で `rss_periodic_execution_enabled`、`rss_webhook_notification_enabled`、`webhook_include_summary_enabled`、`webhook_max_articles_per_run` に加え、`llm_provider`、`llm_base_url`、`llm_api_key`、`llm_model`、AI記事解析の有効化・件数・日次トークン上限・対象期間を保持する。LLM API key はAPIレスポンスへ返さない。ブックマーク、フォルダ、タグのテーブルは現行スキーマに存在しない。
+`rss_feeds` と `news_sites` のアイコンは、外部画像の場合は `icon_url` のみ、アップロードの場合は公開用API URLと `icon_data` / `icon_media_type` を保持する。`rss_feed_articles.published` はRSS XMLの公開日時をISO 8601形式で保持し、XMLに含まれるUTCオフセットを維持する。`rss_feed_articles.webhook_notified` と `news_site_articles.webhook_notified` はWebhook通知キューの処理状態を表す。送信時は未処理記事から公開日時が新しい `webhook_max_articles_per_run` 件だけを通知し、1件以上の送信先への成功後に同じバックログ全体を処理済みにするため、上限から外れた古い記事は次回送信されない。送信失敗時は未処理のまま保持する。`app_settings` で `rss_periodic_execution_enabled`、`rss_webhook_notification_enabled`、`webhook_include_summary_enabled`、`webhook_max_articles_per_run` に加え、`llm_provider`、`llm_base_url`、`llm_api_key`、`llm_model`、AI記事解析の有効化・件数・日次トークン上限・対象期間を保持する。LLM API key はAPIレスポンスへ返さない。ブックマーク、フォルダ、タグのテーブルは現行スキーマに存在しない。
 
 `article_search` はFTS5の仮想テーブルで、通常RSSとカスタムRSSの記事タイトル、保存済みサマリー、フィード名を三文字単位で索引化する。記事の追加・更新・削除とフィード名変更はSQLiteトリガーで同期する。
 

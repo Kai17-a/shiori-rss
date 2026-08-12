@@ -188,7 +188,7 @@ def test_execute_rss_feed_supports_microsoft_teams_adaptive_cards(client, monkey
     first_article = card["body"][1]["items"]
     assert card["body"][1]["spacing"] == "Medium"
     assert "separator" not in card["body"][1]
-    assert first_article[0]["text"] == "- [Item 1](https://example.com/item-1)"
+    assert first_article[0]["text"] == "- [Item 2](https://example.com/item-2)"
     assert not any(item["type"] == "ActionSet" for item in first_article)
 
     summary_payload = webhook_module.build_rss_notification_payload(
@@ -833,12 +833,12 @@ def test_execute_rss_feed_uses_feedparser_content(client, monkeypatch):
     assert captured["json"]["username"] == "Shiori Feed"
     assert captured["json"]["embeds"] == [
         {
-            "title": "Item 1",
-            "url": "https://example.com/item-1",
-        },
-        {
             "title": "Item 2",
             "url": "https://example.com/item-2",
+        },
+        {
+            "title": "Item 1",
+            "url": "https://example.com/item-1",
         },
     ]
 
@@ -1237,7 +1237,22 @@ def test_execute_rss_feed_without_webhook_saves_and_later_notifies_pending_artic
     assert all(item["webhook_notified"] for item in articles)
 
 
-def test_execute_rss_feed_leaves_articles_over_webhook_limit_pending(client):
+def test_execute_rss_feed_notifies_only_latest_articles_without_draining_backlog(
+    client, monkeypatch
+):
+    import api.services.webhook_service as webhook_module
+
+    payloads = []
+
+    def fake_post(url, json, timeout=5.0):
+        payloads.append(json)
+
+        class Response:
+            status_code = 204
+
+        return Response()
+
+    monkeypatch.setattr(webhook_module.httpx, "post", fake_post)
     client.put("/settings/webhook-article-limit", json={"max_articles": 1})
     client.post(
         "/settings/webhooks",
@@ -1253,13 +1268,13 @@ def test_execute_rss_feed_leaves_articles_over_webhook_limit_pending(client):
 
     assert first.status_code == 200
     assert first.json()["message"] == "Posted 1 pending article(s)."
-    assert sum(item["webhook_notified"] for item in first_articles) == 1
+    assert payloads[0]["embeds"][0]["title"] == "Item 2"
+    assert all(item["webhook_notified"] for item in first_articles)
 
     second = client.post(f"/rss-feeds/{feed_id}/execute")
-    second_articles = client.get(f"/rss-feeds/{feed_id}/articles").json()["items"]
 
-    assert second.json()["message"] == "Posted 1 pending article(s)."
-    assert all(item["webhook_notified"] for item in second_articles)
+    assert second.json()["message"] == "No new articles found."
+    assert len(payloads) == 1
 
 
 def test_execute_rss_feed_delivers_to_all_registered_webhooks(client, monkeypatch):

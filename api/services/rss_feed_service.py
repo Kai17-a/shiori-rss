@@ -252,7 +252,7 @@ class RSSFeedService:
             SELECT url, title, summary, published
             FROM rss_feed_articles
             WHERE feed_id = ? AND webhook_notified = 0
-            ORDER BY id ASC
+            ORDER BY datetime(coalesce(published, created_at)) DESC, id DESC
             """,
             (feed_id,),
         ).fetchall()
@@ -629,7 +629,7 @@ class RSSFeedService:
                     last_failed_service or "webhook", last_failed_response
                 )
 
-            self._mark_articles_notified(conn, feed_id, notification_articles)
+            self._mark_articles_notified(conn, feed_id, pending_articles)
 
             return RSSFeedExecuteResponse(
                 feed_id=feed_id,

@@ -796,9 +796,7 @@ class NewsSiteService:
             raise HTTPException(status_code=502, detail="Failed to notify webhook")
 
         with get_db() as conn:
-            NewsSiteRepository(conn).mark_articles_notified(
-                site_id, notification_articles
-            )
+            NewsSiteRepository(conn).mark_articles_notified(site_id, pending_articles)
         return NewsSiteExecuteResponse(
             site_id=site_id,
             title=str(row["title"]),

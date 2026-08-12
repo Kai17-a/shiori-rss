@@ -304,7 +304,7 @@
           >
             <UFormField
               label="Maximum articles per run"
-              description="Send this many pending articles per feed execution. Remaining articles stay pending for the next run."
+              description="Send only the latest pending articles per feed execution. Older articles from the same backlog are not sent later."
               class="w-full sm:max-w-md"
             >
               <UInput

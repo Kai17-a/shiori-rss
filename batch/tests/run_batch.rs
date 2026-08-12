@@ -3,6 +3,10 @@ use shiori_feed_batch::{
     fetch_rss_feeds, fetch_webhook_endpoints, rss_periodic_execution_enabled,
     rss_webhook_notification_enabled, run_batch, webhook_article_limit, webhook_summary_enabled,
 };
+use wiremock::{
+    Mock, MockServer, ResponseTemplate,
+    matchers::{method, path},
+};
 
 fn create_in_memory_test_db(enabled: i64) -> Connection {
     let conn = Connection::open_in_memory().expect("open in-memory db");
@@ -93,6 +97,69 @@ async fn disabled_rss_webhook_notification_returns_ok_without_fetching() {
 
     let result = run_batch(&conn).await;
     assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn periodic_execution_sends_only_latest_articles_once() {
+    let server = MockServer::start().await;
+    let conn = create_in_memory_test_db(1);
+    conn.execute(
+        "UPDATE rss_feeds SET url = ? WHERE id = 1",
+        [format!("{}/feed", server.uri())],
+    )
+    .expect("set feed URL");
+    conn.execute(
+        "UPDATE webhook_endpoints SET url = ? WHERE id = 1",
+        [format!("{}/hook", server.uri())],
+    )
+    .expect("set webhook URL");
+    conn.execute(
+        "INSERT INTO app_settings (key, value, rss_periodic_execution_enabled) VALUES ('rss_webhook_notification_enabled', '1', 1)",
+        [],
+    )
+    .expect("enable notifications");
+    conn.execute(
+        "INSERT INTO app_settings (key, value) VALUES ('webhook_max_articles_per_run', '1')",
+        [],
+    )
+    .expect("set article limit");
+
+    Mock::given(method("GET"))
+        .and(path("/feed"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(
+            r#"<?xml version="1.0"?><rss version="2.0"><channel><title>Example</title>
+            <item><title>Older article</title><link>https://example.com/older</link><pubDate>Wed, 01 Jan 2025 00:00:00 GMT</pubDate></item>
+            <item><title>Latest article</title><link>https://example.com/latest</link><pubDate>Thu, 02 Jan 2025 00:00:00 GMT</pubDate></item>
+            </channel></rss>"#,
+        ))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/hook"))
+        .respond_with(ResponseTemplate::new(204))
+        .mount(&server)
+        .await;
+
+    run_batch(&conn).await.expect("run first batch");
+    let handled: i64 = conn
+        .query_row(
+            "SELECT count(*) FROM rss_feed_articles WHERE webhook_notified = 1",
+            [],
+            |row| row.get(0),
+        )
+        .expect("count handled articles");
+    assert_eq!(handled, 2);
+
+    run_batch(&conn).await.expect("run second batch");
+    let requests = server.received_requests().await.expect("read requests");
+    let webhook_requests: Vec<_> = requests
+        .iter()
+        .filter(|request| request.method.as_str() == "POST")
+        .collect();
+    assert_eq!(webhook_requests.len(), 1);
+    let body = String::from_utf8_lossy(&webhook_requests[0].body);
+    assert!(body.contains("Latest article"));
+    assert!(!body.contains("Older article"));
 }
 
 #[test]

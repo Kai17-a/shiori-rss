@@ -229,6 +229,8 @@ fn record_pending_articles_inserts_unnotified_rows() {
     assert!(urls.contains("https://example.com/article-2"));
     let pending = webhook::load_pending_articles(&conn, 1).expect("load pending articles");
     assert_eq!(pending.len(), 2);
+    assert_eq!(pending[0].title, "Article 2");
+    assert_eq!(pending[1].title, "Article 1");
     webhook::mark_articles_notified(&conn, 1, &pending).expect("mark notified");
     assert!(
         webhook::load_pending_articles(&conn, 1)

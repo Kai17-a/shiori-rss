@@ -504,7 +504,7 @@ def test_manual_execution_notifies_and_records_only_new_articles(client, monkeyp
     assert articles.json()["items"][0]["title"] == "Second article"
 
 
-def test_manual_execution_leaves_articles_over_webhook_limit_pending(
+def test_manual_execution_notifies_only_latest_articles_without_draining_backlog(
     client, monkeypatch
 ):
     import api.services.news_site_service as news_module
@@ -523,10 +523,11 @@ def test_manual_execution_leaves_articles_over_webhook_limit_pending(
     class WebhookResponse:
         status_code = 204
 
+    payloads = []
     monkeypatch.setattr(
         news_module,
         "send_webhook",
-        lambda url, payload: WebhookResponse(),
+        lambda url, payload: payloads.append(payload) or WebhookResponse(),
     )
 
     first = client.post(f"/news-sites/{site.json()['id']}/execute")
@@ -535,15 +536,12 @@ def test_manual_execution_leaves_articles_over_webhook_limit_pending(
     ).json()["items"]
 
     assert first.json()["message"] == "Posted 1 pending article(s)."
-    assert sum(article["webhook_notified"] for article in first_articles) == 1
+    assert payloads[0]["embeds"][0]["title"] == "Second article"
+    assert all(article["webhook_notified"] for article in first_articles)
 
     second = client.post(f"/news-sites/{site.json()['id']}/execute")
-    second_articles = client.get(
-        f"/news-sites/{site.json()['id']}/articles"
-    ).json()["items"]
-
-    assert second.json()["message"] == "Posted 1 pending article(s)."
-    assert all(article["webhook_notified"] for article in second_articles)
+    assert second.json()["message"] == "No new articles found."
+    assert len(payloads) == 1
 
 
 def test_manual_execution_saves_pending_articles_when_webhook_is_disabled(

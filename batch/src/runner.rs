@@ -211,7 +211,7 @@ async fn run_rss_batch(conn: &Connection) -> Result<(), Box<dyn Error>> {
             continue;
         }
 
-        let mut pending_articles = match webhook::load_pending_articles(conn, rss_feed.id) {
+        let pending_articles = match webhook::load_pending_articles(conn, rss_feed.id) {
             Ok(articles) => articles,
             Err(err) => {
                 eprintln!(
@@ -224,9 +224,10 @@ async fn run_rss_batch(conn: &Connection) -> Result<(), Box<dyn Error>> {
         if pending_articles.is_empty() {
             continue;
         }
-        pending_articles.truncate(article_limit);
+        let notification_count = pending_articles.len().min(article_limit);
+        let notification_articles = &pending_articles[..notification_count];
 
-        let embeds: Vec<webhook::Embed<'_>> = pending_articles
+        let embeds: Vec<webhook::Embed<'_>> = notification_articles
             .iter()
             .map(|article| webhook::Embed {
                 title: &article.title,
@@ -235,7 +236,7 @@ async fn run_rss_batch(conn: &Connection) -> Result<(), Box<dyn Error>> {
                 summary: &article.summary,
             })
             .collect();
-        let articles: Vec<webhook::Article<'_>> = pending_articles
+        let articles: Vec<webhook::Article<'_>> = notification_articles
             .iter()
             .map(|article| webhook::Article {
                 url: &article.url,

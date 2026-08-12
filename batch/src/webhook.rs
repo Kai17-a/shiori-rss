@@ -365,7 +365,7 @@ pub fn load_pending_articles(
                coalesce(summary, '(no summary)')
         FROM rss_feed_articles
         WHERE feed_id = ? AND webhook_notified = 0
-        ORDER BY id ASC
+        ORDER BY datetime(coalesce(published, created_at)) DESC, id DESC
         "#,
     )?;
     let rows = stmt.query_map(params![feed_id], |row| {
