@@ -590,8 +590,30 @@ class ErrorResponse(BaseModel):
     detail: str
 
 
+class AskAIHistoryTurn(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = PydField(min_length=1, max_length=4000)
+
+
+class AskAIContextSource(BaseModel):
+    reference: str
+    source_type: Literal["rss", "custom"]
+    article_id: int
+    source_id: int
+    source_title: str
+    title: str | None
+    summary: str | None
+    url: str
+    published: datetime | None
+    created_at: datetime
+
+
 class AskAIRequest(BaseModel):
     message: str = PydField(min_length=1, max_length=2000)
+    history: list[AskAIHistoryTurn] = PydField(default_factory=list, max_length=8)
+    context_sources: list[AskAIContextSource] = PydField(
+        default_factory=list, max_length=10
+    )
 
     @field_validator("message")
     @classmethod

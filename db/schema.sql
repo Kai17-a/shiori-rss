@@ -160,7 +160,7 @@ CREATE TABLE article_ai_analyses (
   error_message TEXT,
   attempt_count INTEGER NOT NULL DEFAULT 1,
   analyzed_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')), search_aliases_json TEXT NOT NULL DEFAULT '[]',
   UNIQUE (source_type, article_id)
 );
 CREATE INDEX idx_article_ai_analyses_status_updated
@@ -178,45 +178,6 @@ CREATE TABLE article_ai_analysis_usage (
 );
 CREATE INDEX idx_article_ai_analysis_usage_created
   ON article_ai_analysis_usage(created_at, input_tokens, output_tokens);
-CREATE VIRTUAL TABLE article_ai_search USING fts5(
-  source_type UNINDEXED,
-  article_id UNINDEXED,
-  ai_summary,
-  key_points,
-  topics,
-  keywords,
-  entities,
-  tokenize = 'trigram'
-)
-/* article_ai_search(source_type,article_id,ai_summary,key_points,topics,keywords,entities) */;
-CREATE TABLE 'article_ai_search_data'(id INTEGER PRIMARY KEY, block BLOB);
-CREATE TABLE 'article_ai_search_idx'(segid, term, pgno, PRIMARY KEY(segid, term)) WITHOUT ROWID;
-CREATE TABLE 'article_ai_search_content'(id INTEGER PRIMARY KEY, c0, c1, c2, c3, c4, c5, c6);
-CREATE TABLE 'article_ai_search_docsize'(id INTEGER PRIMARY KEY, sz BLOB);
-CREATE TABLE 'article_ai_search_config'(k PRIMARY KEY, v) WITHOUT ROWID;
-CREATE TRIGGER article_ai_search_insert AFTER INSERT ON article_ai_analyses
-WHEN new.status = 'completed' BEGIN
-  INSERT INTO article_ai_search (
-    source_type, article_id, ai_summary, key_points, topics, keywords, entities
-  ) VALUES (
-    new.source_type, new.article_id, new.ai_summary, new.key_points_json,
-    new.topics_json, new.keywords_json, new.entities_json
-  );
-END;
-CREATE TRIGGER article_ai_search_update AFTER UPDATE ON article_ai_analyses BEGIN
-  DELETE FROM article_ai_search
-  WHERE source_type = old.source_type AND article_id = old.article_id;
-  INSERT INTO article_ai_search (
-    source_type, article_id, ai_summary, key_points, topics, keywords, entities
-  )
-  SELECT new.source_type, new.article_id, new.ai_summary, new.key_points_json,
-         new.topics_json, new.keywords_json, new.entities_json
-  WHERE new.status = 'completed';
-END;
-CREATE TRIGGER article_ai_search_delete AFTER DELETE ON article_ai_analyses BEGIN
-  DELETE FROM article_ai_search
-  WHERE source_type = old.source_type AND article_id = old.article_id;
-END;
 CREATE TRIGGER article_ai_analysis_rss_delete AFTER DELETE ON rss_feed_articles BEGIN
   DELETE FROM article_ai_analyses
   WHERE source_type = 'rss' AND article_id = old.id;
@@ -246,6 +207,46 @@ CREATE TABLE github_repository_webhooks (
     webhook_id INTEGER NOT NULL REFERENCES webhook_endpoints(id) ON DELETE CASCADE,
     PRIMARY KEY (repository_id, webhook_id)
 );
+CREATE VIRTUAL TABLE article_ai_search USING fts5(
+  source_type UNINDEXED,
+  article_id UNINDEXED,
+  ai_summary,
+  key_points,
+  topics,
+  keywords,
+  entities,
+  search_aliases,
+  tokenize = 'trigram'
+)
+/* article_ai_search(source_type,article_id,ai_summary,key_points,topics,keywords,entities,search_aliases) */;
+CREATE TABLE 'article_ai_search_data'(id INTEGER PRIMARY KEY, block BLOB);
+CREATE TABLE 'article_ai_search_idx'(segid, term, pgno, PRIMARY KEY(segid, term)) WITHOUT ROWID;
+CREATE TABLE 'article_ai_search_content'(id INTEGER PRIMARY KEY, c0, c1, c2, c3, c4, c5, c6, c7);
+CREATE TABLE 'article_ai_search_docsize'(id INTEGER PRIMARY KEY, sz BLOB);
+CREATE TABLE 'article_ai_search_config'(k PRIMARY KEY, v) WITHOUT ROWID;
+CREATE TRIGGER article_ai_search_insert AFTER INSERT ON article_ai_analyses
+WHEN new.status = 'completed' BEGIN
+  INSERT INTO article_ai_search (
+    source_type, article_id, ai_summary, key_points, topics, keywords, entities, search_aliases
+  ) VALUES (
+    new.source_type, new.article_id, new.ai_summary, new.key_points_json,
+    new.topics_json, new.keywords_json, new.entities_json, new.search_aliases_json
+  );
+END;
+CREATE TRIGGER article_ai_search_update AFTER UPDATE ON article_ai_analyses BEGIN
+  DELETE FROM article_ai_search
+  WHERE source_type = old.source_type AND article_id = old.article_id;
+  INSERT INTO article_ai_search (
+    source_type, article_id, ai_summary, key_points, topics, keywords, entities, search_aliases
+  )
+  SELECT new.source_type, new.article_id, new.ai_summary, new.key_points_json,
+         new.topics_json, new.keywords_json, new.entities_json, new.search_aliases_json
+  WHERE new.status = 'completed';
+END;
+CREATE TRIGGER article_ai_search_delete AFTER DELETE ON article_ai_analyses BEGIN
+  DELETE FROM article_ai_search
+  WHERE source_type = old.source_type AND article_id = old.article_id;
+END;
 -- Dbmate schema migrations
 INSERT INTO "schema_migrations" (version) VALUES
   ('010'),
@@ -267,4 +268,5 @@ INSERT INTO "schema_migrations" (version) VALUES
   ('202608101000'),
   ('202608121631'),
   ('202608121710'),
-  ('202608121720');
+  ('202608121720'),
+  ('202608121952');

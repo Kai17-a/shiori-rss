@@ -2,7 +2,7 @@
 
 定期処理は通常RSS巡回に加え、登録済みGitHubリポジトリの最新公開リリースを確認する。最新タグが最後に通知成功したタグと異なる場合、リポジトリに選択された有効なDiscord・Slack・Microsoft Teams Webhookへ通知する。未選択なら通知せず、1件以上への送信成功後だけ通知済みタグを更新して重複通知を防ぐ。`GITHUB_TOKEN` があればGitHub API認証に利用する。
 
-AI記事解析の `article-analysis-v2` は、Topicsを固定大分類（AI & Machine Learning、Frontend、Backend & API、Cloud & Infrastructure、Security、Data & Database、DevOps、Mobile、Hardware、Business & Product、Other）から1〜2件、主題を表すKeywordsを3〜5件、中心的な組織・製品・サービス・人物のEntitiesを最大5件、Key pointsを最大3件として生成・検証する。旧プロンプト版の解析は同じ記事でも順次再解析する。
+AI記事解析の `article-analysis-v3` は、Topicsを固定大分類から1〜2件、主題を表すKeywordsを3〜5件、中心的なEntitiesを最大5件、Key pointsを最大3件として生成・検証する。表示用メタデータは原文の主要言語を維持し、検索専用aliasesに主要語の日英対訳、略称、別名を最大10件保存する。公式製品名は翻訳せず、旧プロンプト版は順次再解析する。
 
 Rust batch は RSS / Atom フィードだけを定期巡回し、通常RSSとカスタムRSSの保存済み記事をAI事前解析する。カスタムRSSの取得はAPIの手動実行が担当する。
 

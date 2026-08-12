@@ -146,7 +146,11 @@ class CompatTestClient:
         if method != "POST" or path != "/ai/chat":
             return None
         body = AskAIRequest(**(json or {}))
-        return self._ok(AskAIService().ask(body.message).model_dump(mode="json"))
+        return self._ok(
+            AskAIService()
+            .ask(body.message, body.history, body.context_sources)
+            .model_dump(mode="json")
+        )
 
     def _news_site_response(self, method: str, path: str, query, json, kwargs):
         service = NewsSiteService()

@@ -8,7 +8,12 @@ from fastapi import HTTPException
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from api.database import get_db
-from api.model.models import AskAIResponse, AskAISource
+from api.model.models import (
+    AskAIContextSource,
+    AskAIHistoryTurn,
+    AskAIResponse,
+    AskAISource,
+)
 from api.repositories.article_search_repo import ArticleSearchRepository
 from api.repositories.settings_repo import SettingsRepository
 from api.services.llm_service import (
@@ -24,7 +29,7 @@ MAX_RELEVANCE_TEXT_CHARS = 400
 MAX_RELEVANCE_METADATA_ITEMS = 10
 LITERAL_QUERY_TOKEN_PATTERN = re.compile(r"[A-Za-z][A-Za-z0-9+.#-]{1,49}")
 SOURCE_CITATION_PATTERN = re.compile(r"\[([^\]]+)\]")
-SOURCE_REFERENCE_PATTERN = re.compile(r"\bS([1-9]\d*)\b")
+SOURCE_REFERENCE_PATTERN = re.compile(r"(?<![A-Za-z0-9])S([1-9]\d*)(?!\d)")
 ARTICLE_LIST_REQUEST_SUFFIX_PATTERN = re.compile(
     r"(?:に関する|についての?|の)?(?:ニュース|記事)(?:の?一覧)?"
     r"(?:を)?(?:\d+件)?(?:教えて(?:ください)?|出して|見せて|探して|検索して).*$"
@@ -33,11 +38,12 @@ ARTICLE_LIST_REQUEST_SUFFIX_PATTERN = re.compile(
 
 class ArticleSearchPlan(BaseModel):
     keywords: list[str] = Field(default_factory=list, max_length=8)
+    expanded_keywords: list[str] = Field(default_factory=list, max_length=8)
     source_types: list[str] = Field(default_factory=list, max_length=2)
     published_after: datetime | None = None
     published_before: datetime | None = None
 
-    @field_validator("keywords")
+    @field_validator("keywords", "expanded_keywords")
     @classmethod
     def normalize_keywords(cls, values: list[str]) -> list[str]:
         normalized: list[str] = []
@@ -46,6 +52,10 @@ class ArticleSearchPlan(BaseModel):
             if term and term not in normalized:
                 normalized.append(term[:100])
         return normalized
+
+    @property
+    def search_keywords(self) -> list[str]:
+        return list(dict.fromkeys([*self.keywords, *self.expanded_keywords]))
 
     @field_validator("source_types")
     @classmethod
@@ -87,7 +97,14 @@ def _extract_json_object(
 
 
 class AskAIService:
-    def ask(self, message: str) -> AskAIResponse:
+    def ask(
+        self,
+        message: str,
+        history: list[AskAIHistoryTurn] | None = None,
+        context_sources: list[AskAIContextSource] | None = None,
+    ) -> AskAIResponse:
+        history = history or []
+        context_sources = context_sources or []
         with get_db() as conn:
             config = load_llm_config(SettingsRepository(conn))
             if config is None:
@@ -96,11 +113,10 @@ class AskAIService:
                     detail="Configure an LLM connection in Preferences before using Ask AI.",
                 )
 
-            plan = self._create_search_plan(config, message)
-            rows = self._search_with_fallback(
-                ArticleSearchRepository(conn),
-                message,
-                plan,
+            context_rows = self._referenced_context_rows(message, context_sources)
+            plan = self._create_search_plan(config, message, history)
+            rows = context_rows or self._search_with_fallback(
+                ArticleSearchRepository(conn), message, plan
             )
 
         if not rows:
@@ -114,21 +130,30 @@ class AskAIService:
                 sources=[],
             )
 
-        answer_rows = self._select_relevant_rows(config, message, rows)[
-            :MAX_ANSWER_SOURCES
-        ]
+        answer_rows = (
+            rows
+            if context_rows
+            else self._select_relevant_rows(config, message, rows, history)
+        )[:MAX_ANSWER_SOURCES]
         if not answer_rows:
             return AskAIResponse(
                 answer="No saved articles were directly relevant to that question.",
                 sources=[],
             )
-        answer = self._create_answer(config, message, answer_rows)
+        answer = self._create_answer(config, message, answer_rows, history)
         return AskAIResponse(
             answer=answer,
             sources=self._cited_sources(answer, answer_rows),
         )
 
-    def stream(self, message: str):
+    def stream(
+        self,
+        message: str,
+        history: list[AskAIHistoryTurn] | None = None,
+        context_sources: list[AskAIContextSource] | None = None,
+    ):
+        history = history or []
+        context_sources = context_sources or []
         with get_db() as conn:
             config = load_llm_config(SettingsRepository(conn))
             if config is None:
@@ -136,14 +161,17 @@ class AskAIService:
                     status_code=409,
                     detail="Configure an LLM connection in Preferences before using Ask AI.",
                 )
-            plan = self._create_search_plan(config, message)
-            rows = self._search_with_fallback(
+            context_rows = self._referenced_context_rows(message, context_sources)
+            plan = self._create_search_plan(config, message, history)
+            rows = context_rows or self._search_with_fallback(
                 ArticleSearchRepository(conn), message, plan
             )
 
-        answer_rows = self._select_relevant_rows(config, message, rows)[
-            :MAX_ANSWER_SOURCES
-        ]
+        answer_rows = (
+            rows
+            if context_rows
+            else self._select_relevant_rows(config, message, rows, history)
+        )[:MAX_ANSWER_SOURCES]
 
         def events():
             answer_parts: list[str] = []
@@ -155,7 +183,7 @@ class AskAIService:
                 try:
                     for delta in chat_completion_stream(
                         config,
-                        self._answer_messages(message, answer_rows),
+                        self._answer_messages(message, answer_rows, history),
                         max_tokens=1200,
                     ):
                         answer_parts.append(delta)
@@ -184,20 +212,43 @@ class AskAIService:
         return list(dict.fromkeys(LITERAL_QUERY_TOKEN_PATTERN.findall(message)))
 
     @staticmethod
+    def _referenced_context_rows(
+        message: str, context_sources: list[AskAIContextSource]
+    ) -> list[dict]:
+        requested = {
+            f"S{match}" for match in SOURCE_REFERENCE_PATTERN.findall(message.upper())
+        }
+        if not requested:
+            return []
+        rows = []
+        for source in context_sources:
+            if source.reference.upper() not in requested:
+                continue
+            row = source.model_dump(mode="json", exclude={"reference"})
+            row["_reference"] = source.reference
+            rows.append(row)
+        return rows
+
+    @staticmethod
     def _cited_sources(answer: str, rows: list[dict]) -> list[AskAISource]:
-        references: list[int] = []
+        references: list[str] = []
         for citation in SOURCE_CITATION_PATTERN.findall(answer):
             for match in SOURCE_REFERENCE_PATTERN.finditer(citation):
-                reference = int(match.group(1))
-                if 1 <= reference <= len(rows) and reference not in references:
+                reference = f"S{int(match.group(1))}"
+                if reference not in references:
                     references.append(reference)
-        return [
-            AskAISource(reference=f"S{reference}", **rows[reference - 1])
-            for reference in references
-        ]
+        indexed = {
+            str(row.get("_reference") or f"S{index}"): row
+            for index, row in enumerate(rows, start=1)
+        }
+        return [AskAISource(reference=reference, **indexed[reference]) for reference in references if reference in indexed]
 
     def _select_relevant_rows(
-        self, config, message: str, rows: list[dict]
+        self,
+        config,
+        message: str,
+        rows: list[dict],
+        history: list[AskAIHistoryTurn] | None = None,
     ) -> list[dict]:
         candidates = [
             {
@@ -219,6 +270,9 @@ class AskAIService:
                 "entities": json.loads(row.get("entities_json") or "[]")[
                     :MAX_RELEVANCE_METADATA_ITEMS
                 ],
+                "search_aliases": json.loads(
+                    row.get("search_aliases_json") or "[]"
+                )[:MAX_RELEVANCE_METADATA_ITEMS],
             }
             for index, row in enumerate(rows, start=1)
         ]
@@ -245,7 +299,11 @@ class AskAIService:
                 {
                     "role": "user",
                     "content": json.dumps(
-                        {"question": message, "candidates": candidates},
+                        {
+                            "conversation": [turn.model_dump() for turn in (history or [])],
+                            "question": message,
+                            "candidates": candidates,
+                        },
                         ensure_ascii=False,
                     ),
                 },
@@ -282,6 +340,7 @@ class AskAIService:
                         "topics",
                         "keywords",
                         "entities",
+                        "search_aliases",
                     )
                 ).casefold()
                 if explicit_phrase.casefold() in searchable:
@@ -311,7 +370,7 @@ class AskAIService:
             plan.published_before.isoformat() if plan.published_before else None
         )
         rows = repo.search(
-            keywords=plan.keywords,
+            keywords=plan.search_keywords,
             source_types=plan.source_types,
             published_after=published_after,
             published_before=published_before,
@@ -321,7 +380,7 @@ class AskAIService:
             return rows
 
         relaxed_keywords = list(
-            dict.fromkeys([*plan.keywords, *self._literal_query_tokens(message)])
+            dict.fromkeys([*plan.search_keywords, *self._literal_query_tokens(message)])
         )
         rows = repo.search(
             keywords=relaxed_keywords,
@@ -343,7 +402,9 @@ class AskAIService:
             relaxed=True,
         )
 
-    def _create_search_plan(self, config, message: str) -> ArticleSearchPlan:
+    def _create_search_plan(
+        self, config, message: str, history: list[AskAIHistoryTurn] | None = None
+    ) -> ArticleSearchPlan:
         now = datetime.now(timezone.utc).isoformat()
         reply = chat_completion(
             config,
@@ -352,16 +413,29 @@ class AskAIService:
                     "role": "system",
                     "content": (
                         "Convert a question about saved RSS articles into a search plan. "
-                        "Return only JSON with keys keywords (array, max 8), source_types "
+                        "Return only JSON with keys keywords (array, max 8), expanded_keywords "
+                        "(array, max 8), source_types "
                         "(array containing rss and/or custom, or empty), published_after "
                         "(ISO 8601 or null), and published_before (ISO 8601 or null). "
                         "Use single-concept literal terms likely to occur in article titles or "
                         "summaries, never sentence fragments. Preserve acronyms and product names "
-                        "from the question as separate keywords. "
+                        "from the question as separate keywords. Put Japanese and English "
+                        "equivalents, common abbreviations, and aliases in expanded_keywords so "
+                        "either language can find the same article. Do not translate official "
+                        "product names. "
                         f"The current UTC time is {now}."
                     ),
                 },
-                {"role": "user", "content": message},
+                {
+                    "role": "user",
+                    "content": json.dumps(
+                        {
+                            "conversation": [turn.model_dump() for turn in (history or [])],
+                            "question": message,
+                        },
+                        ensure_ascii=False,
+                    ),
+                },
             ],
             max_tokens=400,
         )
@@ -372,14 +446,19 @@ class AskAIService:
                 status_code=502, detail="LLM returned an invalid search plan"
             ) from exc
 
-    def _answer_messages(self, message: str, rows: list[dict]) -> list[dict]:
+    def _answer_messages(
+        self,
+        message: str,
+        rows: list[dict],
+        history: list[AskAIHistoryTurn] | None = None,
+    ) -> list[dict]:
         sources = []
         for index, row in enumerate(rows, start=1):
             summary = re.sub(r"\s+", " ", row.get("summary") or "").strip()
             ai_summary = re.sub(r"\s+", " ", row.get("ai_summary") or "").strip()
             sources.append(
                 {
-                    "reference": f"S{index}",
+                    "reference": row.get("_reference") or f"S{index}",
                     "title": row.get("title"),
                     "source": row["source_title"],
                     "published": row.get("published") or row["created_at"],
@@ -408,6 +487,10 @@ class AskAIService:
                     "article details."
                 ),
             },
+            *[
+                {"role": turn.role, "content": turn.content}
+                for turn in (history or [])
+            ],
             {
                 "role": "user",
                 "content": json.dumps(
@@ -417,9 +500,15 @@ class AskAIService:
             },
         ]
 
-    def _create_answer(self, config, message: str, rows: list[dict]) -> str:
+    def _create_answer(
+        self,
+        config,
+        message: str,
+        rows: list[dict],
+        history: list[AskAIHistoryTurn] | None = None,
+    ) -> str:
         return chat_completion(
             config,
-            self._answer_messages(message, rows),
+            self._answer_messages(message, rows, history),
             max_tokens=1200,
         ).strip()

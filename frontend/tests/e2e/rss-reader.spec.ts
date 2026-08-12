@@ -51,10 +51,17 @@ test("shows configured feed icons in the recent news list", async ({ page }) => 
 });
 
 test("opens the Ask AI chat modal from the floating launcher", async ({ page }) => {
+  const requestBodies: Array<Record<string, unknown>> = [];
   await page.route("**/ai/chat/stream", async (route) => {
+    requestBodies.push(route.request().postDataJSON());
+    const followUp = requestBodies.length === 2;
     await route.fulfill({
       contentType: "application/x-ndjson",
-      body: [
+      body: followUp ? [
+        JSON.stringify({ type: "delta", delta: "S1 describes agentic systems in detail. [S1]" }),
+        JSON.stringify({ type: "sources", sources: requestBodies[0]?.context_sources || [] }),
+        JSON.stringify({ type: "done" }),
+      ].join("\n") + "\n" : [
         JSON.stringify({ type: "delta", delta: "## Highlights\n\n- **Agentic systems** " }),
         JSON.stringify({ type: "delta", delta: "were the main theme. [S1]\n- Read the `saved summary` for details." }),
         JSON.stringify({ type: "sources", sources: [{
@@ -87,6 +94,20 @@ test("opens the Ask AI chat modal from the floating launcher", async ({ page }) 
     "href",
     "https://example.com/agentic-systems",
   );
+
+  await page.getByLabel("Ask AI message").fill("S1の内容を詳しく教えて");
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect.poll(() => requestBodies.length).toBe(2);
+  expect(requestBodies[1]).toMatchObject({
+    message: "S1の内容を詳しく教えて",
+    history: [
+      { role: "user", content: "Summarize agent news" },
+      { role: "assistant", content: expect.stringContaining("Agentic systems") },
+    ],
+    context_sources: [
+      { reference: "S1", article_id: 12, title: "Agentic systems" },
+    ],
+  });
 
   await page.getByRole("button", { name: "Close Ask AI" }).click();
   await expect(page.getByRole("dialog", { name: "Ask AI" })).toBeHidden();

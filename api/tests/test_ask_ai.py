@@ -136,6 +136,75 @@ def test_ask_ai_returns_only_sources_cited_by_the_answer():
     ]
 
 
+def test_ask_ai_resolves_a_follow_up_source_reference(monkeypatch):
+    import api.services.ask_ai_service as ask_ai_module
+    from api.model.models import AskAIContextSource, AskAIHistoryTurn
+
+    source = AskAIContextSource.model_validate(
+        {
+            "reference": "S9",
+            "source_type": "rss",
+            "article_id": 9,
+            "source_id": 1,
+            "source_title": "Tech Feed",
+            "title": "OpenAI launches a model",
+            "summary": "OpenAI released a new model.",
+            "url": "https://example.com/openai",
+            "published": "2026-08-12T00:00:00Z",
+            "created_at": "2026-08-12T00:00:00Z",
+        }
+    )
+    monkeypatch.setattr(
+        ask_ai_module,
+        "chat_completion",
+        lambda *args, **kwargs: "The release introduces a new model. [S9]",
+    )
+
+    service = AskAIService()
+    rows = service._referenced_context_rows("S9の内容を要約して", [source])
+    answer = service._create_answer(
+        object(),
+        "S9の内容を要約して",
+        rows,
+        [AskAIHistoryTurn(role="assistant", content="AI news [S9]")],
+    )
+    sources = service._cited_sources(answer, rows)
+
+    assert answer.endswith("[S9]")
+    assert [(item.reference, item.article_id) for item in sources] == [("S9", 9)]
+
+
+def test_article_search_uses_multilingual_aliases(tmp_path):
+    db_path = str(tmp_path / "multilingual-search.db")
+    build_test_db(db_path)
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        conn.execute(
+            "INSERT INTO rss_feeds (id, url, title) VALUES (1, ?, ?)",
+            ("https://example.com/feed.xml", "English Feed"),
+        )
+        article_id = conn.execute(
+            "INSERT INTO rss_feed_articles (feed_id, url, title) VALUES (1, ?, ?)",
+            ("https://example.com/cloud", "Cloud infrastructure update"),
+        ).lastrowid
+        conn.execute(
+            """
+            INSERT INTO article_ai_analyses (
+              source_type, article_id, content_hash, model, prompt_version,
+              ai_summary, search_aliases_json, status
+            ) VALUES ('rss', ?, 'hash', 'model', 'article-analysis-v3', ?, ?, 'completed')
+            """,
+            (article_id, "An infrastructure update.", '["クラウド基盤"]'),
+        )
+
+        rows = ArticleSearchRepository(conn).search(
+            keywords=["クラウド基盤"], source_types=[], published_after=None,
+            published_before=None, limit=10,
+        )
+
+        assert [row["article_id"] for row in rows] == [article_id]
+
+
 def test_ask_ai_removes_unrelated_candidates_before_answering(monkeypatch):
     import api.services.ask_ai_service as ask_ai_module
 

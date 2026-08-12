@@ -31,7 +31,7 @@ def list_article_analyses(
 
 @router.post("/chat", status_code=200, response_model=AskAIResponse)
 def ask_ai(body: AskAIRequest, service: AskAIService = Depends(get_ask_ai_service)):
-    return service.ask(body.message)
+    return service.ask(body.message, body.history, body.context_sources)
 
 
 @router.post("/chat/stream", status_code=200)
@@ -39,5 +39,6 @@ def stream_ask_ai(
     body: AskAIRequest, service: AskAIService = Depends(get_ask_ai_service)
 ):
     return StreamingResponse(
-        service.stream(body.message), media_type="application/x-ndjson"
+        service.stream(body.message, body.history, body.context_sources),
+        media_type="application/x-ndjson",
     )

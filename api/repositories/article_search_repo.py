@@ -40,10 +40,11 @@ class ArticleSearchRepository:
                     "OR analyses.key_points_json LIKE ? ESCAPE '\\' "
                     "OR analyses.topics_json LIKE ? ESCAPE '\\' "
                     "OR analyses.keywords_json LIKE ? ESCAPE '\\' "
-                    "OR analyses.entities_json LIKE ? ESCAPE '\\')"
+                    "OR analyses.entities_json LIKE ? ESCAPE '\\' "
+                    "OR analyses.search_aliases_json LIKE ? ESCAPE '\\')"
                 )
                 like = f"%{self._escape_like_term(term)}%"
-                params.extend((like,) * 8)
+                params.extend((like,) * 9)
             clauses.append(f"({' OR '.join(like_clauses)})")
         elif long_terms:
             match_query = " OR ".join(
@@ -57,7 +58,7 @@ class ArticleSearchRepository:
                   WHERE article_search MATCH ?
                   UNION ALL
                   SELECT source_type, article_id,
-                         bm25(article_ai_search, 0, 0, 3, 1, 1, 6, 8) AS relevance
+                         bm25(article_ai_search, 0, 0, 3, 1, 1, 8, 10, 5) AS relevance
                   FROM article_ai_search
                   WHERE article_ai_search MATCH ?
                 ), ranked_articles AS (
@@ -113,7 +114,8 @@ class ArticleSearchRepository:
                    article_search.published, article_search.created_at,
                    analyses.ai_summary, analyses.key_points_json,
                    analyses.topics_json, analyses.keywords_json,
-                   analyses.entities_json, {relevance} AS relevance
+                   analyses.entities_json, analyses.search_aliases_json,
+                   {relevance} AS relevance
             FROM article_search
             {matching_join}
             LEFT JOIN article_ai_analyses AS analyses

@@ -240,13 +240,19 @@ const submitQuestion = async () => {
     sources: [],
   };
   messages.value.push(exchange);
+  const previousMessages = messages.value.slice(0, -1).slice(-4);
+  const history = previousMessages.flatMap((item) => [
+    { role: "user", content: item.question },
+    ...(item.answer ? [{ role: "assistant", content: item.answer }] : []),
+  ]);
+  const contextSources = previousMessages.at(-1)?.sources.slice(0, 10) || [];
   const controller = new AbortController();
   activeController.value = controller;
   try {
     const response = await fetch(`${defaultApiBase}/ai/chat/stream`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({ message, history, context_sources: contextSources }),
       signal: controller.signal,
     });
     if (!response.ok) throw new Error(await errorFromResponse(response));
