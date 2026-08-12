@@ -248,6 +248,7 @@ const { request } = useApi();
 const toast = useSingleToast();
 const loading = ref(false);
 const analysisRunning = ref(false);
+const analysisRequestRunning = ref(false);
 const emptyAnalysisStatus = (): SettingsAIArticleAnalysisStatusResponse => ({
   running: false,
   total: 0,
@@ -333,7 +334,7 @@ const loadAnalysisStatus = async () => {
       "/settings/ai-article-analysis/status",
     );
     analysisStatus.value = response;
-    analysisRunning.value = response.running;
+    analysisRunning.value = analysisRequestRunning.value || response.running;
   } catch {
     // Keep the last known state when a background status check fails.
   }
@@ -342,6 +343,7 @@ const loadAnalysisStatus = async () => {
 const runAnalysis = async () => {
   if (analysisRunning.value) return;
   analysisRunError.value = "";
+  analysisRequestRunning.value = true;
   analysisRunning.value = true;
   try {
     const response = await request<SettingsAIArticleAnalysisRunResponse>(
@@ -372,6 +374,7 @@ const runAnalysis = async () => {
       icon: "i-lucide-circle-alert",
     });
   } finally {
+    analysisRequestRunning.value = false;
     analysisRunning.value = false;
     analysisStatus.value = emptyAnalysisStatus();
   }

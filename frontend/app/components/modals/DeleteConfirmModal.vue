@@ -9,7 +9,7 @@
         </slot>
         <div class="flex justify-end gap-3">
           <UButton color="neutral" variant="ghost" @click="close"> Cancel </UButton>
-          <UButton color="error" :loading="loading" @click="emit('confirm')">
+          <UButton color="error" :loading="loading" loading-icon="i-lucide-loader-circle" @click="emit('confirm')">
             {{ confirmLabel }}
           </UButton>
         </div>

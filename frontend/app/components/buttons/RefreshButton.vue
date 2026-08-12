@@ -6,6 +6,7 @@
     variant="ghost"
     size="sm"
     :loading="loading"
+    loading-icon="i-lucide-loader-circle"
     :disabled="disabled"
     @click="$emit('click')"
   >

@@ -12,6 +12,7 @@ from pydantic import ValidationError
 
 from api.database import get_db
 from api.model.models import (
+    SettingsAIArticleAnalysisClearResponse,
     SettingsAIArticleAnalysisRunResponse,
     SettingsAIArticleAnalysisStatusResponse,
 )
@@ -111,6 +112,18 @@ def _clear_process_run_lock(process_id: int) -> None:
 
 
 class ArticleAnalysisService:
+    def clear_results(self) -> SettingsAIArticleAnalysisClearResponse:
+        if self.status().running:
+            raise HTTPException(
+                status_code=409,
+                detail="Article analysis is running. Wait for it to finish before clearing results.",
+            )
+        with get_db() as conn:
+            row = conn.execute("SELECT COUNT(*) AS total FROM article_ai_analyses").fetchone()
+            cleared_count = int(row["total"]) if row else 0
+            conn.execute("DELETE FROM article_ai_analyses")
+        return SettingsAIArticleAnalysisClearResponse(cleared_count=cleared_count)
+
     def _status_response(self, running: bool) -> SettingsAIArticleAnalysisStatusResponse:
         if not running:
             return SettingsAIArticleAnalysisStatusResponse(running=False)

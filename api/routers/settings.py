@@ -8,6 +8,7 @@ from api.model.models import (
     LLMSettingsTestResponse,
     LLMSettingsUpdate,
     SettingsAIArticleAnalysisResponse,
+    SettingsAIArticleAnalysisClearResponse,
     SettingsAIArticleAnalysisRunResponse,
     SettingsAIArticleAnalysisStatusResponse,
     SettingsAIArticleAnalysisUpdate,
@@ -52,6 +53,17 @@ def execute_ai_article_analysis(
     service: ArticleAnalysisService = Depends(get_article_analysis_service),
 ):
     return service.run_manual()
+
+
+@router.delete(
+    "/ai-article-analysis/results",
+    status_code=200,
+    response_model=SettingsAIArticleAnalysisClearResponse,
+)
+def clear_ai_article_analysis_results(
+    service: ArticleAnalysisService = Depends(get_article_analysis_service),
+):
+    return service.clear_results()
 
 
 @router.get(

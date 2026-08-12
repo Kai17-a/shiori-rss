@@ -347,7 +347,6 @@ test("opens and displays saved AI article analysis data", async ({ page }) => {
 
 test("runs article analysis manually with a loading state", async ({ page }) => {
   let executionRequests = 0;
-  let jobRunning = false;
   let releaseAnalysis = () => {};
   const analysisPending = new Promise<void>((resolve) => {
     releaseAnalysis = resolve;
@@ -367,14 +366,12 @@ test("runs article analysis manually with a loading state", async ({ page }) => 
   await page.route(/\/api\/settings\/ai-article-analysis\/status\/?$/, async (route) => {
     await route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ running: jobRunning }),
+      body: JSON.stringify({ running: false }),
     });
   });
   await page.route(/\/api\/settings\/ai-article-analysis\/execute\/?$/, async (route) => {
     executionRequests += 1;
-    jobRunning = true;
     await analysisPending;
-    jobRunning = false;
     await route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
@@ -400,6 +397,9 @@ test("runs article analysis manually with a loading state", async ({ page }) => 
   await expect(runButton.locator(".animate-spin")).toBeVisible();
   await expect(page.getByRole("status")).toContainText("Article analysis is running");
   expect(executionRequests).toBe(1);
+  await page.waitForTimeout(3_200);
+  await expect(runButton).toBeDisabled();
+  await expect(runButton.locator(".animate-spin")).toBeVisible();
   releaseAnalysis();
   await expect(page.getByText("Article analysis completed.", { exact: true })).toBeVisible();
   await expect(runButton).toBeEnabled();
@@ -506,6 +506,25 @@ test("groups automation controls under the settings tabs", async ({ page }) => {
   await expect(page.getByLabel("Scheduled refresh")).toBeVisible();
   await expect(page.getByLabel("Webhook delivery")).toBeVisible();
   await expect(page.getByText("Theme", { exact: true })).toHaveCount(0);
+});
+
+test("clears AI analysis results from settings after confirmation", async ({ page }) => {
+  await page.route(/\/api\/settings\/ai-article-analysis\/results\/?$/, async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ cleared_count: 4 }),
+    });
+  });
+  await page.goto("/settings?tab=llm");
+
+  await page.getByRole("button", { name: "Clear analysis results" }).click();
+  const dialog = page.getByRole("dialog", { name: "Clear AI analysis results" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("Daily token usage is kept");
+  await dialog.getByRole("button", { name: "Clear results" }).click();
+
+  await expect(page.getByText("AI analysis results cleared.", { exact: true })).toBeVisible();
+  await expect(page.getByText("4 results removed.", { exact: true })).toBeVisible();
 });
 
 test("configures the webhook article limit", async ({ page }) => {

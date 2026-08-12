@@ -273,6 +273,15 @@
               >
                 View analysis data
               </UButton>
+              <UButton
+                type="button"
+                color="error"
+                variant="outline"
+                icon="i-lucide-rotate-ccw"
+                @click="aiAnalysisClearOpen = true"
+              >
+                Clear analysis results
+              </UButton>
             </div>
           </form>
         </UPageCard>
@@ -430,6 +439,16 @@
           @confirm="deleteLlmSettings"
         />
 
+        <DeleteConfirmModal
+          v-model:open="aiAnalysisClearOpen"
+          title="Clear AI analysis results"
+          description="The saved summaries and metadata will be deleted. Daily token usage is kept, and articles can be analyzed again on the next run."
+          confirm-label="Clear results"
+          prompt="Clear all saved AI analysis results?"
+          :loading="aiAnalysisClearing"
+          @confirm="clearAiAnalysisResults"
+        />
+
       </div>
     </template>
   </UDashboardPanel>
@@ -449,6 +468,7 @@ import type {
   SettingsRssExecutionResponse,
   SettingsRssWebhookNotificationResponse,
   SettingsAIArticleAnalysisResponse,
+  SettingsAIArticleAnalysisClearResponse,
 } from "~/types";
 
 const colorMode = useColorMode();
@@ -518,6 +538,8 @@ const llmDeleting = ref(false);
 const llmDeleteOpen = ref(false);
 const aiAnalysisLoading = ref(false);
 const aiAnalysisSaving = ref(false);
+const aiAnalysisClearing = ref(false);
+const aiAnalysisClearOpen = ref(false);
 const aiAnalysisForm = reactive({
   enabled: false,
   maxArticlesPerRun: 20,
@@ -813,6 +835,32 @@ const saveAiAnalysisSettings = async () => {
     });
   } finally {
     aiAnalysisSaving.value = false;
+  }
+};
+
+const clearAiAnalysisResults = async () => {
+  aiAnalysisClearing.value = true;
+  try {
+    const response = await request<SettingsAIArticleAnalysisClearResponse>(
+      "/settings/ai-article-analysis/results",
+      { method: "DELETE" },
+    );
+    aiAnalysisClearOpen.value = false;
+    toast.show({
+      title: "AI analysis results cleared.",
+      description: `${response.cleared_count} result${response.cleared_count === 1 ? "" : "s"} removed.`,
+      color: "success",
+      icon: "i-lucide-check",
+    });
+  } catch (err) {
+    toast.show({
+      title: "Failed to clear AI analysis results.",
+      description: err instanceof Error ? err.message : undefined,
+      color: "error",
+      icon: "i-lucide-circle-alert",
+    });
+  } finally {
+    aiAnalysisClearing.value = false;
   }
 };
 

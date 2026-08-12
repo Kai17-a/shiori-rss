@@ -7,6 +7,7 @@
       :color="color"
       :icon="icon"
       :loading="loading"
+      loading-icon="i-lucide-loader-circle"
       :aria-label="label"
       v-bind="$attrs"
       @click="$emit('click', $event)"

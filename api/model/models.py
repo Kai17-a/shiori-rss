@@ -510,6 +510,10 @@ class SettingsAIArticleAnalysisRunResponse(BaseModel):
     stopped_by_token_limit: bool
 
 
+class SettingsAIArticleAnalysisClearResponse(BaseModel):
+    cleared_count: int
+
+
 class SettingsAIArticleAnalysisStatusResponse(BaseModel):
     running: bool
     total: int = 0

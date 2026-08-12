@@ -55,6 +55,10 @@ export interface SettingsAIArticleAnalysisRunResponse {
   stopped_by_token_limit: boolean;
 }
 
+export interface SettingsAIArticleAnalysisClearResponse {
+  cleared_count: number;
+}
+
 export interface SettingsAIArticleAnalysisStatusResponse {
   running: boolean;
   total: number;

@@ -573,6 +573,52 @@ def test_llm_settings_are_tested_before_save_and_do_not_expose_api_key(
     assert client.get("/settings/llm").json() == saved.json()
 
 
+def test_clear_ai_analysis_results_keeps_daily_token_usage(client):
+    import api.services.article_analysis_service as analysis_module
+
+    with analysis_module.get_db() as conn:
+        conn.execute(
+            """
+            INSERT INTO article_ai_analyses (
+                source_type, article_id, content_hash, model, prompt_version,
+                ai_summary, status
+            ) VALUES ('rss', 1, 'hash', 'model', 'article-analysis-v2',
+                      'Saved summary', 'completed')
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO article_ai_analysis_usage (
+                source_type, article_id, input_tokens, output_tokens, successful
+            ) VALUES ('rss', 1, 100, 20, 1)
+            """
+        )
+
+    response = client.delete("/settings/ai-article-analysis/results")
+
+    assert response.status_code == 200
+    assert response.json() == {"cleared_count": 1}
+    with analysis_module.get_db() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM article_ai_analyses").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM article_ai_search").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM article_ai_analysis_usage").fetchone()[0] == 1
+
+
+def test_clear_ai_analysis_results_is_blocked_while_running(client, monkeypatch):
+    import api.services.article_analysis_service as analysis_module
+
+    monkeypatch.setattr(
+        analysis_module.ArticleAnalysisService,
+        "status",
+        lambda _self: analysis_module.SettingsAIArticleAnalysisStatusResponse(running=True),
+    )
+
+    response = client.delete("/settings/ai-article-analysis/results")
+
+    assert response.status_code == 409
+    assert "running" in response.json()["detail"]
+
+
 def test_llm_settings_are_not_saved_when_connection_test_fails(client, monkeypatch):
     from fastapi import HTTPException
     import api.services.settings_service as settings_module
