@@ -155,6 +155,13 @@ const primaryLinks = computed<NavigationMenuItem[]>(() => [
 
 const secondaryLinks = computed<NavigationMenuItem[]>(() => [
   {
+    label: "GitHub",
+    icon: "i-lucide-github",
+    to: "/github",
+    active: isActive("/github"),
+    onSelect: closeSidebar,
+  },
+  {
     label: "AI analysis data",
     icon: "i-lucide-database",
     to: "/ai-data",

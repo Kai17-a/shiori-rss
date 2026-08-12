@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS "schema_migrations" (version varchar(128) primary key);
+CREATE TABLE "schema_migrations" (version varchar(128) primary key);
 CREATE TABLE rss_feeds (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   url TEXT NOT NULL,
@@ -89,11 +89,11 @@ CREATE VIRTUAL TABLE article_search USING fts5(
   tokenize = 'trigram'
 )
 /* article_search(source_type,article_id,source_id,source_title,title,summary,url,published,created_at) */;
-CREATE TABLE IF NOT EXISTS 'article_search_data'(id INTEGER PRIMARY KEY, block BLOB);
-CREATE TABLE IF NOT EXISTS 'article_search_idx'(segid, term, pgno, PRIMARY KEY(segid, term)) WITHOUT ROWID;
-CREATE TABLE IF NOT EXISTS 'article_search_content'(id INTEGER PRIMARY KEY, c0, c1, c2, c3, c4, c5, c6, c7, c8);
-CREATE TABLE IF NOT EXISTS 'article_search_docsize'(id INTEGER PRIMARY KEY, sz BLOB);
-CREATE TABLE IF NOT EXISTS 'article_search_config'(k PRIMARY KEY, v) WITHOUT ROWID;
+CREATE TABLE 'article_search_data'(id INTEGER PRIMARY KEY, block BLOB);
+CREATE TABLE 'article_search_idx'(segid, term, pgno, PRIMARY KEY(segid, term)) WITHOUT ROWID;
+CREATE TABLE 'article_search_content'(id INTEGER PRIMARY KEY, c0, c1, c2, c3, c4, c5, c6, c7, c8);
+CREATE TABLE 'article_search_docsize'(id INTEGER PRIMARY KEY, sz BLOB);
+CREATE TABLE 'article_search_config'(k PRIMARY KEY, v) WITHOUT ROWID;
 CREATE TRIGGER article_search_rss_insert AFTER INSERT ON rss_feed_articles BEGIN
   INSERT INTO article_search (
     source_type, article_id, source_id, source_title, title, summary, url, published, created_at
@@ -189,11 +189,11 @@ CREATE VIRTUAL TABLE article_ai_search USING fts5(
   tokenize = 'trigram'
 )
 /* article_ai_search(source_type,article_id,ai_summary,key_points,topics,keywords,entities) */;
-CREATE TABLE IF NOT EXISTS 'article_ai_search_data'(id INTEGER PRIMARY KEY, block BLOB);
-CREATE TABLE IF NOT EXISTS 'article_ai_search_idx'(segid, term, pgno, PRIMARY KEY(segid, term)) WITHOUT ROWID;
-CREATE TABLE IF NOT EXISTS 'article_ai_search_content'(id INTEGER PRIMARY KEY, c0, c1, c2, c3, c4, c5, c6);
-CREATE TABLE IF NOT EXISTS 'article_ai_search_docsize'(id INTEGER PRIMARY KEY, sz BLOB);
-CREATE TABLE IF NOT EXISTS 'article_ai_search_config'(k PRIMARY KEY, v) WITHOUT ROWID;
+CREATE TABLE 'article_ai_search_data'(id INTEGER PRIMARY KEY, block BLOB);
+CREATE TABLE 'article_ai_search_idx'(segid, term, pgno, PRIMARY KEY(segid, term)) WITHOUT ROWID;
+CREATE TABLE 'article_ai_search_content'(id INTEGER PRIMARY KEY, c0, c1, c2, c3, c4, c5, c6);
+CREATE TABLE 'article_ai_search_docsize'(id INTEGER PRIMARY KEY, sz BLOB);
+CREATE TABLE 'article_ai_search_config'(k PRIMARY KEY, v) WITHOUT ROWID;
 CREATE TRIGGER article_ai_search_insert AFTER INSERT ON article_ai_analyses
 WHEN new.status = 'completed' BEGIN
   INSERT INTO article_ai_search (
@@ -225,6 +225,22 @@ CREATE TRIGGER article_ai_analysis_custom_delete AFTER DELETE ON news_site_artic
   DELETE FROM article_ai_analyses
   WHERE source_type = 'custom' AND article_id = old.id;
 END;
+CREATE TABLE github_repositories (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    owner TEXT NOT NULL,
+    repository TEXT NOT NULL,
+    repository_url TEXT NOT NULL,
+    latest_release_name TEXT NOT NULL,
+    latest_release_tag TEXT NOT NULL,
+    latest_release_url TEXT NOT NULL,
+    latest_release_body TEXT,
+    latest_release_published_at TEXT NOT NULL,
+    fetched_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+CREATE UNIQUE INDEX idx_github_repositories_url_unique
+    ON github_repositories(repository_url);
 -- Dbmate schema migrations
 INSERT INTO "schema_migrations" (version) VALUES
   ('010'),
@@ -243,4 +259,5 @@ INSERT INTO "schema_migrations" (version) VALUES
   ('202608081400'),
   ('202608090945'),
   ('202608091010'),
-  ('202608101000');
+  ('202608101000'),
+  ('202608121631');

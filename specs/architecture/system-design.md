@@ -2,8 +2,8 @@
 
 ## 構成
 
-- `frontend/`: Nuxt 4 SPA。RSS フィード、LLMカスタムRSS、記事履歴、Webhook 設定を提供する。
-- `api/`: FastAPI。RSS、LLMカスタムRSS、Webhook、LLM接続設定の REST API を提供する。
+- `frontend/`: Nuxt 4 SPA。RSS フィード、LLMカスタムRSS、記事履歴、GitHubリリース、Webhook 設定を提供する。
+- `api/`: FastAPI。RSS、LLMカスタムRSS、GitHubリリース、Webhook、LLM接続設定の REST API を提供する。
 - `batch/`: Rust。SQLite から有効な RSS フィードを読み、定期巡回と Webhook 通知を行う。
 - `db/`: dbmate の migration と現在の SQLite schema を管理する。
 
@@ -25,6 +25,9 @@
 | GET/PUT/DELETE | `/news-sites/{id}/icon` | アップロードアイコンの取得・設定・削除 |
 | GET | `/news-sites/{id}/articles` | カスタムRSS記事履歴 |
 | POST | `/news-sites/{id}/execute` | カスタムRSS手動取得 |
+| GET/POST | `/github-repositories` | GitHubリポジトリ一覧・登録と最新公開リリース取得 |
+| POST | `/github-repositories/refresh` | 全登録リポジトリの最新公開リリースを更新 |
+| DELETE | `/github-repositories/{id}` | GitHubリポジトリを削除 |
 | GET/POST | `/settings/webhooks` | Webhook 一覧・作成 |
 | PATCH/DELETE | `/settings/webhooks/{id}` | Webhook 有効化・削除 |
 | POST | `/settings/webhook/ping` | 疎通確認 |

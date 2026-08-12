@@ -15,6 +15,21 @@ erDiagram
     ARTICLE_AI_ANALYSES ||--o{ ARTICLE_AI_ANALYSIS_USAGE : records_usage
     ARTICLE_AI_ANALYSES ||--o| ARTICLE_AI_SEARCH : indexed_in
 
+    GITHUB_REPOSITORIES {
+        INTEGER id PK
+        TEXT owner
+        TEXT repository
+        TEXT repository_url UK
+        TEXT latest_release_name
+        TEXT latest_release_tag
+        TEXT latest_release_url
+        TEXT latest_release_body
+        TEXT latest_release_published_at
+        TEXT fetched_at
+        TEXT created_at
+        TEXT updated_at
+    }
+
     RSS_FEEDS {
         INTEGER id PK
         TEXT url UK
@@ -137,3 +152,5 @@ erDiagram
 `article_search` はFTS5の仮想テーブルで、通常RSSとカスタムRSSの記事タイトル、保存済みサマリー、フィード名を三文字単位で索引化する。記事の追加・更新・削除とフィード名変更はSQLiteトリガーで同期する。
 
 `article_ai_analyses` は通常RSS・カスタムRSSの記事ごとに、`source_type` と `article_id` の組を一意として、入力内容のハッシュ、モデル、プロンプト版、AI要約、要点、トピック、キーワード、固有表現、使用トークン、試行回数、成功・失敗状態とエラーを保持する。`article_ai_analysis_usage` は日次上限判定用に呼び出し単位の使用量を保持し、`article_ai_search` は成功した解析結果を三文字単位で索引化する。元記事の削除時は解析結果もトリガーで削除する。これらはSQLite上の論理的な関連であり、記事テーブルへの外部キー制約は持たない。
+
+`github_repositories` はRSSデータとは独立し、登録リポジトリとGitHub APIから最後に取得した最新公開リリース1件をキャッシュする。一覧表示ではこの保存値を使い、登録時または全件更新時だけGitHub APIへアクセスする。

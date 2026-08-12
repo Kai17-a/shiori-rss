@@ -674,3 +674,27 @@ class DashboardResponse(BaseModel):
     window_started_at: datetime
     summary: DashboardSummary
     articles: list[DashboardArticle]
+
+
+class GitHubRepositoryCreate(BaseModel):
+    repository_url: AnyHttpUrl
+
+
+class GitHubRepositoryResponse(BaseModel):
+    id: int
+    owner: str
+    repository: str
+    repository_url: str
+    latest_release_name: str
+    latest_release_tag: str
+    latest_release_url: str
+    latest_release_body: str | None = None
+    latest_release_published_at: datetime
+    fetched_at: datetime
+    created_at: datetime
+    updated_at: datetime
+
+
+class GitHubRepositoryListResponse(BaseModel):
+    items: list[GitHubRepositoryResponse]
+    total: int
