@@ -1,11 +1,11 @@
 <template>
-  <UDashboardPanel id="home">
+  <UDashboardPanel id="home" class="min-w-0">
     <template #header>
       <PageHeaderActions title="Home" />
     </template>
 
     <template #body>
-      <div class="mx-auto w-full max-w-7xl space-y-6 pb-10">
+      <div class="mx-auto w-full min-w-0 max-w-7xl space-y-6 overflow-hidden pb-10">
         <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <UPageCard
             v-for="item in summaryItems"
@@ -18,7 +18,10 @@
           </UPageCard>
         </div>
 
-        <UPageCard :ui="{ body: 'space-y-4' }">
+        <UPageCard
+          class="min-w-0 max-w-full overflow-hidden"
+          :ui="{ body: 'min-w-0 max-w-full space-y-4 overflow-hidden' }"
+        >
           <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <p class="text-xs font-semibold uppercase tracking-[0.16em] text-primary">
@@ -45,7 +48,7 @@
             <article
               v-for="article in dashboard.articles"
               :key="`${article.source_type}-${article.source_id}-${article.url}`"
-              class="group flex items-start gap-4 p-5 transition hover:bg-elevated/50"
+              class="group flex min-w-0 items-start gap-3 p-4 transition hover:bg-elevated/50 sm:gap-4 sm:p-5"
             >
               <span class="mt-0.5 grid size-9 shrink-0 place-items-center overflow-hidden rounded-xl bg-primary/10 text-primary">
                 <img
@@ -65,14 +68,14 @@
                   :href="article.url"
                   target="_blank"
                   rel="noreferrer"
-                  class="block text-base font-semibold leading-6 text-highlighted group-hover:text-primary"
+                  class="block max-w-full text-base font-semibold leading-6 text-highlighted [overflow-wrap:anywhere] group-hover:text-primary"
                 >
                   {{ article.title || article.url }}
                 </a>
-                <p v-if="article.summary" class="line-clamp-2 text-sm leading-6 text-muted">
+                <p v-if="article.summary" class="line-clamp-2 max-w-full text-sm leading-6 text-muted [overflow-wrap:anywhere]">
                   {{ article.summary }}
                 </p>
-                <div class="flex flex-wrap items-center gap-2">
+                <div class="flex min-w-0 flex-wrap items-center gap-2">
                   <UButton
                     :to="sourcePath(article)"
                     :label="article.source_title"
@@ -80,6 +83,7 @@
                     size="xs"
                     color="neutral"
                     variant="soft"
+                    class="max-w-full"
                   />
                   <span class="text-xs text-muted">
                     {{ formatDateTime(article.published || article.created_at) }}

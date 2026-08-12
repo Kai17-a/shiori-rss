@@ -1,9 +1,9 @@
 <template>
-  <UDashboardPanel id="github-releases">
+  <UDashboardPanel id="github-releases" class="min-w-0">
     <template #header><PageHeaderActions title="GitHub" /></template>
     <template #body>
-      <div class="mx-auto w-full max-w-7xl space-y-6 pb-10">
-        <UPageCard :ui="{ body: 'space-y-5' }">
+      <div class="mx-auto w-full min-w-0 max-w-7xl space-y-6 overflow-hidden pb-10">
+        <UPageCard class="min-w-0 max-w-full overflow-hidden" :ui="{ body: 'min-w-0 max-w-full space-y-5 overflow-hidden' }">
           <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
             <div>
               <p class="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Releases</p>
@@ -21,27 +21,27 @@
           </p>
 
           <div v-if="repositories.items.length" class="grid gap-4 lg:grid-cols-2">
-            <article v-for="repository in repositories.items" :key="repository.id" class="space-y-4 rounded-2xl border border-default bg-elevated/30 p-5">
-              <div class="flex items-start justify-between gap-3">
+            <article v-for="repository in repositories.items" :key="repository.id" class="min-w-0 max-w-full space-y-4 overflow-hidden rounded-2xl border border-default bg-elevated/30 p-4 sm:p-5">
+              <div class="flex min-w-0 items-start justify-between gap-3">
                 <div class="min-w-0">
-                  <a :href="repository.repository_url" target="_blank" rel="noreferrer" class="font-semibold text-highlighted hover:text-primary hover:underline">
+                  <a :href="repository.repository_url" target="_blank" rel="noreferrer" class="block max-w-full font-semibold text-highlighted [overflow-wrap:anywhere] hover:text-primary hover:underline">
                     {{ repository.owner }}/{{ repository.repository }}
                   </a>
                   <p class="mt-1 text-xs text-muted">Updated {{ formatDate(repository.fetched_at) }}</p>
                 </div>
-                <div class="flex gap-1">
+                <div class="flex shrink-0 gap-1">
                   <UButton icon="i-lucide-pencil" aria-label="Edit notification webhooks" color="neutral" variant="ghost" size="sm" @click="openEdit(repository)" />
                   <UButton icon="i-lucide-trash-2" aria-label="Delete repository" color="error" variant="ghost" size="sm" :loading="deletingId === repository.id" loading-icon="i-lucide-loader-circle" @click="askDelete(repository)" />
                 </div>
               </div>
               <div>
                 <div class="flex flex-wrap items-center gap-2">
-                  <h2 class="font-semibold text-default">{{ repository.latest_release_name }}</h2>
+                  <h2 class="min-w-0 max-w-full font-semibold text-default [overflow-wrap:anywhere]">{{ repository.latest_release_name }}</h2>
                   <UBadge color="neutral" variant="soft">{{ repository.latest_release_tag }}</UBadge>
                 </div>
                 <p class="mt-1 text-xs text-muted">Published {{ formatDate(repository.latest_release_published_at) }}</p>
-                <p class="mt-2 text-xs text-muted">{{ webhookLabel(repository) }}</p>
-                <p v-if="repository.latest_release_body" class="mt-3 line-clamp-3 whitespace-pre-line text-sm text-muted">{{ repository.latest_release_body }}</p>
+                <p class="mt-2 max-w-full text-xs text-muted [overflow-wrap:anywhere]">{{ webhookLabel(repository) }}</p>
+                <p v-if="repository.latest_release_body" class="mt-3 line-clamp-3 max-w-full whitespace-pre-line text-sm text-muted [overflow-wrap:anywhere]">{{ repository.latest_release_body }}</p>
               </div>
               <UButton :to="repository.latest_release_url" target="_blank" label="View release" trailing-icon="i-lucide-external-link" color="neutral" variant="soft" />
             </article>

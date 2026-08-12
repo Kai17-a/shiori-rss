@@ -1,11 +1,11 @@
 <template>
-  <UDashboardPanel id="custom-feeds-list">
+  <UDashboardPanel id="custom-feeds-list" class="min-w-0">
     <template #header>
       <PageHeaderActions title="Custom RSS" />
     </template>
 
     <template #body>
-      <div class="mx-auto w-full max-w-7xl pb-10">
+      <div class="mx-auto w-full min-w-0 max-w-7xl overflow-hidden pb-10">
         <CustomFeedsPanel :webhooks="webhooks" />
       </div>
     </template>

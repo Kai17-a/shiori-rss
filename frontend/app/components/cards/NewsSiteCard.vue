@@ -1,6 +1,6 @@
 <template>
-  <article class="space-y-4 rounded-2xl border border-default bg-elevated/40 p-4">
-    <div class="flex items-start justify-between gap-4">
+  <article class="min-w-0 max-w-full space-y-4 overflow-hidden rounded-2xl border border-default bg-elevated/40 p-4">
+    <div class="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
       <div class="flex min-w-0 items-start gap-3">
         <NuxtLink
           :to="`/custom-feeds/${site.id}`"
@@ -20,10 +20,10 @@
           <p class="mt-1 break-all text-sm text-muted">{{ site.url }}</p>
         </div>
       </div>
-      <UBadge color="info" variant="soft">LLM Custom RSS</UBadge>
+      <UBadge class="self-start" color="info" variant="soft">LLM Custom RSS</UBadge>
     </div>
 
-    <p v-if="site.description" class="text-sm text-default">{{ site.description }}</p>
+    <p v-if="site.description" class="max-w-full text-sm text-default [overflow-wrap:anywhere]">{{ site.description }}</p>
     <p v-else class="text-sm text-muted">No description.</p>
 
     <div class="flex flex-wrap justify-end gap-2">

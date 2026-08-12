@@ -50,6 +50,67 @@ test("shows configured feed icons in the recent news list", async ({ page }) => 
   );
 });
 
+test("keeps Home, Custom RSS, and GitHub within a mobile viewport", async ({ page }) => {
+  const longText = "unbroken-mobile-content-".repeat(30);
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.route("**/api/dashboard", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        generated_at: "2026-08-13T01:00:00Z",
+        window_started_at: "2026-08-12T01:00:00Z",
+        summary: { rss_feed_count: 1, custom_feed_count: 1, recent_article_count: 1, pending_notification_count: 0 },
+        articles: [{
+          source_type: "rss", source_id: 1, source_title: longText,
+          source_icon_url: null, url: `https://example.com/${longText}`,
+          title: longText, summary: longText, published: "2026-08-13T00:00:00Z",
+          created_at: "2026-08-13T00:00:00Z", webhook_notified: true,
+        }],
+      }),
+    });
+  });
+  await page.route(/\/api\/news-sites(?:\?.*)?$/, async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        items: [{
+          id: 1, url: `https://example.com/${longText}`, title: longText,
+          description: longText, notify_webhook_enabled: false, webhook_ids: [],
+          icon_url: null, icon_uploaded: false, configuration_mode: "manual",
+          scrape_config: null, created_at: "2026-08-13T00:00:00Z", updated_at: "2026-08-13T00:00:00Z",
+        }],
+        total: 1, page: 1, per_page: 20, total_pages: 1,
+      }),
+    });
+  });
+  await page.route("**/api/github-repositories", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        items: [{
+          id: 1, owner: longText, repository: longText,
+          repository_url: `https://github.com/${longText}/${longText}`,
+          latest_release_name: longText, latest_release_tag: longText,
+          latest_release_url: `https://github.com/example/releases/${longText}`,
+          latest_release_body: longText, latest_release_published_at: "2026-08-13T00:00:00Z",
+          fetched_at: "2026-08-13T00:00:00Z", created_at: "2026-08-13T00:00:00Z",
+          updated_at: "2026-08-13T00:00:00Z", webhook_ids: [],
+        }], total: 1,
+      }),
+    });
+  });
+  await page.route("**/api/settings/webhooks", async (route) => {
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify({ items: [] }) });
+  });
+
+  for (const path of ["/", "/custom-feeds", "/github"]) {
+    await page.goto(path);
+    await expect.poll(() => page.evaluate(
+      () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+    )).toBe(true);
+  }
+});
+
 test("opens the Ask AI chat modal from the floating launcher", async ({ page }) => {
   const requestBodies: Array<Record<string, unknown>> = [];
   let releaseFirstResponse = () => {};
