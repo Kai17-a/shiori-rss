@@ -508,6 +508,11 @@ class SettingsAIArticleAnalysisRunResponse(BaseModel):
     failed: int
     skipped_current: int
     stopped_by_token_limit: bool
+    stopped_by_user: bool = False
+
+
+class SettingsAIArticleAnalysisCancelResponse(BaseModel):
+    cancellation_requested: bool
 
 
 class SettingsAIArticleAnalysisClearResponse(BaseModel):
@@ -516,6 +521,7 @@ class SettingsAIArticleAnalysisClearResponse(BaseModel):
 
 class SettingsAIArticleAnalysisStatusResponse(BaseModel):
     running: bool
+    stopping: bool = False
     total: int = 0
     processed: int = 0
     succeeded: int = 0

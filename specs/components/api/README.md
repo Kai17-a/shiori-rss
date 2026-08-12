@@ -11,6 +11,7 @@ FastAPI は `/health`、`/dashboard`、`/rss-feeds`、`/news-sites`、`/github-r
 - GitHub release notifications: 定期バッチは登録リポジトリの最新公開リリースを確認し、最後に通知成功したタグから変化した場合だけ、リポジトリごとに選択された有効なWebhookへ通知する。未選択時は通知しない。1件以上成功した場合に通知済みタグを更新し、全送信が失敗した場合は次回再試行する。画面からの一括更新は表示キャッシュだけを更新し、未通知判定を失わない。
 - Settings: Webhook CRUD・疎通確認、定期実行、定期通知、記事概要、1回のフィード実行で通知する記事上限（既定20件、1〜100件）、デフォルトOFFのAI記事解析と利用上限の設定
 - AI article analysis execution: `POST /settings/ai-article-analysis/execute` からRustバッチのAI解析専用モードを同期実行し、処理・成功・失敗・解析済みスキップ件数と日次上限到達状態を返す
+- AI article analysis cancellation: `POST /settings/ai-article-analysis/cancel` は現在の実行ロックに紐づく停止要求を保存し、実行中でなければ409を返す
 - AI article analysis status: `GET /settings/ai-article-analysis/status` はAPIプロセス内の手動実行ロックとSQLiteの有効なバッチロックを確認し、手動・定期のどちらかが実行中なら `running: true` と、対象・処理済み・成功・失敗・スキップ件数、現在の記事タイトル、当日トークン使用量と上限、開始時刻の進捗スナップショットを返す。バッチロックは開始時刻とプロセスIDを保持し、所有プロセスが存在しない場合は孤立ロックを削除する。APIから起動したプロセスの終了時にも成功・失敗を問わず、そのプロセス自身のロックだけを削除する。旧形式の開始時刻だけのロックは、実際のバッチプロセスが存在しない場合に孤立ロックとして削除する
 - AI article analysis data: `GET /ai/article-analyses` は記事・配信元情報と解析済みの要約、要点、トピック、キーワード、固有表現、モデル、トークン数、状態、失敗内容を結合して返す。記事・配信元・AI要約の検索、通常RSS・Custom RSSの種別、成功・失敗状態、ページングで絞り込める
 - AI article analysis reset: `DELETE /settings/ai-article-analysis/results` は解析が停止中の場合に解析結果を全件削除し、削除件数を返す。FTS検索データはDBトリガーで同期削除するが、日次トークン上限の迂回を防ぐため利用量履歴は保持する。解析中は409を返す

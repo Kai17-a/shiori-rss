@@ -215,6 +215,10 @@ class CompatTestClient:
         service = SettingsService()
         if method == "POST" and path == "/settings/ai-article-analysis/execute":
             return self._ok(ArticleAnalysisService().run_manual().model_dump())
+        if method == "POST" and path == "/settings/ai-article-analysis/cancel":
+            return self._ok(
+                ArticleAnalysisService().request_cancel().model_dump(), 202
+            )
         if method == "DELETE" and path == "/settings/ai-article-analysis/results":
             return self._ok(ArticleAnalysisService().clear_results().model_dump())
         if method == "GET" and path == "/settings/ai-article-analysis/status":

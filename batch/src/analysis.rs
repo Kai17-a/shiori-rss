@@ -11,6 +11,7 @@ const MAX_INPUT_CHARS: usize = 12_000;
 const RESERVED_OUTPUT_TOKENS: i64 = 600;
 const ANALYSIS_LOCK_KEY: &str = "ai_article_analysis_running";
 const ANALYSIS_PROGRESS_KEY: &str = "ai_article_analysis_progress";
+const ANALYSIS_CANCEL_KEY: &str = "ai_article_analysis_cancel_requested";
 const ANALYSIS_LOCK_TTL_SECONDS: u64 = 7200;
 
 #[derive(Debug, Default, Serialize)]
@@ -20,6 +21,7 @@ pub struct AnalysisRunReport {
     pub failed: usize,
     pub skipped_current: usize,
     pub stopped_by_token_limit: bool,
+    pub stopped_by_user: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -89,7 +91,15 @@ impl Drop for AnalysisRunLock<'_> {
             "DELETE FROM app_settings WHERE key = ?",
             [ANALYSIS_PROGRESS_KEY],
         );
+        let _ = self.conn.execute(
+            "DELETE FROM app_settings WHERE key = ? AND value = ?",
+            params![ANALYSIS_CANCEL_KEY, self.token],
+        );
     }
+}
+
+fn cancellation_requested(conn: &Connection, token: &str) -> rusqlite::Result<bool> {
+    Ok(setting(conn, ANALYSIS_CANCEL_KEY)?.as_deref() == Some(token))
 }
 
 fn save_progress(conn: &Connection, progress: &AnalysisProgress<'_>) -> rusqlite::Result<()> {
@@ -546,7 +556,7 @@ async fn run_article_analysis_with_mode(
         eprintln!("Skipping AI article analysis: LLM settings are not configured");
         return Ok(AnalysisRunReport::default());
     };
-    let Some(_run_lock) = acquire_run_lock(conn)? else {
+    let Some(run_lock) = acquire_run_lock(conn)? else {
         if !require_enabled {
             return Err("Article analysis is already running".into());
         }
@@ -598,6 +608,11 @@ async fn run_article_analysis_with_mode(
     );
 
     for (article, hash) in articles_to_analyze {
+        if cancellation_requested(conn, &run_lock.token)? {
+            eprintln!("Stopping AI article analysis: cancellation requested");
+            report.stopped_by_user = true;
+            break;
+        }
         let input = format!("{}\n{}", article.title, article.summary);
         let estimated_input = estimated_tokens(&truncate(&input, MAX_INPUT_CHARS));
         if used_tokens + estimated_input + RESERVED_OUTPUT_TOKENS > settings.daily_token_limit {
@@ -699,8 +714,9 @@ pub async fn run_article_analysis_manual(
 #[cfg(test)]
 mod tests {
     use super::{
-        AnalysisProgress, analysis_array, analysis_keywords, analysis_topics, extract_json,
-        run_article_analysis, run_article_analysis_manual, save_progress, truncate,
+        ANALYSIS_CANCEL_KEY, AnalysisProgress, analysis_array, analysis_keywords, analysis_topics,
+        cancellation_requested, extract_json, run_article_analysis, run_article_analysis_manual,
+        save_progress, truncate,
     };
     use rusqlite::Connection;
     use serde_json::json;
@@ -745,6 +761,24 @@ mod tests {
         assert_eq!(progress["total"], 8);
         assert_eq!(progress["processed"], 3);
         assert_eq!(progress["current_article_title"], "Current article");
+    }
+
+    #[test]
+    fn cancellation_only_applies_to_the_current_run_token() {
+        let conn = Connection::open_in_memory().expect("open database");
+        conn.execute(
+            "CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+            [],
+        )
+        .expect("create settings table");
+        conn.execute(
+            "INSERT INTO app_settings (key, value) VALUES (?, ?)",
+            [ANALYSIS_CANCEL_KEY, "run-1"],
+        )
+        .expect("save cancellation");
+
+        assert!(cancellation_requested(&conn, "run-1").expect("read cancellation"));
+        assert!(!cancellation_requested(&conn, "run-2").expect("read cancellation"));
     }
 
     #[tokio::test]

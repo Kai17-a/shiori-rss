@@ -9,6 +9,7 @@ from api.model.models import (
     LLMSettingsUpdate,
     SettingsAIArticleAnalysisResponse,
     SettingsAIArticleAnalysisClearResponse,
+    SettingsAIArticleAnalysisCancelResponse,
     SettingsAIArticleAnalysisRunResponse,
     SettingsAIArticleAnalysisStatusResponse,
     SettingsAIArticleAnalysisUpdate,
@@ -53,6 +54,17 @@ def execute_ai_article_analysis(
     service: ArticleAnalysisService = Depends(get_article_analysis_service),
 ):
     return service.run_manual()
+
+
+@router.post(
+    "/ai-article-analysis/cancel",
+    status_code=202,
+    response_model=SettingsAIArticleAnalysisCancelResponse,
+)
+def cancel_ai_article_analysis(
+    service: ArticleAnalysisService = Depends(get_article_analysis_service),
+):
+    return service.request_cancel()
 
 
 @router.delete(

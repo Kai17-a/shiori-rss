@@ -410,6 +410,7 @@ def test_ai_article_analysis_can_run_manually_while_schedule_is_disabled(
         "failed": 0,
         "skipped_current": 3,
         "stopped_by_token_limit": False,
+        "stopped_by_user": False,
     }
 
 
@@ -479,6 +480,7 @@ def test_ai_article_analysis_status_returns_batch_progress(client):
     assert response.status_code == 200
     assert response.json() == {
         "running": True,
+        "stopping": False,
         "total": 10,
         "processed": 4,
         "succeeded": 3,
@@ -489,6 +491,38 @@ def test_ai_article_analysis_status_returns_batch_progress(client):
         "daily_token_limit": 50000,
         "started_at": 1786492800,
     }
+
+
+def test_ai_article_analysis_cancel_requests_stop_for_current_lock(client):
+    import api.services.article_analysis_service as analysis_module
+
+    token = f"{int(analysis_module.time.time())}:{analysis_module.os.getpid()}"
+    with analysis_module.get_db() as conn:
+        conn.execute(
+            "INSERT INTO app_settings (key, value) VALUES (?, ?)",
+            ("ai_article_analysis_running", token),
+        )
+
+    response = client.post("/settings/ai-article-analysis/cancel")
+
+    assert response.status_code == 202
+    assert response.json() == {"cancellation_requested": True}
+    status = client.get("/settings/ai-article-analysis/status").json()
+    assert status["running"] is True
+    assert status["stopping"] is True
+    with analysis_module.get_db() as conn:
+        value = conn.execute(
+            "SELECT value FROM app_settings WHERE key = ?",
+            ("ai_article_analysis_cancel_requested",),
+        ).fetchone()[0]
+    assert value == token
+
+
+def test_ai_article_analysis_cancel_is_rejected_when_idle(client):
+    response = client.post("/settings/ai-article-analysis/cancel")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Article analysis is not running"
 
 
 def test_ai_article_analysis_status_clears_legacy_orphan_lock(client, monkeypatch):

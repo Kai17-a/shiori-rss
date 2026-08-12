@@ -53,6 +53,11 @@ export interface SettingsAIArticleAnalysisRunResponse {
   failed: number;
   skipped_current: number;
   stopped_by_token_limit: boolean;
+  stopped_by_user: boolean;
+}
+
+export interface SettingsAIArticleAnalysisCancelResponse {
+  cancellation_requested: boolean;
 }
 
 export interface SettingsAIArticleAnalysisClearResponse {
@@ -61,6 +66,7 @@ export interface SettingsAIArticleAnalysisClearResponse {
 
 export interface SettingsAIArticleAnalysisStatusResponse {
   running: boolean;
+  stopping: boolean;
   total: number;
   processed: number;
   succeeded: number;

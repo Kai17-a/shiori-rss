@@ -12,6 +12,7 @@ from pydantic import ValidationError
 
 from api.database import get_db
 from api.model.models import (
+    SettingsAIArticleAnalysisCancelResponse,
     SettingsAIArticleAnalysisClearResponse,
     SettingsAIArticleAnalysisRunResponse,
     SettingsAIArticleAnalysisStatusResponse,
@@ -23,6 +24,7 @@ _logger = logging.getLogger("uvicorn.error")
 _RUN_TIMEOUT_SECONDS = 7200
 _RUN_LOCK_KEY = "ai_article_analysis_running"
 _PROGRESS_KEY = "ai_article_analysis_progress"
+_CANCEL_KEY = "ai_article_analysis_cancel_requested"
 
 
 def _batch_command() -> list[str]:
@@ -92,6 +94,9 @@ def _delete_run_lock(value: str) -> None:
             (_RUN_LOCK_KEY, value),
         )
         conn.execute("DELETE FROM app_settings WHERE key = ?", (_PROGRESS_KEY,))
+        conn.execute(
+            "DELETE FROM app_settings WHERE key = ? AND value = ?", (_CANCEL_KEY, value)
+        )
 
 
 def _clear_process_run_lock(process_id: int) -> None:
@@ -109,6 +114,10 @@ def _clear_process_run_lock(process_id: int) -> None:
                 (_RUN_LOCK_KEY, value),
             )
             conn.execute("DELETE FROM app_settings WHERE key = ?", (_PROGRESS_KEY,))
+            conn.execute(
+                "DELETE FROM app_settings WHERE key = ? AND value = ?",
+                (_CANCEL_KEY, value),
+            )
 
 
 class ArticleAnalysisService:
@@ -131,16 +140,47 @@ class ArticleAnalysisService:
             row = conn.execute(
                 "SELECT value FROM app_settings WHERE key = ?", (_PROGRESS_KEY,)
             ).fetchone()
+            cancel_row = conn.execute(
+                "SELECT value FROM app_settings WHERE key = ?", (_CANCEL_KEY,)
+            ).fetchone()
+            lock_row = conn.execute(
+                "SELECT value FROM app_settings WHERE key = ?", (_RUN_LOCK_KEY,)
+            ).fetchone()
+        stopping = bool(
+            cancel_row
+            and lock_row
+            and str(cancel_row["value"]) == str(lock_row["value"])
+        )
         if row is None:
-            return SettingsAIArticleAnalysisStatusResponse(running=True)
+            return SettingsAIArticleAnalysisStatusResponse(running=True, stopping=stopping)
         try:
             progress = json.loads(str(row["value"]))
             return SettingsAIArticleAnalysisStatusResponse(
                 running=True,
+                stopping=stopping,
                 **progress,
             )
         except (TypeError, ValueError, ValidationError):
-            return SettingsAIArticleAnalysisStatusResponse(running=True)
+            return SettingsAIArticleAnalysisStatusResponse(running=True, stopping=stopping)
+
+    def request_cancel(self) -> SettingsAIArticleAnalysisCancelResponse:
+        if not self.status().running:
+            raise HTTPException(status_code=409, detail="Article analysis is not running")
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT value FROM app_settings WHERE key = ?", (_RUN_LOCK_KEY,)
+            ).fetchone()
+            if row is None:
+                raise HTTPException(status_code=409, detail="Article analysis is not running")
+            token = str(row["value"])
+            conn.execute(
+                """
+                INSERT INTO app_settings (key, value) VALUES (?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                """,
+                (_CANCEL_KEY, token),
+            )
+        return SettingsAIArticleAnalysisCancelResponse(cancellation_requested=True)
 
     def status(self) -> SettingsAIArticleAnalysisStatusResponse:
         if _manual_run_lock.locked():

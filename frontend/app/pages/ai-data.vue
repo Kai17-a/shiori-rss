@@ -39,6 +39,18 @@
                 :disabled="analysisRunning"
                 @click="runAnalysis"
               />
+              <UButton
+                v-if="analysisRunning"
+                label="Stop analysis"
+                aria-label="Stop analysis"
+                icon="i-lucide-square"
+                loading-icon="i-lucide-loader-circle"
+                color="error"
+                variant="soft"
+                :loading="analysisStopping"
+                :disabled="analysisStopping"
+                @click="stopAnalysis"
+              />
             </div>
           </div>
 
@@ -46,7 +58,7 @@
             v-if="analysisRunning"
             role="status"
             aria-live="polite"
-            title="Article analysis is running"
+            :title="analysisStopping ? 'Stopping article analysis' : 'Article analysis is running'"
             :description="analysisProgressDescription"
             color="info"
             variant="soft"
@@ -241,6 +253,7 @@ import type {
   AIAnalysisStatus,
   AIArticleAnalysisListResponse,
   SettingsAIArticleAnalysisRunResponse,
+  SettingsAIArticleAnalysisCancelResponse,
   SettingsAIArticleAnalysisStatusResponse,
 } from "~/types";
 
@@ -249,8 +262,10 @@ const toast = useSingleToast();
 const loading = ref(false);
 const analysisRunning = ref(false);
 const analysisRequestRunning = ref(false);
+const analysisStopping = ref(false);
 const emptyAnalysisStatus = (): SettingsAIArticleAnalysisStatusResponse => ({
   running: false,
+  stopping: false,
   total: 0,
   processed: 0,
   succeeded: 0,
@@ -292,7 +307,7 @@ const analysisProgressPercent = computed(() => analysisStatus.value.total
   ? Math.round((analysisStatus.value.processed / analysisStatus.value.total) * 100)
   : 0);
 const analysisProgressDescription = computed(() => analysisStatus.value.total
-  ? `Analyzing saved articles: ${analysisStatus.value.processed} of ${analysisStatus.value.total} processed.`
+  ? `${analysisStopping.value || analysisStatus.value.stopping ? "Stopping after the current article" : "Analyzing saved articles"}: ${analysisStatus.value.processed} of ${analysisStatus.value.total} processed.`
   : "Preparing saved articles for analysis. This page updates automatically.");
 
 const formatDateTime = (value: string) => {
@@ -335,8 +350,35 @@ const loadAnalysisStatus = async () => {
     );
     analysisStatus.value = response;
     analysisRunning.value = analysisRequestRunning.value || response.running;
+    analysisStopping.value = response.running && response.stopping;
   } catch {
     // Keep the last known state when a background status check fails.
+  }
+};
+
+const stopAnalysis = async () => {
+  if (!analysisRunning.value || analysisStopping.value) return;
+  analysisStopping.value = true;
+  try {
+    await request<SettingsAIArticleAnalysisCancelResponse>(
+      "/settings/ai-article-analysis/cancel",
+      { method: "POST" },
+    );
+    toast.show({
+      title: "Stopping article analysis.",
+      description: "The current article will finish before analysis stops.",
+      color: "warning",
+      icon: "i-lucide-square",
+    });
+    await loadAnalysisStatus();
+  } catch (error) {
+    analysisStopping.value = false;
+    toast.show({
+      title: "Failed to stop article analysis.",
+      description: error instanceof Error ? error.message : undefined,
+      color: "error",
+      icon: "i-lucide-circle-alert",
+    });
   }
 };
 
@@ -354,6 +396,8 @@ const runAnalysis = async () => {
     toast.show({
       title: response.stopped_by_token_limit
         ? "Analysis stopped at the daily token limit."
+        : response.stopped_by_user
+          ? "Article analysis stopped."
         : response.processed
           ? "Article analysis completed."
           : "All eligible articles are already analyzed.",
@@ -376,6 +420,7 @@ const runAnalysis = async () => {
   } finally {
     analysisRequestRunning.value = false;
     analysisRunning.value = false;
+    analysisStopping.value = false;
     analysisStatus.value = emptyAnalysisStatus();
   }
 };

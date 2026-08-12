@@ -439,6 +439,7 @@ test("runs article analysis manually with a loading state", async ({ page }) => 
 });
 
 test("disables manual analysis while the server reports a running job", async ({ page }) => {
+  let cancellationRequests = 0;
   await page.route(/\/api\/ai\/article-analyses/, async (route) => {
     await route.fulfill({
       contentType: "application/json",
@@ -456,6 +457,7 @@ test("disables manual analysis while the server reports a running job", async ({
       contentType: "application/json",
       body: JSON.stringify({
         running: true,
+        stopping: cancellationRequests > 0,
         total: 10,
         processed: 4,
         succeeded: 3,
@@ -466,6 +468,14 @@ test("disables manual analysis while the server reports a running job", async ({
         daily_token_limit: 50000,
         started_at: 1786492800,
       }),
+    });
+  });
+  await page.route(/\/api\/settings\/ai-article-analysis\/cancel\/?$/, async (route) => {
+    cancellationRequests += 1;
+    await route.fulfill({
+      status: 202,
+      contentType: "application/json",
+      body: JSON.stringify({ cancellation_requested: true }),
     });
   });
 
@@ -485,6 +495,12 @@ test("disables manual analysis while the server reports a running job", async ({
     "aria-valuenow",
     "4",
   );
+  const stopButton = page.getByRole("button", { name: "Stop analysis" });
+  await stopButton.click();
+  await expect.poll(() => cancellationRequests).toBe(1);
+  await expect(stopButton).toBeDisabled();
+  await expect(stopButton.locator(".animate-spin")).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("Stopping article analysis");
 });
 
 test("shows an alert when manual article analysis stops with an error", async ({ page }) => {

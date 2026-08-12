@@ -39,6 +39,7 @@
 | POST | `/settings/llm/test` | LLM疎通テスト |
 | GET/PUT | `/settings/ai-article-analysis` | AI記事事前解析の有効化と上限設定 |
 | POST | `/settings/ai-article-analysis/execute` | 定期実行設定に依存しないAI記事解析の手動実行 |
+| POST | `/settings/ai-article-analysis/cancel` | 実行中AI解析へ協調停止を要求 |
 | GET | `/settings/ai-article-analysis/status` | 手動・定期AI解析の実行状態、記事進捗、現在の記事、トークン使用量 |
 | POST | `/ai/chat` | 保存済み記事の横断検索と根拠付きLLM回答 |
 | POST | `/ai/chat/stream` | 出典とLLM回答差分をNDJSONで逐次返すAsk AI |
