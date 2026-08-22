@@ -21,6 +21,7 @@ scripts/**/test-results/
 .actrc
 */data/*
 data.db
+*.db
 api/*.egg-info
 *.egg-info/
 batch/target/
