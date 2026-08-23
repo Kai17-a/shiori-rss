@@ -414,6 +414,68 @@ def test_ai_article_analysis_can_run_manually_while_schedule_is_disabled(
     }
 
 
+def test_ai_article_analysis_can_reanalyze_a_single_article(client, monkeypatch):
+    import api.services.article_analysis_service as analysis_module
+
+    monkeypatch.setenv("SHIORI_FEED_BATCH_BIN", "/tmp/mock-shiori-feed-batch")
+
+    class BatchProcess:
+        pid = 4242
+
+        def __init__(self):
+            self.stdout = io.StringIO(
+                '{"processed":1,"succeeded":1,"failed":0,'
+                '"skipped_current":0,"stopped_by_token_limit":false}\n'
+            )
+
+        def wait(self):
+            return 0
+
+        def kill(self):
+            return None
+
+    def open_batch(command, **kwargs):
+        assert command == [
+            "/tmp/mock-shiori-feed-batch",
+            "--reanalyze-article=rss:7",
+        ]
+        assert kwargs["stderr"] is analysis_module.subprocess.STDOUT
+        return BatchProcess()
+
+    monkeypatch.setattr(analysis_module.subprocess, "Popen", open_batch)
+
+    response = client.post("/settings/ai-article-analysis/rss/7/execute")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "processed": 1,
+        "succeeded": 1,
+        "failed": 0,
+        "skipped_current": 0,
+        "stopped_by_token_limit": False,
+        "stopped_by_user": False,
+    }
+
+
+def test_ai_article_analysis_reanalyze_rejects_an_unknown_source_type(client):
+    response = client.post("/settings/ai-article-analysis/unknown/7/execute")
+
+    assert response.status_code == 422
+
+
+def test_ai_article_analysis_reanalyze_is_blocked_while_a_batch_run_is_active(
+    client, monkeypatch
+):
+    import api.services.article_analysis_service as analysis_module
+
+    assert analysis_module._manual_run_lock.acquire(blocking=False)
+    try:
+        response = client.post("/settings/ai-article-analysis/rss/7/execute")
+        assert response.status_code == 409
+    finally:
+        analysis_module._manual_run_lock.release()
+
+
 def test_ai_article_analysis_status_reports_manual_run(client):
     import api.services.article_analysis_service as analysis_module
 
@@ -602,9 +664,262 @@ def test_llm_settings_are_tested_before_save_and_do_not_expose_api_key(
         "base_url": "https://llm.example.com/v1",
         "api_key_configured": True,
         "model": "example-model",
+        "embedding_model": None,
+        "timeout_seconds": 90,
     }
     assert tested[0].api_key == "secret-token"
+    assert tested[0].timeout_seconds == 90
     assert client.get("/settings/llm").json() == saved.json()
+
+
+def test_llm_settings_accepts_and_tests_an_optional_embedding_model(client, monkeypatch):
+    import api.services.settings_service as settings_module
+
+    monkeypatch.setattr(settings_module, "test_llm_connection", lambda _config: "pong")
+    monkeypatch.setattr(
+        settings_module, "test_embedding_connection", lambda _config: [0.1, 0.2, 0.3]
+    )
+
+    saved = client.put(
+        "/settings/llm",
+        json={
+            "provider": "openai",
+            "base_url": "https://llm.example.com/v1",
+            "model": "example-model",
+            "embedding_model": "example-embedding-model",
+        },
+    )
+
+    assert saved.status_code == 200
+    assert saved.json()["embedding_model"] == "example-embedding-model"
+    assert client.get("/settings/llm").json()["embedding_model"] == "example-embedding-model"
+
+
+def test_llm_settings_timeout_defaults_to_90_seconds_and_can_be_overridden(
+    client, monkeypatch
+):
+    import api.services.settings_service as settings_module
+
+    tested = []
+    monkeypatch.setattr(
+        settings_module,
+        "test_llm_connection",
+        lambda config: tested.append(config) or "pong",
+    )
+
+    default = client.put(
+        "/settings/llm",
+        json={
+            "provider": "openai",
+            "base_url": "https://llm.example.com/v1",
+            "model": "example-model",
+        },
+    )
+    assert default.json()["timeout_seconds"] == 90
+    assert tested[-1].timeout_seconds == 90
+
+    custom = client.put(
+        "/settings/llm",
+        json={
+            "provider": "openai",
+            "base_url": "https://llm.example.com/v1",
+            "model": "example-model",
+            "timeout_seconds": 30,
+        },
+    )
+    assert custom.status_code == 200
+    assert custom.json()["timeout_seconds"] == 30
+    assert tested[-1].timeout_seconds == 30
+    assert client.get("/settings/llm").json()["timeout_seconds"] == 30
+
+
+def test_llm_settings_rejects_a_timeout_outside_the_allowed_range(client):
+    response = client.put(
+        "/settings/llm",
+        json={
+            "provider": "openai",
+            "base_url": "https://llm.example.com/v1",
+            "model": "example-model",
+            "timeout_seconds": 1,
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_llm_request_uses_the_configured_timeout(client, monkeypatch):
+    """The saved timeout_seconds must actually reach the outgoing HTTP call,
+    not just round-trip through the settings API.
+    """
+    import api.services.settings_service as settings_module
+    import api.services.llm_service as llm_module
+
+    monkeypatch.setattr(settings_module, "test_llm_connection", lambda _config: "pong")
+    client.put(
+        "/settings/llm",
+        json={
+            "provider": "openai",
+            "base_url": "https://llm.example.com/v1",
+            "model": "example-model",
+            "timeout_seconds": 15,
+        },
+    )
+
+    captured = {}
+
+    def fake_post(url, json, headers, timeout):
+        captured["timeout"] = timeout
+        return type(
+            "Resp",
+            (),
+            {
+                "status_code": 200,
+                "json": lambda self: {
+                    "choices": [{"message": {"content": "pong"}}]
+                },
+            },
+        )()
+
+    monkeypatch.setattr(llm_module.httpx, "post", fake_post)
+
+    from api.database import get_db
+    from api.repositories.settings_repo import SettingsRepository
+    from api.services.llm_service import load_llm_config, chat_completion
+
+    with get_db() as conn:
+        config = load_llm_config(SettingsRepository(conn))
+    assert config is not None
+
+    chat_completion(config, [{"role": "user", "content": "hi"}], max_tokens=8)
+
+    assert captured["timeout"] == 15
+
+
+def test_llm_settings_recreates_vector_schema_when_model_dimension_changes(
+    client, monkeypatch
+):
+    """No fixed dimension cap: the article_ai_embeddings table is recreated
+    at whatever width the currently configured embedding model actually
+    produces, however large (e.g. a 4096-dim cloud model)."""
+    import api.services.article_analysis_service as analysis_module
+    import api.services.settings_service as settings_module
+    from api.database import load_vec_extension, pack_embedding
+
+    monkeypatch.setattr(settings_module, "test_llm_connection", lambda _config: "pong")
+
+    monkeypatch.setattr(
+        settings_module, "test_embedding_connection", lambda _config: [0.1] * 4096
+    )
+    saved = client.put(
+        "/settings/llm",
+        json={
+            "provider": "openai",
+            "base_url": "https://llm.example.com/v1",
+            "model": "example-model",
+            "embedding_model": "large-embedding-model",
+        },
+    )
+    assert saved.status_code == 200
+
+    with analysis_module.get_db() as conn:
+        load_vec_extension(conn)
+        # The table must now accept a 4096-dim vector...
+        conn.execute(
+            "INSERT INTO article_ai_embeddings(analysis_id, embedding) VALUES (1, ?)",
+            (pack_embedding([0.1] * 4096),),
+        )
+        # ...and reject a mismatched size, confirming the width really changed
+        # rather than merely accepting anything.
+        with pytest.raises(sqlite3.OperationalError):
+            conn.execute(
+                "INSERT INTO article_ai_embeddings(analysis_id, embedding) VALUES (2, ?)",
+                (pack_embedding([0.1] * 8),),
+            )
+
+    # Switching to a differently-sized model recreates the table again.
+    monkeypatch.setattr(
+        settings_module, "test_embedding_connection", lambda _config: [0.1] * 8
+    )
+    switched = client.put(
+        "/settings/llm",
+        json={
+            "provider": "openai",
+            "base_url": "https://llm.example.com/v1",
+            "model": "example-model",
+            "embedding_model": "small-embedding-model",
+        },
+    )
+    assert switched.status_code == 200
+
+    with analysis_module.get_db() as conn:
+        load_vec_extension(conn)
+        # The old 4096-dim row is gone (table was dropped and recreated)...
+        assert conn.execute("SELECT COUNT(*) FROM article_ai_embeddings").fetchone()[0] == 0
+        # ...and it now accepts the new model's 8-dim vectors.
+        conn.execute(
+            "INSERT INTO article_ai_embeddings(analysis_id, embedding) VALUES (1, ?)",
+            (pack_embedding([0.1] * 8),),
+        )
+
+
+def test_clearing_embedding_model_does_not_delete_existing_embeddings(
+    client, monkeypatch
+):
+    import api.services.article_analysis_service as analysis_module
+    import api.services.settings_service as settings_module
+    from api.database import load_vec_extension, pack_embedding
+
+    monkeypatch.setattr(settings_module, "test_llm_connection", lambda _config: "pong")
+    monkeypatch.setattr(
+        settings_module, "test_embedding_connection", lambda _config: [0.1, 0.2]
+    )
+    client.put(
+        "/settings/llm",
+        json={
+            "provider": "openai",
+            "base_url": "https://llm.example.com/v1",
+            "model": "example-model",
+            "embedding_model": "example-embedding-model",
+        },
+    )
+    with analysis_module.get_db() as conn:
+        analysis_id = conn.execute(
+            """
+            INSERT INTO article_ai_analyses (
+                source_type, article_id, content_hash, model, prompt_version, status,
+                embedding_model, embedding_dim
+            ) VALUES ('rss', 1, 'hash', 'example-model', 'article-analysis-v3',
+                      'completed', 'example-embedding-model', 2)
+            """
+        ).lastrowid
+        load_vec_extension(conn)
+        conn.execute(
+            "INSERT INTO article_ai_embeddings(analysis_id, embedding) VALUES (?, ?)",
+            (analysis_id, pack_embedding([0.1, 0.2])),
+        )
+
+    # Clear the embedding model (send it back as null) without touching the
+    # chat model — this must not delete the embedding rows already saved.
+    cleared = client.put(
+        "/settings/llm",
+        json={
+            "provider": "openai",
+            "base_url": "https://llm.example.com/v1",
+            "model": "example-model",
+            "embedding_model": None,
+        },
+    )
+
+    assert cleared.status_code == 200
+    assert cleared.json()["embedding_model"] is None
+    with analysis_module.get_db() as conn:
+        assert (
+            conn.execute("SELECT COUNT(*) FROM article_ai_analyses WHERE embedding_model IS NOT NULL")
+            .fetchone()[0]
+            == 1
+        )
+        load_vec_extension(conn)
+        assert conn.execute("SELECT COUNT(*) FROM article_ai_embeddings").fetchone()[0] == 1
 
 
 def test_clear_ai_analysis_results_keeps_daily_token_usage(client):
@@ -636,6 +951,32 @@ def test_clear_ai_analysis_results_keeps_daily_token_usage(client):
         assert conn.execute("SELECT COUNT(*) FROM article_ai_analyses").fetchone()[0] == 0
         assert conn.execute("SELECT COUNT(*) FROM article_ai_search").fetchone()[0] == 0
         assert conn.execute("SELECT COUNT(*) FROM article_ai_analysis_usage").fetchone()[0] == 1
+
+
+def test_clear_ai_analysis_results_also_removes_orphaned_embeddings(client):
+    import api.services.article_analysis_service as analysis_module
+    from api.database import load_vec_extension, pack_embedding
+
+    with analysis_module.get_db() as conn:
+        analysis_id = conn.execute(
+            """
+            INSERT INTO article_ai_analyses (
+                source_type, article_id, content_hash, model, prompt_version, status
+            ) VALUES ('rss', 1, 'hash', 'model', 'article-analysis-v3', 'completed')
+            """
+        ).lastrowid
+        load_vec_extension(conn)
+        conn.execute(
+            "INSERT INTO article_ai_embeddings(analysis_id, embedding) VALUES (?, ?)",
+            (analysis_id, pack_embedding([0.1] * 8)),
+        )
+
+    response = client.delete("/settings/ai-article-analysis/results")
+
+    assert response.status_code == 200
+    with analysis_module.get_db() as conn:
+        load_vec_extension(conn)
+        assert conn.execute("SELECT COUNT(*) FROM article_ai_embeddings").fetchone()[0] == 0
 
 
 def test_clear_ai_analysis_results_is_blocked_while_running(client, monkeypatch):

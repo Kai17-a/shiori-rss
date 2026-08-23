@@ -20,7 +20,29 @@ LLM_PROVIDER_SETTING_KEY = "llm_provider"
 LLM_BASE_URL_SETTING_KEY = "llm_base_url"
 LLM_API_KEY_SETTING_KEY = "llm_api_key"
 LLM_MODEL_SETTING_KEY = "llm_model"
+LLM_EMBEDDING_MODEL_SETTING_KEY = "embedding_model"
+# The currently configured embedding model's native vector dimension.
+# Derived (not user-set) by settings_service whenever embedding_model is
+# saved, from the actual length of a test embedding call. Read by
+# article_search_repo.vector_search() and by the Rust batch to size/pack
+# vectors consistently with the article_ai_embeddings table's current width.
+LLM_EMBEDDING_DIM_SETTING_KEY = "embedding_dim"
 
+# Applies to every HTTP call this module makes to the LLM server (chat,
+# streaming chat, embeddings, connection tests, news-site analysis). Default
+# matches the longest timeout any of those calls used before this setting
+# existed (news-site analysis, which sends a full page of HTML and asks for
+# a generated scraping recipe) so making it configurable doesn't shrink
+# anyone's existing timeout.
+LLM_TIMEOUT_SETTING_KEY = "llm_request_timeout_seconds"
+LLM_DEFAULT_TIMEOUT_SECONDS = 90
+LLM_MIN_TIMEOUT_SECONDS = 5
+LLM_MAX_TIMEOUT_SECONDS = 600
+
+# provider/base_url/model are required for an LLMConfig to exist at all
+# (see load_llm_config). embedding_model is deliberately NOT in this tuple:
+# it's an optional add-on to an already-configured chat LLM connection, not
+# part of what makes the connection valid.
 LLM_SETTING_KEYS = (
     LLM_PROVIDER_SETTING_KEY,
     LLM_BASE_URL_SETTING_KEY,
@@ -31,7 +53,9 @@ LLM_SETTING_KEYS = (
 MAX_HTML_CHARS = 50000
 LOG_PREVIEW_CHARS = 500
 
-LLMOperation = Literal["connection_test", "news_site_analysis", "chat_completion"]
+LLMOperation = Literal[
+    "connection_test", "news_site_analysis", "chat_completion", "embedding"
+]
 
 ANALYSIS_SYSTEM_PROMPT = """You analyze the HTML of a news site and design a scraping recipe.
 Return ONLY a JSON object with these keys:
@@ -60,6 +84,8 @@ class LLMConfig:
     base_url: str
     api_key: str | None
     model: str
+    embedding_model: str | None = None
+    timeout_seconds: int = LLM_DEFAULT_TIMEOUT_SECONDS
 
 
 def new_diagnostic_reference() -> str:
@@ -85,6 +111,7 @@ def _operation_label(operation: LLMOperation) -> str:
         "connection_test": "LLM connection test",
         "news_site_analysis": "news-site analysis",
         "chat_completion": "LLM request",
+        "embedding": "embedding request",
     }[operation]
 
 
@@ -130,6 +157,8 @@ def load_llm_config(repo) -> LLMConfig | None:
         base_url=base_url,
         api_key=repo.get(LLM_API_KEY_SETTING_KEY) or None,
         model=model,
+        embedding_model=repo.get(LLM_EMBEDDING_MODEL_SETTING_KEY) or None,
+        timeout_seconds=repo.get_int(LLM_TIMEOUT_SETTING_KEY, LLM_DEFAULT_TIMEOUT_SECONDS),
     )
 
 
@@ -138,6 +167,8 @@ def save_llm_config(repo, config: LLMConfig) -> None:
     repo.set(LLM_BASE_URL_SETTING_KEY, config.base_url)
     repo.set(LLM_API_KEY_SETTING_KEY, config.api_key or "")
     repo.set(LLM_MODEL_SETTING_KEY, config.model)
+    repo.set(LLM_EMBEDDING_MODEL_SETTING_KEY, config.embedding_model or "")
+    repo.set(LLM_TIMEOUT_SETTING_KEY, str(config.timeout_seconds))
 
 
 def _extract_reply_content(provider: str, data: dict) -> str | None:
@@ -161,11 +192,12 @@ def chat_completion(
     messages: list[dict],
     *,
     max_tokens: int,
-    timeout: float = 60.0,
+    timeout: float | None = None,
     operation: LLMOperation = "chat_completion",
     reference_id: str | None = None,
 ) -> str:
     reference_id = reference_id or new_diagnostic_reference()
+    timeout = timeout if timeout is not None else config.timeout_seconds
     base_url = config.base_url.rstrip("/")
     if config.provider == "ollama":
         url = f"{base_url}/api/chat"
@@ -275,9 +307,10 @@ def chat_completion_stream(
     messages: list[dict],
     *,
     max_tokens: int,
-    timeout: float = 60.0,
+    timeout: float | None = None,
 ) -> Iterator[str]:
     reference_id = new_diagnostic_reference()
+    timeout = timeout if timeout is not None else config.timeout_seconds
     base_url = config.base_url.rstrip("/")
     if config.provider == "ollama":
         url = f"{base_url}/api/chat"
@@ -353,9 +386,117 @@ def test_llm_connection(config: LLMConfig) -> str:
         config,
         [{"role": "user", "content": "Reply with: pong"}],
         max_tokens=8,
-        timeout=60.0,
         operation="connection_test",
     )
+
+
+def _extract_embedding_vector(provider: str, data: dict) -> list[float] | None:
+    if provider == "ollama":
+        # Ollama's newer /api/embed endpoint returns a batch shape
+        # ({"embeddings": [[...], ...]}) even for a single input.
+        vectors = data.get("embeddings")
+        if isinstance(vectors, list) and vectors and isinstance(vectors[0], list):
+            return [float(value) for value in vectors[0]]
+        return None
+    items = data.get("data")
+    if isinstance(items, list) and items and isinstance(items[0], dict):
+        vector = items[0].get("embedding")
+        if isinstance(vector, list):
+            return [float(value) for value in vector]
+    return None
+
+
+def embeddings(
+    config: LLMConfig,
+    text: str,
+    *,
+    timeout: float | None = None,
+    reference_id: str | None = None,
+) -> list[float]:
+    """Embed `text` using the configured embedding model.
+
+    Structured like `chat_completion` (same error-handling/logging
+    conventions), but for the separate, optional embedding model rather than
+    the required chat model. Raises if no embedding model is configured.
+    """
+    if not config.embedding_model:
+        raise HTTPException(
+            status_code=409, detail="An embedding model is not configured."
+        )
+    reference_id = reference_id or new_diagnostic_reference()
+    timeout = timeout if timeout is not None else config.timeout_seconds
+    base_url = config.base_url.rstrip("/")
+    if config.provider == "ollama":
+        url = f"{base_url}/api/embed"
+        payload: dict = {"model": config.embedding_model, "input": text}
+    else:
+        url = f"{base_url}/embeddings"
+        payload = {"model": config.embedding_model, "input": [text]}
+
+    headers = {"Authorization": f"Bearer {config.api_key}"} if config.api_key else None
+    try:
+        response = httpx.post(url, json=payload, headers=headers, timeout=timeout)
+    except httpx.HTTPError as exc:
+        logger.error(
+            "llm_connection_failed reference_id=%s operation=embedding provider=%s "
+            "model=%s endpoint=%s exception=%s",
+            reference_id,
+            config.provider,
+            config.embedding_model,
+            _safe_url(url),
+            type(exc).__name__,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "LLM connection error: Could not connect to the LLM server during "
+                f"{_operation_label('embedding')}. Check the base URL and network "
+                f"path. Reference ID: {reference_id}."
+            ),
+        ) from exc
+
+    if response.status_code >= 400:
+        logger.error(
+            "llm_request_rejected reference_id=%s operation=embedding provider=%s "
+            "model=%s endpoint=%s upstream_status=%s response_preview=%r",
+            reference_id,
+            config.provider,
+            config.embedding_model,
+            _safe_url(url),
+            response.status_code,
+            _safe_preview(getattr(response, "text", "")),
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=_upstream_error_detail(response.status_code, "embedding", reference_id),
+        )
+
+    try:
+        data = response.json()
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "LLM protocol error: The server returned a non-JSON response during "
+                f"{_operation_label('embedding')}. Reference ID: {reference_id}."
+            ),
+        ) from exc
+
+    vector = _extract_embedding_vector(config.provider, data)
+    if not vector:
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "LLM response error: No embedding vector was returned during "
+                f"{_operation_label('embedding')}. Reference ID: {reference_id}."
+            ),
+        )
+    return vector
+
+
+def test_embedding_connection(config: LLMConfig) -> list[float]:
+    """Run a minimal embedding call to verify the embedding model and credentials."""
+    return embeddings(config, "connection test")
 
 
 def sanitize_html_for_analysis(html: str) -> str:
@@ -433,7 +574,6 @@ def analyze_news_page(
             },
         ],
         max_tokens=1024,
-        timeout=90.0,
         operation="news_site_analysis",
         reference_id=reference_id,
     )

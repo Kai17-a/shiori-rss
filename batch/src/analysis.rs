@@ -1,9 +1,10 @@
 use reqwest::Client;
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{Connection, OptionalExtension, ffi::sqlite3_auto_extension, params};
 use serde::Serialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::error::Error;
+use std::sync::Once;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const PROMPT_VERSION: &str = "article-analysis-v3";
@@ -13,6 +14,31 @@ const ANALYSIS_LOCK_KEY: &str = "ai_article_analysis_running";
 const ANALYSIS_PROGRESS_KEY: &str = "ai_article_analysis_progress";
 const ANALYSIS_CANCEL_KEY: &str = "ai_article_analysis_cancel_requested";
 const ANALYSIS_LOCK_TTL_SECONDS: u64 = 7200;
+// Matches api/services/llm_service.py's LLM_DEFAULT_TIMEOUT_SECONDS —
+// the same "llm_request_timeout_seconds" app_setting configures both, so
+// the two must stay in sync for the setting to behave consistently
+// regardless of which side handles a given LLM call.
+const DEFAULT_LLM_TIMEOUT_SECONDS: u64 = 90;
+
+static VEC_EXTENSION_REGISTERED: Once = Once::new();
+
+/// Registers the sqlite-vec extension process-wide (statically linked, no
+/// runtime `.so` lookup) so any `Connection` opened afterwards can use
+/// `vec0` virtual tables. Safe to call more than once (a `Once` guards the
+/// actual registration) — call this before opening any connection that may
+/// touch `article_ai_embeddings`, including in tests.
+pub fn ensure_vec_extension_registered() {
+    VEC_EXTENSION_REGISTERED.call_once(|| unsafe {
+        sqlite3_auto_extension(Some(std::mem::transmute::<
+            *const (),
+            unsafe extern "C" fn(
+                *mut rusqlite::ffi::sqlite3,
+                *mut *mut std::os::raw::c_char,
+                *const rusqlite::ffi::sqlite3_api_routines,
+            ) -> std::os::raw::c_int,
+        >(sqlite_vec::sqlite3_vec_init as *const ())));
+    });
+}
 
 #[derive(Debug, Default, Serialize)]
 pub struct AnalysisRunReport {
@@ -50,6 +76,13 @@ struct LlmConfig {
     base_url: String,
     api_key: Option<String>,
     model: String,
+    embedding_model: Option<String>,
+    // The article_ai_embeddings table's current width — set by
+    // settings_service whenever embedding_model is (re)configured, so it
+    // always matches that model's native dimension. Absent only if
+    // embedding_model was set through some path other than the Settings API.
+    embedding_dim: Option<usize>,
+    timeout_seconds: u64,
 }
 
 #[derive(Debug)]
@@ -62,6 +95,8 @@ struct ArticleCandidate {
     existing_model: Option<String>,
     existing_prompt_version: Option<String>,
     existing_status: Option<String>,
+    existing_embedding_hash: Option<String>,
+    existing_embedding_model: Option<String>,
 }
 
 #[derive(Debug)]
@@ -180,6 +215,14 @@ fn load_llm_config(conn: &Connection) -> rusqlite::Result<Option<LlmConfig>> {
             base_url,
             api_key: setting(conn, "llm_api_key")?.filter(|value| !value.is_empty()),
             model,
+            embedding_model: setting(conn, "embedding_model")?.filter(|value| !value.is_empty()),
+            embedding_dim: setting(conn, "embedding_dim")?.and_then(|value| value.parse().ok()),
+            timeout_seconds: int_setting(
+                conn,
+                "llm_request_timeout_seconds",
+                DEFAULT_LLM_TIMEOUT_SECONDS as i64,
+            )?
+            .clamp(5, 600) as u64,
         })),
         _ => Ok(None),
     }
@@ -196,7 +239,7 @@ fn load_candidates(
         SELECT candidates.source_type, candidates.article_id,
                coalesce(candidates.title, ''), coalesce(candidates.summary, ''),
                analyses.content_hash, analyses.model, analyses.prompt_version,
-               analyses.status
+               analyses.status, analyses.embedding_content_hash, analyses.embedding_model
         FROM (
           SELECT 'rss' AS source_type, id AS article_id, title, summary,
                  coalesce(published, created_at) AS article_date
@@ -227,9 +270,53 @@ fn load_candidates(
             existing_model: row.get(5)?,
             existing_prompt_version: row.get(6)?,
             existing_status: row.get(7)?,
+            existing_embedding_hash: row.get(8)?,
+            existing_embedding_model: row.get(9)?,
         })
     })?;
     rows.collect()
+}
+
+/// Loads a single article by (source_type, article_id) for a forced,
+/// on-demand re-analysis — unlike `load_candidates`, ignores the lookback
+/// window and `max_articles_per_run` entirely, since the caller explicitly
+/// asked for this one article.
+fn load_candidate(
+    conn: &Connection,
+    source_type: &str,
+    article_id: i64,
+) -> rusqlite::Result<Option<ArticleCandidate>> {
+    let table = match source_type {
+        "rss" => "rss_feed_articles",
+        "custom" => "news_site_articles",
+        _ => return Ok(None),
+    };
+    let query = format!(
+        r#"
+        SELECT coalesce(articles.title, ''), coalesce(articles.summary, ''),
+               analyses.content_hash, analyses.model, analyses.prompt_version,
+               analyses.status, analyses.embedding_content_hash, analyses.embedding_model
+        FROM {table} AS articles
+        LEFT JOIN article_ai_analyses AS analyses
+          ON analyses.source_type = ?1 AND analyses.article_id = articles.id
+        WHERE articles.id = ?2
+        "#
+    );
+    conn.query_row(&query, params![source_type, article_id], |row| {
+        Ok(ArticleCandidate {
+            source_type: source_type.to_string(),
+            article_id,
+            title: row.get(0)?,
+            summary: row.get(1)?,
+            existing_hash: row.get(2)?,
+            existing_model: row.get(3)?,
+            existing_prompt_version: row.get(4)?,
+            existing_status: row.get(5)?,
+            existing_embedding_hash: row.get(6)?,
+            existing_embedding_model: row.get(7)?,
+        })
+    })
+    .optional()
 }
 
 fn content_hash(article: &ArticleCandidate) -> String {
@@ -429,6 +516,128 @@ async fn analyze_article(
     })
 }
 
+fn embedding_vector(provider: &str, data: &Value) -> Result<Vec<f32>, Box<dyn Error>> {
+    let raw = if provider == "ollama" {
+        data.get("embeddings")
+            .and_then(Value::as_array)
+            .and_then(|values| values.first())
+            .and_then(Value::as_array)
+    } else {
+        data.get("data")
+            .and_then(Value::as_array)
+            .and_then(|values| values.first())
+            .and_then(|item| item.get("embedding"))
+            .and_then(Value::as_array)
+    };
+    let raw = raw.ok_or("Embedding response had no vector")?;
+    raw.iter()
+        .map(|value| {
+            value
+                .as_f64()
+                .map(|number| number as f32)
+                .ok_or_else(|| "Embedding response contained a non-numeric value".into())
+        })
+        .collect()
+}
+
+async fn embed_article(
+    client: &Client,
+    config: &LlmConfig,
+    embedding_model: &str,
+    article: &ArticleCandidate,
+) -> Result<(Vec<f32>, i64), Box<dyn Error>> {
+    let input = truncate(
+        &format!("{}\n{}", article.title, article.summary),
+        MAX_INPUT_CHARS,
+    );
+    let base_url = config.base_url.trim_end_matches('/');
+    let (url, payload) = if config.provider == "ollama" {
+        (
+            format!("{base_url}/api/embed"),
+            json!({"model": embedding_model, "input": input}),
+        )
+    } else {
+        (
+            format!("{base_url}/embeddings"),
+            json!({"model": embedding_model, "input": [input]}),
+        )
+    };
+    let mut request = client.post(url).json(&payload);
+    if let Some(api_key) = &config.api_key {
+        request = request.bearer_auth(api_key);
+    }
+    let response = request.send().await?;
+    if !response.status().is_success() {
+        return Err(format!("Embedding request failed with HTTP {}", response.status()).into());
+    }
+    let data: Value = response.json().await?;
+    let vector = embedding_vector(&config.provider, &data)?;
+    Ok((vector, estimated_tokens(&input)))
+}
+
+/// Zero-pads (or rejects, if too long) `vector` to exactly `target_dim`
+/// elements and packs it into the little-endian byte layout sqlite-vec's
+/// `float[N]` columns expect.
+fn pack_embedding(vector: &[f32], target_dim: usize) -> Result<Vec<u8>, Box<dyn Error>> {
+    if vector.len() > target_dim {
+        return Err(format!(
+            "Embedding model produced {} dimensions, which exceeds the supported maximum of {}",
+            vector.len(),
+            target_dim
+        )
+        .into());
+    }
+    let mut bytes = Vec::with_capacity(target_dim * 4);
+    for index in 0..target_dim {
+        let value = vector.get(index).copied().unwrap_or(0.0);
+        bytes.extend_from_slice(&value.to_le_bytes());
+    }
+    Ok(bytes)
+}
+
+fn save_embedding(
+    conn: &Connection,
+    article: &ArticleCandidate,
+    embedding_model: &str,
+    hash: &str,
+    dim: usize,
+    packed: &[u8],
+) -> rusqlite::Result<()> {
+    conn.execute(
+        r#"
+        UPDATE article_ai_analyses SET
+          embedding = ?,
+          embedding_content_hash = ?,
+          embedding_model = ?,
+          embedding_dim = ?,
+          embedding_updated_at = datetime('now')
+        WHERE source_type = ? AND article_id = ?
+        "#,
+        params![
+            packed,
+            hash,
+            embedding_model,
+            dim as i64,
+            article.source_type,
+            article.article_id
+        ],
+    )?;
+    let analysis_id: i64 = conn.query_row(
+        "SELECT id FROM article_ai_analyses WHERE source_type = ? AND article_id = ?",
+        params![article.source_type, article.article_id],
+        |row| row.get(0),
+    )?;
+    conn.execute(
+        "DELETE FROM article_ai_embeddings WHERE analysis_id = ?",
+        params![analysis_id],
+    )?;
+    conn.execute(
+        "INSERT INTO article_ai_embeddings(analysis_id, embedding) VALUES (?, ?)",
+        params![analysis_id, packed],
+    )?;
+    Ok(())
+}
+
 fn record_usage(
     conn: &Connection,
     article: &ArticleCandidate,
@@ -563,7 +772,9 @@ async fn run_article_analysis_with_mode(
         eprintln!("Skipping AI article analysis: another analysis is already running");
         return Ok(AnalysisRunReport::default());
     };
-    let client = Client::builder().timeout(Duration::from_secs(60)).build()?;
+    let client = Client::builder()
+        .timeout(Duration::from_secs(config.timeout_seconds))
+        .build()?;
     let candidates = load_candidates(conn, &settings)?;
     let mut used_tokens = used_tokens_today(conn)?;
     let mut report = AnalysisRunReport::default();
@@ -571,23 +782,34 @@ async fn run_article_analysis_with_mode(
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
-    let mut articles_to_analyze = Vec::new();
+    let mut articles_to_process = Vec::new();
     for article in candidates {
         let hash = content_hash(&article);
-        let current = article.existing_hash.as_deref() == Some(&hash)
+        let analysis_current = article.existing_hash.as_deref() == Some(&hash)
             && article.existing_model.as_deref() == Some(&config.model)
             && article.existing_prompt_version.as_deref() == Some(PROMPT_VERSION)
             && article.existing_status.as_deref() == Some("completed");
-        if current {
+        // Embedding staleness is independent of text-analysis staleness: an
+        // article can have a fresh analysis but a missing/stale embedding
+        // (embedding just configured or switched to a different model), or
+        // vice versa. When no embedding_model is configured, embeddings are
+        // "current" by definition — nothing to do, zero behavior change.
+        let embedding_current = config.embedding_model.is_none()
+            || (article.existing_embedding_hash.as_deref() == Some(&hash)
+                && article.existing_embedding_model.as_deref()
+                    == config.embedding_model.as_deref());
+        if analysis_current && embedding_current {
             report.skipped_current += 1;
             continue;
         }
-        articles_to_analyze.push((article, hash));
-        if articles_to_analyze.len() >= settings.max_articles_per_run {
+        let needs_analysis = !analysis_current;
+        let needs_embedding = !embedding_current;
+        articles_to_process.push((article, hash, needs_analysis, needs_embedding));
+        if articles_to_process.len() >= settings.max_articles_per_run {
             break;
         }
     }
-    let analysis_total = articles_to_analyze.len();
+    let analysis_total = articles_to_process.len();
     save_progress(
         conn,
         &AnalysisProgress {
@@ -607,14 +829,25 @@ async fn run_article_analysis_with_mode(
         analysis_total, settings.max_articles_per_run, used_tokens, settings.daily_token_limit
     );
 
-    for (article, hash) in articles_to_analyze {
+    for (article, hash, needs_analysis, needs_embedding) in articles_to_process {
         if cancellation_requested(conn, &run_lock.token)? {
             eprintln!("Stopping AI article analysis: cancellation requested");
             report.stopped_by_user = true;
             break;
         }
         let input = format!("{}\n{}", article.title, article.summary);
-        let estimated_input = estimated_tokens(&truncate(&input, MAX_INPUT_CHARS));
+        let truncated_input = truncate(&input, MAX_INPUT_CHARS);
+        let per_call_estimate = estimated_tokens(&truncated_input);
+        // Embedding calls share the same daily token budget as chat analysis
+        // (a deliberate choice: one shared budget is simpler to reason about
+        // than tracking/limiting embedding cost separately).
+        let mut estimated_input = 0i64;
+        if needs_analysis {
+            estimated_input += per_call_estimate;
+        }
+        if needs_embedding {
+            estimated_input += per_call_estimate;
+        }
         if used_tokens + estimated_input + RESERVED_OUTPUT_TOKENS > settings.daily_token_limit {
             eprintln!("Stopping AI article analysis: daily token limit reached");
             report.stopped_by_token_limit = true;
@@ -635,44 +868,105 @@ async fn run_article_analysis_with_mode(
             },
         )?;
         eprintln!(
-            "Analyzing article {}:{} ({}/{})",
+            "Processing article {}:{} ({}/{}, analysis={}, embedding={})",
             article.source_type,
             article.article_id,
             report.processed + 1,
-            settings.max_articles_per_run
+            settings.max_articles_per_run,
+            needs_analysis,
+            needs_embedding
         );
 
-        match analyze_article(&client, &config, &article).await {
-            Ok(result) => {
-                save_success(conn, &config, &article, &hash, &result)?;
-                record_usage(
-                    conn,
-                    &article,
-                    result.input_tokens,
-                    result.output_tokens,
-                    true,
-                )?;
-                used_tokens += result.input_tokens + result.output_tokens;
-                report.succeeded += 1;
-                eprintln!(
-                    "AI article analysis succeeded for {}:{} (input_tokens={}, output_tokens={})",
-                    article.source_type,
-                    article.article_id,
-                    result.input_tokens,
-                    result.output_tokens
-                );
+        let mut article_ok = true;
+
+        if needs_analysis {
+            match analyze_article(&client, &config, &article).await {
+                Ok(result) => {
+                    save_success(conn, &config, &article, &hash, &result)?;
+                    record_usage(
+                        conn,
+                        &article,
+                        result.input_tokens,
+                        result.output_tokens,
+                        true,
+                    )?;
+                    used_tokens += result.input_tokens + result.output_tokens;
+                    eprintln!(
+                        "AI article analysis succeeded for {}:{} (input_tokens={}, output_tokens={})",
+                        article.source_type,
+                        article.article_id,
+                        result.input_tokens,
+                        result.output_tokens
+                    );
+                }
+                Err(error) => {
+                    let message = error.to_string();
+                    save_failure(conn, &config, &article, &hash, &message, per_call_estimate)?;
+                    record_usage(conn, &article, per_call_estimate, 0, false)?;
+                    used_tokens += per_call_estimate;
+                    eprintln!(
+                        "AI article analysis failed for {}:{}: {}",
+                        article.source_type, article.article_id, message
+                    );
+                    article_ok = false;
+                }
             }
-            Err(error) => {
-                let message = error.to_string();
-                save_failure(conn, &config, &article, &hash, &message, estimated_input)?;
-                record_usage(conn, &article, estimated_input, 0, false)?;
-                used_tokens += estimated_input;
-                eprintln!(
-                    "AI article analysis failed for {}:{}: {}",
-                    article.source_type, article.article_id, message
-                );
-                report.failed += 1;
+        }
+
+        if needs_embedding {
+            // `needs_embedding` already implies `config.embedding_model` is set.
+            let embedding_model = config.embedding_model.as_deref().unwrap_or_default();
+            match embed_article(&client, &config, embedding_model, &article).await {
+                Ok((vector, input_tokens)) => {
+                    match pack_embedding(&vector, config.embedding_dim.unwrap_or(vector.len())) {
+                        Ok(packed) => {
+                            if let Err(error) = save_embedding(
+                                conn,
+                                &article,
+                                embedding_model,
+                                &hash,
+                                vector.len(),
+                                &packed,
+                            ) {
+                                eprintln!(
+                                    "Failed to save embedding for {}:{}: {}",
+                                    article.source_type, article.article_id, error
+                                );
+                                article_ok = false;
+                            } else {
+                                used_tokens += input_tokens;
+                                eprintln!(
+                                    "Embedding succeeded for {}:{} (dim={}, input_tokens={})",
+                                    article.source_type,
+                                    article.article_id,
+                                    vector.len(),
+                                    input_tokens
+                                );
+                            }
+                        }
+                        Err(error) => {
+                            eprintln!(
+                                "Failed to pack embedding for {}:{}: {}",
+                                article.source_type, article.article_id, error
+                            );
+                            article_ok = false;
+                        }
+                    }
+                }
+                Err(error) => {
+                    eprintln!(
+                        "Embedding failed for {}:{}: {}",
+                        article.source_type, article.article_id, error
+                    );
+                    article_ok = false;
+                }
             }
+        }
+
+        if article_ok {
+            report.succeeded += 1;
+        } else {
+            report.failed += 1;
         }
         report.processed += 1;
         save_progress(
@@ -711,15 +1005,172 @@ pub async fn run_article_analysis_manual(
     run_article_analysis_with_mode(conn, false).await
 }
 
+/// Forces a fresh analysis (and, if configured, embedding) of exactly one
+/// article, regardless of its current staleness — this is the on-demand
+/// "re-analyze" path triggered per-row from the Analyzed articles list,
+/// distinct from the scheduled/manual bulk runs above. Shares the same DB
+/// run lock as those, so it can't run concurrently with a bulk run.
+pub async fn run_single_article_analysis(
+    conn: &Connection,
+    source_type: &str,
+    article_id: i64,
+) -> Result<AnalysisRunReport, Box<dyn Error>> {
+    if source_type != "rss" && source_type != "custom" {
+        return Err(format!("Unknown source_type: {source_type}").into());
+    }
+    let settings = load_settings(conn, false)?.ok_or("Article analysis settings unavailable")?;
+    let config = load_llm_config(conn)?.ok_or("LLM settings are not configured")?;
+    let run_lock = acquire_run_lock(conn)?.ok_or("Article analysis is already running")?;
+    let article = load_candidate(conn, source_type, article_id)?
+        .ok_or_else(|| format!("Article {source_type}:{article_id} was not found"))?;
+
+    let client = Client::builder()
+        .timeout(Duration::from_secs(config.timeout_seconds))
+        .build()?;
+    let mut used_tokens = used_tokens_today(conn)?;
+    let mut report = AnalysisRunReport::default();
+    let started_at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let needs_embedding = config.embedding_model.is_some();
+
+    let hash = content_hash(&article);
+    let input = format!("{}\n{}", article.title, article.summary);
+    let per_call_estimate = estimated_tokens(&truncate(&input, MAX_INPUT_CHARS));
+    let mut estimated_input = per_call_estimate;
+    if needs_embedding {
+        estimated_input += per_call_estimate;
+    }
+    if used_tokens + estimated_input + RESERVED_OUTPUT_TOKENS > settings.daily_token_limit {
+        eprintln!("Skipping single-article re-analysis: daily token limit reached");
+        report.stopped_by_token_limit = true;
+        return Ok(report);
+    }
+
+    save_progress(
+        conn,
+        &AnalysisProgress {
+            total: 1,
+            processed: 0,
+            succeeded: 0,
+            failed: 0,
+            skipped_current: 0,
+            current_article_title: Some(&article.title),
+            tokens_used_today: used_tokens,
+            daily_token_limit: settings.daily_token_limit,
+            started_at,
+        },
+    )?;
+    eprintln!(
+        "Re-analyzing article {}:{} on demand",
+        article.source_type, article.article_id
+    );
+
+    let mut article_ok = true;
+    match analyze_article(&client, &config, &article).await {
+        Ok(result) => {
+            save_success(conn, &config, &article, &hash, &result)?;
+            record_usage(
+                conn,
+                &article,
+                result.input_tokens,
+                result.output_tokens,
+                true,
+            )?;
+            used_tokens += result.input_tokens + result.output_tokens;
+        }
+        Err(error) => {
+            let message = error.to_string();
+            save_failure(conn, &config, &article, &hash, &message, per_call_estimate)?;
+            record_usage(conn, &article, per_call_estimate, 0, false)?;
+            used_tokens += per_call_estimate;
+            eprintln!(
+                "AI article analysis failed for {}:{}: {}",
+                article.source_type, article.article_id, message
+            );
+            article_ok = false;
+        }
+    }
+
+    if needs_embedding {
+        let embedding_model = config.embedding_model.as_deref().unwrap_or_default();
+        match embed_article(&client, &config, embedding_model, &article).await {
+            Ok((vector, input_tokens)) => {
+                match pack_embedding(&vector, config.embedding_dim.unwrap_or(vector.len())) {
+                    Ok(packed) => {
+                        if let Err(error) = save_embedding(
+                            conn,
+                            &article,
+                            embedding_model,
+                            &hash,
+                            vector.len(),
+                            &packed,
+                        ) {
+                            eprintln!(
+                                "Failed to save embedding for {}:{}: {}",
+                                article.source_type, article.article_id, error
+                            );
+                            article_ok = false;
+                        } else {
+                            used_tokens += input_tokens;
+                        }
+                    }
+                    Err(error) => {
+                        eprintln!(
+                            "Failed to pack embedding for {}:{}: {}",
+                            article.source_type, article.article_id, error
+                        );
+                        article_ok = false;
+                    }
+                }
+            }
+            Err(error) => {
+                eprintln!(
+                    "Embedding failed for {}:{}: {}",
+                    article.source_type, article.article_id, error
+                );
+                article_ok = false;
+            }
+        }
+    }
+
+    report.processed = 1;
+    if article_ok {
+        report.succeeded = 1;
+    } else {
+        report.failed = 1;
+    }
+    save_progress(
+        conn,
+        &AnalysisProgress {
+            total: 1,
+            processed: 1,
+            succeeded: report.succeeded,
+            failed: report.failed,
+            skipped_current: 0,
+            current_article_title: None,
+            tokens_used_today: used_tokens,
+            daily_token_limit: settings.daily_token_limit,
+            started_at,
+        },
+    )?;
+    drop(run_lock);
+    Ok(report)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        ANALYSIS_CANCEL_KEY, AnalysisProgress, analysis_array, analysis_keywords, analysis_topics,
-        cancellation_requested, extract_json, run_article_analysis, run_article_analysis_manual,
-        save_progress, truncate,
+        ANALYSIS_CANCEL_KEY, AnalysisProgress, ArticleCandidate, DEFAULT_LLM_TIMEOUT_SECONDS,
+        PROMPT_VERSION, analysis_array, analysis_keywords, analysis_topics, cancellation_requested,
+        content_hash, ensure_vec_extension_registered, extract_json, load_llm_config,
+        pack_embedding, run_article_analysis, run_article_analysis_manual,
+        run_single_article_analysis, save_progress, truncate,
     };
     use rusqlite::Connection;
     use serde_json::json;
+    use std::time::Duration;
     use wiremock::{
         Mock, MockServer, ResponseTemplate,
         matchers::{method, path},
@@ -835,6 +1286,8 @@ mod tests {
               error_message TEXT, attempt_count INTEGER NOT NULL DEFAULT 1,
               analyzed_at TEXT NOT NULL DEFAULT (datetime('now')),
               updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+              embedding BLOB, embedding_content_hash TEXT, embedding_model TEXT,
+              embedding_dim INTEGER, embedding_updated_at TEXT,
               UNIQUE (source_type, article_id)
             );
             CREATE TABLE article_ai_analysis_usage (
@@ -896,6 +1349,475 @@ mod tests {
             .expect("check run lock cleanup"),
             0
         );
+    }
+
+    const SINGLE_ARTICLE_SCHEMA: &str = r#"
+        CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+        CREATE TABLE rss_feed_articles (
+          id INTEGER PRIMARY KEY, title TEXT, summary TEXT, published TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE TABLE news_site_articles (
+          id INTEGER PRIMARY KEY, title TEXT, summary TEXT, published TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE TABLE article_ai_analyses (
+          id INTEGER PRIMARY KEY, source_type TEXT NOT NULL, article_id INTEGER NOT NULL,
+          content_hash TEXT NOT NULL, model TEXT NOT NULL, prompt_version TEXT NOT NULL,
+          ai_summary TEXT, key_points_json TEXT NOT NULL DEFAULT '[]',
+          topics_json TEXT NOT NULL DEFAULT '[]', keywords_json TEXT NOT NULL DEFAULT '[]',
+          entities_json TEXT NOT NULL DEFAULT '[]', search_aliases_json TEXT NOT NULL DEFAULT '[]',
+          input_tokens INTEGER NOT NULL DEFAULT 0,
+          output_tokens INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL,
+          error_message TEXT, attempt_count INTEGER NOT NULL DEFAULT 1,
+          analyzed_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+          embedding BLOB, embedding_content_hash TEXT, embedding_model TEXT,
+          embedding_dim INTEGER, embedding_updated_at TEXT,
+          UNIQUE (source_type, article_id)
+        );
+        CREATE TABLE article_ai_analysis_usage (
+          id INTEGER PRIMARY KEY, source_type TEXT NOT NULL, article_id INTEGER NOT NULL,
+          input_tokens INTEGER NOT NULL, output_tokens INTEGER NOT NULL,
+          successful INTEGER NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+    "#;
+
+    #[tokio::test]
+    async fn reanalyzes_a_single_article_even_when_its_analysis_is_already_current() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "choices": [{
+                    "message": {
+                        "content": "{\"summary\":\"Refreshed summary\",\"key_points\":[\"Point\"],\"topics\":[\"AI & Machine Learning\"],\"keywords\":[\"agent\",\"reliability\",\"automation\"],\"entities\":[\"Shiori Feed\"],\"search_aliases\":[\"AIエージェント\",\"信頼性\",\"自動化\"]}"
+                    }
+                }],
+                "usage": {"prompt_tokens": 50, "completion_tokens": 20}
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let conn = Connection::open_in_memory().expect("open database");
+        conn.execute_batch(SINGLE_ARTICLE_SCHEMA)
+            .expect("create analysis schema");
+        conn.execute_batch(
+            r#"
+            INSERT INTO rss_feed_articles (id, title, summary)
+            VALUES (1, 'Agent systems', 'A saved article about reliable agents.');
+            INSERT INTO app_settings (key, value) VALUES
+              ('ai_article_analysis_daily_token_limit', '50000'),
+              ('llm_provider', 'openai'),
+              ('llm_model', 'test-model');
+            "#,
+        )
+        .expect("save settings");
+        conn.execute(
+            "INSERT INTO app_settings (key, value) VALUES ('llm_base_url', ?)",
+            [server.uri()],
+        )
+        .expect("save mock LLM URL");
+        // An existing analysis row whose hash/model/prompt_version already
+        // match what the article would hash to today — in the bulk-run path
+        // this would be `analysis_current` and get skipped. Re-analysis is
+        // an explicit per-article request, so it must run anyway.
+        let article = ArticleCandidate {
+            source_type: "rss".to_string(),
+            article_id: 1,
+            title: "Agent systems".to_string(),
+            summary: "A saved article about reliable agents.".to_string(),
+            existing_hash: None,
+            existing_model: None,
+            existing_prompt_version: None,
+            existing_status: None,
+            existing_embedding_hash: None,
+            existing_embedding_model: None,
+        };
+        let hash = content_hash(&article);
+        conn.execute(
+            &format!(
+                "INSERT INTO article_ai_analyses (
+                   source_type, article_id, content_hash, model, prompt_version, ai_summary,
+                   status, analyzed_at, updated_at
+                 ) VALUES ('rss', 1, ?, 'test-model', '{PROMPT_VERSION}', 'Stale summary',
+                           'completed', datetime('now'), datetime('now'))"
+            ),
+            [hash],
+        )
+        .expect("insert existing analysis");
+
+        let report = run_single_article_analysis(&conn, "rss", 1)
+            .await
+            .expect("re-analyze single article");
+
+        assert_eq!(report.processed, 1);
+        assert_eq!(report.succeeded, 1);
+        assert_eq!(report.failed, 0);
+        let summary: String = conn
+            .query_row(
+                "SELECT ai_summary FROM article_ai_analyses \
+                 WHERE source_type = 'rss' AND article_id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("load refreshed summary");
+        assert_eq!(summary, "Refreshed summary");
+        assert_eq!(
+            conn.query_row(
+                "SELECT count(*) FROM app_settings WHERE key = 'ai_article_analysis_running'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("check run lock cleanup"),
+            0
+        );
+    }
+
+    #[test]
+    fn load_llm_config_reads_and_clamps_the_configured_timeout() {
+        let conn = Connection::open_in_memory().expect("open database");
+        conn.execute_batch(
+            r#"
+            CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+            INSERT INTO app_settings (key, value) VALUES
+              ('llm_provider', 'openai'),
+              ('llm_base_url', 'http://localhost'),
+              ('llm_model', 'test-model');
+            "#,
+        )
+        .expect("create settings table");
+
+        // Missing setting -> the same default api/services/llm_service.py uses.
+        let default_config = load_llm_config(&conn)
+            .expect("load config")
+            .expect("config present");
+        assert_eq!(default_config.timeout_seconds, DEFAULT_LLM_TIMEOUT_SECONDS);
+
+        // A configured value in range must reach LlmConfig unchanged (both
+        // call sites build their Client from exactly this field — see
+        // `Client::builder().timeout(Duration::from_secs(config.timeout_seconds))`
+        // in run_article_analysis_with_mode / run_single_article_analysis).
+        conn.execute(
+            "INSERT INTO app_settings (key, value) VALUES ('llm_request_timeout_seconds', '15') \
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            [],
+        )
+        .expect("save timeout setting");
+        let configured = load_llm_config(&conn)
+            .expect("load config")
+            .expect("config present");
+        assert_eq!(configured.timeout_seconds, 15);
+        // Sanity-check the Duration conversion our call sites perform too.
+        assert_eq!(
+            Duration::from_secs(configured.timeout_seconds),
+            Duration::from_secs(15)
+        );
+
+        // Out-of-range values (a corrupted or hand-edited setting) must
+        // clamp rather than produce a nonsensical or panicking Duration.
+        conn.execute(
+            "UPDATE app_settings SET value = '0' WHERE key = 'llm_request_timeout_seconds'",
+            [],
+        )
+        .expect("save too-low timeout setting");
+        assert_eq!(
+            load_llm_config(&conn)
+                .expect("load config")
+                .expect("config present")
+                .timeout_seconds,
+            5
+        );
+        conn.execute(
+            "UPDATE app_settings SET value = '999999' WHERE key = 'llm_request_timeout_seconds'",
+            [],
+        )
+        .expect("save too-high timeout setting");
+        assert_eq!(
+            load_llm_config(&conn)
+                .expect("load config")
+                .expect("config present")
+                .timeout_seconds,
+            600
+        );
+    }
+
+    #[tokio::test]
+    async fn reanalyzing_an_unknown_article_returns_an_error() {
+        let conn = Connection::open_in_memory().expect("open database");
+        conn.execute_batch(SINGLE_ARTICLE_SCHEMA)
+            .expect("create analysis schema");
+        conn.execute_batch(
+            r#"
+            INSERT INTO app_settings (key, value) VALUES
+              ('llm_provider', 'openai'),
+              ('llm_model', 'test-model'),
+              ('llm_base_url', 'http://localhost:1');
+            "#,
+        )
+        .expect("save settings");
+
+        let error = run_single_article_analysis(&conn, "rss", 999)
+            .await
+            .expect_err("missing article should error");
+        assert!(error.to_string().contains("was not found"));
+    }
+
+    #[tokio::test]
+    async fn reanalyzing_while_a_run_is_in_progress_is_rejected() {
+        let conn = Connection::open_in_memory().expect("open database");
+        conn.execute_batch(SINGLE_ARTICLE_SCHEMA)
+            .expect("create analysis schema");
+        conn.execute_batch(
+            r#"
+            INSERT INTO rss_feed_articles (id, title, summary)
+            VALUES (1, 'Agent systems', 'A saved article about reliable agents.');
+            INSERT INTO app_settings (key, value) VALUES
+              ('llm_provider', 'openai'),
+              ('llm_model', 'test-model'),
+              ('llm_base_url', 'http://localhost:1'),
+              ('ai_article_analysis_running', '9999999999:1');
+            "#,
+        )
+        .expect("save settings");
+
+        let error = run_single_article_analysis(&conn, "rss", 1)
+            .await
+            .expect_err("concurrent run should be rejected");
+        assert!(error.to_string().contains("already running"));
+    }
+
+    /// Schema shared by the embedding-focused tests: same as
+    /// `analyzes_a_saved_article_and_records_actual_usage`'s fixture, plus
+    /// the vec0 virtual table, requiring the extension to be registered
+    /// before `Connection::open_in_memory()`.
+    fn build_embedding_test_db() -> Connection {
+        ensure_vec_extension_registered();
+        let conn = Connection::open_in_memory().expect("open database");
+        conn.execute_batch(
+            r#"
+            CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+            CREATE TABLE rss_feed_articles (
+              id INTEGER PRIMARY KEY, title TEXT, summary TEXT, published TEXT,
+              created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            CREATE TABLE news_site_articles (
+              id INTEGER PRIMARY KEY, title TEXT, summary TEXT, published TEXT,
+              created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            CREATE TABLE article_ai_analyses (
+              id INTEGER PRIMARY KEY, source_type TEXT NOT NULL, article_id INTEGER NOT NULL,
+              content_hash TEXT NOT NULL, model TEXT NOT NULL, prompt_version TEXT NOT NULL,
+              ai_summary TEXT, key_points_json TEXT NOT NULL DEFAULT '[]',
+              topics_json TEXT NOT NULL DEFAULT '[]', keywords_json TEXT NOT NULL DEFAULT '[]',
+              entities_json TEXT NOT NULL DEFAULT '[]', search_aliases_json TEXT NOT NULL DEFAULT '[]',
+              input_tokens INTEGER NOT NULL DEFAULT 0,
+              output_tokens INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL,
+              error_message TEXT, attempt_count INTEGER NOT NULL DEFAULT 1,
+              analyzed_at TEXT NOT NULL DEFAULT (datetime('now')),
+              updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+              embedding BLOB, embedding_content_hash TEXT, embedding_model TEXT,
+              embedding_dim INTEGER, embedding_updated_at TEXT,
+              UNIQUE (source_type, article_id)
+            );
+            CREATE TABLE article_ai_analysis_usage (
+              id INTEGER PRIMARY KEY, source_type TEXT NOT NULL, article_id INTEGER NOT NULL,
+              input_tokens INTEGER NOT NULL, output_tokens INTEGER NOT NULL,
+              successful INTEGER NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            CREATE VIRTUAL TABLE article_ai_embeddings USING vec0(
+              analysis_id INTEGER PRIMARY KEY,
+              embedding FLOAT[8]
+            );
+            "#,
+        )
+        .expect("create analysis schema");
+        conn
+    }
+
+    #[tokio::test]
+    async fn embedding_is_skipped_when_not_configured() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "choices": [{
+                    "message": {
+                        "content": "{\"summary\":\"AI summary\",\"key_points\":[\"Point\"],\"topics\":[\"AI & Machine Learning\"],\"keywords\":[\"agent\",\"reliability\",\"automation\"],\"entities\":[\"Shiori Feed\"],\"search_aliases\":[\"AIエージェント\",\"信頼性\",\"自動化\"]}"
+                    }
+                }],
+                "usage": {"prompt_tokens": 120, "completion_tokens": 30}
+            })))
+            .mount(&server)
+            .await;
+        // No /embeddings mock is mounted at all: if the code under test ever
+        // called it, wiremock would return a 404 and the whole run would
+        // report a failure, which the assertions below would catch.
+
+        let conn = build_embedding_test_db();
+        conn.execute(
+            "INSERT INTO rss_feed_articles (id, title, summary) VALUES (1, 'Agent systems', 'A saved article about reliable agents.')",
+            [],
+        )
+        .expect("insert article");
+        conn.execute_batch(
+            r#"
+            INSERT INTO app_settings (key, value) VALUES
+              ('ai_article_analysis_enabled', '0'),
+              ('ai_article_analysis_max_articles_per_run', '5'),
+              ('ai_article_analysis_daily_token_limit', '50000'),
+              ('ai_article_analysis_lookback_days', '30'),
+              ('llm_provider', 'openai'),
+              ('llm_model', 'test-model');
+            "#,
+        )
+        .expect("save settings");
+        conn.execute(
+            "INSERT INTO app_settings (key, value) VALUES ('llm_base_url', ?)",
+            [server.uri()],
+        )
+        .expect("save mock LLM URL");
+        // Deliberately no 'embedding_model' setting row: config.embedding_model
+        // must come back None, and the embedding branch must never run.
+
+        let report = run_article_analysis_manual(&conn)
+            .await
+            .expect("analyze article manually");
+
+        assert_eq!(report.succeeded, 1);
+        assert_eq!(report.failed, 0);
+        let embedding: Option<Vec<u8>> = conn
+            .query_row(
+                "SELECT embedding FROM article_ai_analyses WHERE source_type = 'rss' AND article_id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("load embedding column");
+        assert!(embedding.is_none(), "embedding must stay NULL when unset");
+    }
+
+    #[tokio::test]
+    async fn enabling_embedding_model_only_embeds_already_analyzed_articles() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+            .expect(0)
+            .mount(&server)
+            .await;
+        let embedding_vector: Vec<f32> = (0..8).map(|index| index as f32 * 0.1).collect();
+        Mock::given(method("POST"))
+            .and(path("/embeddings"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "data": [{"embedding": embedding_vector}]
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let conn = build_embedding_test_db();
+        conn.execute(
+            "INSERT INTO rss_feed_articles (id, title, summary) VALUES (1, 'Agent systems', 'A saved article about reliable agents.')",
+            [],
+        )
+        .expect("insert article");
+        // Pre-populate a *completed* analysis whose content_hash/model/prompt_version
+        // already match what the current run would compute, so analysis_current is
+        // true and analyze_article (the chat completion call) must NOT be re-run.
+        let hash = super::content_hash(&super::ArticleCandidate {
+            source_type: "rss".to_string(),
+            article_id: 1,
+            title: "Agent systems".to_string(),
+            summary: "A saved article about reliable agents.".to_string(),
+            existing_hash: None,
+            existing_model: None,
+            existing_prompt_version: None,
+            existing_status: None,
+            existing_embedding_hash: None,
+            existing_embedding_model: None,
+        });
+        conn.execute(
+            "INSERT INTO article_ai_analyses (source_type, article_id, content_hash, model, prompt_version, status) \
+             VALUES ('rss', 1, ?, 'test-model', ?, 'completed')",
+            rusqlite::params![hash, super::PROMPT_VERSION],
+        )
+        .expect("seed existing analysis");
+        conn.execute_batch(
+            r#"
+            INSERT INTO app_settings (key, value) VALUES
+              ('ai_article_analysis_enabled', '0'),
+              ('ai_article_analysis_max_articles_per_run', '5'),
+              ('ai_article_analysis_daily_token_limit', '50000'),
+              ('ai_article_analysis_lookback_days', '30'),
+              ('llm_provider', 'openai'),
+              ('llm_model', 'test-model'),
+              ('embedding_model', 'test-embedding-model');
+            "#,
+        )
+        .expect("save settings");
+        conn.execute(
+            "INSERT INTO app_settings (key, value) VALUES ('llm_base_url', ?)",
+            [server.uri()],
+        )
+        .expect("save mock LLM URL");
+
+        let report = run_article_analysis_manual(&conn)
+            .await
+            .expect("analyze article manually");
+
+        assert_eq!(report.succeeded, 1);
+        assert_eq!(report.failed, 0);
+        assert_eq!(report.skipped_current, 0);
+        let (embedding_model, embedding_dim): (String, i64) = conn
+            .query_row(
+                "SELECT embedding_model, embedding_dim FROM article_ai_analyses WHERE source_type = 'rss' AND article_id = 1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("load embedding metadata");
+        assert_eq!(embedding_model, "test-embedding-model");
+        assert_eq!(embedding_dim, 8);
+        // article_ai_analyses.model/ai_summary must be untouched (chat mock
+        // was never called) even though the row was written before this run.
+        let model: String = conn
+            .query_row(
+                "SELECT model FROM article_ai_analyses WHERE source_type = 'rss' AND article_id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("load model");
+        assert_eq!(model, "test-model");
+    }
+
+    #[test]
+    fn pack_embedding_zero_pads_shorter_vectors() {
+        let vector = vec![1.0_f32, 2.0, 3.0];
+        let packed = pack_embedding(&vector, 8).expect("pack shorter vector");
+        assert_eq!(packed.len(), 8 * 4);
+        let mut floats = packed
+            .chunks_exact(4)
+            .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
+        assert_eq!(floats.next(), Some(1.0));
+        assert_eq!(floats.next(), Some(2.0));
+        assert_eq!(floats.next(), Some(3.0));
+        for _ in 3..8 {
+            assert_eq!(floats.next(), Some(0.0));
+        }
+    }
+
+    #[test]
+    fn pack_embedding_passes_through_an_exact_length_vector() {
+        const DIM: usize = 4096;
+        let vector = vec![0.5_f32; DIM];
+        let packed = pack_embedding(&vector, DIM).expect("pack exact vector");
+        assert_eq!(packed.len(), DIM * 4);
+    }
+
+    #[test]
+    fn pack_embedding_rejects_a_too_long_vector() {
+        let vector = vec![0.1_f32; 9];
+        assert!(pack_embedding(&vector, 8).is_err());
     }
 
     #[test]

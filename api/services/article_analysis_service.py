@@ -10,7 +10,7 @@ from pathlib import Path
 from fastapi import HTTPException
 from pydantic import ValidationError
 
-from api.database import get_db
+from api.database import get_db, load_vec_extension
 from api.model.models import (
     SettingsAIArticleAnalysisCancelResponse,
     SettingsAIArticleAnalysisClearResponse,
@@ -22,25 +22,26 @@ _manual_run_lock = threading.Lock()
 _REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 _logger = logging.getLogger("uvicorn.error")
 _RUN_TIMEOUT_SECONDS = 7200
+_SINGLE_ARTICLE_RUN_TIMEOUT_SECONDS = 300
 _RUN_LOCK_KEY = "ai_article_analysis_running"
 _PROGRESS_KEY = "ai_article_analysis_progress"
 _CANCEL_KEY = "ai_article_analysis_cancel_requested"
 
 
-def _batch_command() -> list[str]:
+def _batch_binary() -> str:
     configured = os.environ.get("SHIORI_FEED_BATCH_BIN")
     if configured:
-        return [configured, "--article-analysis-only"]
+        return configured
 
     development_binary = (
         _REPOSITORY_ROOT / "batch" / "target" / "debug" / "shiori-feed-batch"
     )
     if development_binary.is_file() and os.access(development_binary, os.X_OK):
-        return [str(development_binary), "--article-analysis-only"]
+        return str(development_binary)
 
     installed = shutil.which("shiori-feed-batch")
     if installed:
-        return [installed, "--article-analysis-only"]
+        return installed
 
     raise HTTPException(
         status_code=503,
@@ -49,6 +50,14 @@ def _batch_command() -> list[str]:
             "Run `cargo build --manifest-path batch/Cargo.toml` first."
         ),
     )
+
+
+def _batch_command() -> list[str]:
+    return [_batch_binary(), "--article-analysis-only"]
+
+
+def _batch_command_for_article(source_type: str, article_id: int) -> list[str]:
+    return [_batch_binary(), f"--reanalyze-article={source_type}:{article_id}"]
 
 
 def _parse_run_lock(value: str) -> tuple[int, int | None] | None:
@@ -131,6 +140,15 @@ class ArticleAnalysisService:
             row = conn.execute("SELECT COUNT(*) AS total FROM article_ai_analyses").fetchone()
             cleared_count = int(row["total"]) if row else 0
             conn.execute("DELETE FROM article_ai_analyses")
+            # article_ai_embeddings has no FK/trigger tying it to
+            # article_ai_analyses (see the migration comment), so orphaned
+            # vectors are swept up explicitly here, the one place that bulk
+            # deletes analyses.
+            load_vec_extension(conn)
+            conn.execute(
+                "DELETE FROM article_ai_embeddings "
+                "WHERE analysis_id NOT IN (SELECT id FROM article_ai_analyses)"
+            )
         return SettingsAIArticleAnalysisClearResponse(cleared_count=cleared_count)
 
     def _status_response(self, running: bool) -> SettingsAIArticleAnalysisStatusResponse:
@@ -206,6 +224,19 @@ class ArticleAnalysisService:
         return self._status_response(running)
 
     def run_manual(self) -> SettingsAIArticleAnalysisRunResponse:
+        return self._execute(_batch_command(), _RUN_TIMEOUT_SECONDS)
+
+    def run_single(
+        self, source_type: str, article_id: int
+    ) -> SettingsAIArticleAnalysisRunResponse:
+        return self._execute(
+            _batch_command_for_article(source_type, article_id),
+            _SINGLE_ARTICLE_RUN_TIMEOUT_SECONDS,
+        )
+
+    def _execute(
+        self, command: list[str], timeout_seconds: int
+    ) -> SettingsAIArticleAnalysisRunResponse:
         if not _manual_run_lock.acquire(blocking=False):
             raise HTTPException(
                 status_code=409, detail="Article analysis is already running"
@@ -216,7 +247,7 @@ class ArticleAnalysisService:
                 conn.execute("DELETE FROM app_settings WHERE key = ?", (_PROGRESS_KEY,))
             try:
                 process = subprocess.Popen(
-                    _batch_command(),
+                    command,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     text=True,
@@ -232,11 +263,11 @@ class ArticleAnalysisService:
                 timed_out.set()
                 process.kill()
 
-            timeout = threading.Timer(_RUN_TIMEOUT_SECONDS, terminate_on_timeout)
+            timeout = threading.Timer(timeout_seconds, terminate_on_timeout)
             timeout.start()
             output_lines: list[str] = []
             report: SettingsAIArticleAnalysisRunResponse | None = None
-            _logger.info("Starting manual AI article analysis")
+            _logger.info("Starting AI article analysis: %s", command)
             try:
                 if process.stdout is None:
                     raise HTTPException(
@@ -277,7 +308,7 @@ class ArticleAnalysisService:
                     detail="Article analysis returned an invalid result",
                 )
             _logger.info(
-                "Manual AI article analysis completed: processed=%d succeeded=%d failed=%d skipped=%d",
+                "AI article analysis completed: processed=%d succeeded=%d failed=%d skipped=%d",
                 report.processed,
                 report.succeeded,
                 report.failed,

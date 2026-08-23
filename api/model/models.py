@@ -555,6 +555,8 @@ class LLMSettingsUpdate(BaseModel):
     api_key: str | None = None
     clear_api_key: bool = False
     model: str = PydField(min_length=1)
+    embedding_model: str | None = None
+    timeout_seconds: int = PydField(default=90, ge=5, le=600)
 
     @field_validator("model")
     @classmethod
@@ -571,12 +573,21 @@ class LLMSettingsUpdate(BaseModel):
             return value
         return value.strip() or None
 
+    @field_validator("embedding_model")
+    @classmethod
+    def normalize_embedding_model(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        return value.strip() or None
+
 
 class LLMSettingsResponse(BaseModel):
     provider: str
     base_url: str
     api_key_configured: bool
     model: str
+    embedding_model: str | None = None
+    timeout_seconds: int = 90
 
 
 class LLMSettingsTestRequest(BaseModel):
@@ -585,6 +596,8 @@ class LLMSettingsTestRequest(BaseModel):
     api_key: str | None = None
     clear_api_key: bool = False
     model: str | None = None
+    embedding_model: str | None = None
+    timeout_seconds: int | None = PydField(default=None, ge=5, le=600)
 
 
 class LLMSettingsTestResponse(BaseModel):

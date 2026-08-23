@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from datetime import datetime, timezone
 
@@ -17,10 +18,19 @@ from api.model.models import (
 from api.repositories.article_search_repo import ArticleSearchRepository
 from api.repositories.settings_repo import SettingsRepository
 from api.services.llm_service import (
+    LLMConfig,
     chat_completion,
     chat_completion_stream,
+    embeddings,
     load_llm_config,
 )
+
+logger = logging.getLogger(__name__)
+
+# Reciprocal Rank Fusion constant: combines the FTS/BM25 result list with the
+# vector-search result list without needing to calibrate BM25's unbounded
+# scores against cosine/L2 distance on a common scale.
+RRF_RANK_CONSTANT = 60
 
 MAX_SEARCH_RESULTS = 20
 MAX_ANSWER_SOURCES = 10
@@ -116,7 +126,7 @@ class AskAIService:
             context_rows = self._referenced_context_rows(message, context_sources)
             plan = self._create_search_plan(config, message, history)
             rows = context_rows or self._search_with_fallback(
-                ArticleSearchRepository(conn), message, plan
+                config, ArticleSearchRepository(conn), message, plan
             )
 
         if not rows:
@@ -164,7 +174,7 @@ class AskAIService:
             context_rows = self._referenced_context_rows(message, context_sources)
             plan = self._create_search_plan(config, message, history)
             rows = context_rows or self._search_with_fallback(
-                ArticleSearchRepository(conn), message, plan
+                config, ArticleSearchRepository(conn), message, plan
             )
 
         answer_rows = (
@@ -357,8 +367,52 @@ class AskAIService:
             return None
         return phrase
 
+    @staticmethod
+    def _row_key(row: dict) -> tuple[str, int]:
+        return (row["source_type"], int(row["article_id"]))
+
+    @classmethod
+    def _fuse_ranked_rows(cls, result_lists: list[list[dict]]) -> list[dict]:
+        """Reciprocal Rank Fusion: merges result lists that use incomparable
+        scoring scales (BM25 vs. cosine/L2 distance) by rank alone."""
+        scores: dict[tuple[str, int], float] = {}
+        row_by_key: dict[tuple[str, int], dict] = {}
+        for rows in result_lists:
+            for rank, row in enumerate(rows, start=1):
+                key = cls._row_key(row)
+                scores[key] = scores.get(key, 0.0) + 1.0 / (RRF_RANK_CONSTANT + rank)
+                row_by_key.setdefault(key, row)
+        return [
+            row_by_key[key]
+            for key in sorted(scores, key=lambda key: scores[key], reverse=True)
+        ]
+
+    def _vector_search_rows(
+        self,
+        config: LLMConfig,
+        repo: ArticleSearchRepository,
+        message: str,
+        plan: ArticleSearchPlan,
+    ) -> list[dict]:
+        if not config.embedding_model:
+            return []
+        try:
+            query_embedding = embeddings(config, message)
+            return repo.vector_search(
+                query_embedding=query_embedding,
+                source_types=plan.source_types,
+                limit=MAX_SEARCH_RESULTS,
+            )
+        except Exception:
+            # Semantic search is an optional add-on to keyword search, not a
+            # replacement for it: a flaky embedding provider must degrade to
+            # keyword-only results rather than break Ask AI outright.
+            logger.warning("Vector search failed; falling back to keyword search only.")
+            return []
+
     def _search_with_fallback(
         self,
+        config: LLMConfig,
         repo: ArticleSearchRepository,
         message: str,
         plan: ArticleSearchPlan,
@@ -369,15 +423,16 @@ class AskAIService:
         published_before = (
             plan.published_before.isoformat() if plan.published_before else None
         )
-        rows = repo.search(
+        fts_rows = repo.search(
             keywords=plan.search_keywords,
             source_types=plan.source_types,
             published_after=published_after,
             published_before=published_before,
             limit=MAX_SEARCH_RESULTS,
         )
-        if rows:
-            return rows
+        vector_rows = self._vector_search_rows(config, repo, message, plan)
+        if fts_rows or vector_rows:
+            return self._fuse_ranked_rows([fts_rows, vector_rows])[:MAX_SEARCH_RESULTS]
 
         relaxed_keywords = list(
             dict.fromkeys([*plan.search_keywords, *self._literal_query_tokens(message)])

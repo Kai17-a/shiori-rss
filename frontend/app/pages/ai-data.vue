@@ -172,7 +172,7 @@
                     {{ analysis.source_title }} · {{ formatDateTime(analysis.analyzed_at) }}
                   </p>
                 </div>
-                <div class="flex shrink-0 flex-wrap gap-2">
+                <div class="flex shrink-0 flex-wrap items-center gap-2">
                   <UBadge
                     :color="analysis.status === 'completed' ? 'success' : 'error'"
                     variant="soft"
@@ -182,6 +182,18 @@
                   <UBadge color="neutral" variant="soft">
                     {{ analysis.source_type === 'rss' ? 'RSS feed' : 'Custom RSS' }}
                   </UBadge>
+                  <UButton
+                    label="Re-analyze"
+                    aria-label="Re-analyze this article"
+                    icon="i-lucide-refresh-cw"
+                    loading-icon="i-lucide-loader-circle"
+                    size="xs"
+                    color="neutral"
+                    variant="soft"
+                    :loading="reanalyzingKeys.has(articleKey(analysis))"
+                    :disabled="analysisRunning || reanalyzingKeys.has(articleKey(analysis))"
+                    @click="reanalyzeArticle(analysis)"
+                  />
                 </div>
               </div>
 
@@ -254,6 +266,7 @@ import type {
   AIAnalysisSourceType,
   AIAnalysisStatus,
   AIArticleAnalysisListResponse,
+  AIArticleAnalysisResponse,
   AIArticleAnalysisDeleteFailedResponse,
   SettingsAIArticleAnalysisRunResponse,
   SettingsAIArticleAnalysisCancelResponse,
@@ -316,6 +329,43 @@ const analysisProgressPercent = computed(() => analysisStatus.value.total
 const analysisProgressDescription = computed(() => analysisStatus.value.total
   ? `${analysisStopping.value || analysisStatus.value.stopping ? "Stopping after the current article" : "Analyzing saved articles"}: ${analysisStatus.value.processed} of ${analysisStatus.value.total} processed.`
   : "Preparing saved articles for analysis. This page updates automatically.");
+
+const reanalyzingKeys = ref(new Set<string>());
+const articleKey = (analysis: AIArticleAnalysisResponse) =>
+  `${analysis.source_type}:${analysis.article_id}`;
+
+const reanalyzeArticle = async (analysis: AIArticleAnalysisResponse) => {
+  const key = articleKey(analysis);
+  if (analysisRunning.value || reanalyzingKeys.value.has(key)) return;
+  reanalyzingKeys.value = new Set(reanalyzingKeys.value).add(key);
+  try {
+    const response = await request<SettingsAIArticleAnalysisRunResponse>(
+      `/settings/ai-article-analysis/${analysis.source_type}/${analysis.article_id}/execute`,
+      { method: "POST" },
+    );
+    toast.show({
+      title: response.stopped_by_token_limit
+        ? "Re-analysis stopped at the daily token limit."
+        : response.succeeded
+          ? "Article re-analyzed."
+          : "Article re-analysis failed.",
+      color: response.succeeded ? "success" : "warning",
+      icon: response.succeeded ? "i-lucide-check" : "i-lucide-triangle-alert",
+    });
+    await loadAnalyses();
+  } catch (error) {
+    toast.show({
+      title: "Failed to re-analyze article.",
+      description: error instanceof Error ? error.message : undefined,
+      color: "error",
+      icon: "i-lucide-circle-alert",
+    });
+  } finally {
+    const next = new Set(reanalyzingKeys.value);
+    next.delete(key);
+    reanalyzingKeys.value = next;
+  }
+};
 
 const deleteFailedAnalyses = async () => {
   if (deletingFailed.value || analysisRunning.value) return;

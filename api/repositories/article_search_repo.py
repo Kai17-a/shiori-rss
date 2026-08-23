@@ -1,5 +1,9 @@
 import sqlite3
 
+from api.database import load_vec_extension, pack_embedding
+from api.repositories.settings_repo import SettingsRepository
+from api.services.llm_service import LLM_EMBEDDING_DIM_SETTING_KEY
+
 
 class ArticleSearchRepository:
     def __init__(self, conn: sqlite3.Connection) -> None:
@@ -130,5 +134,59 @@ class ArticleSearchRepository:
             LIMIT ?
             """,
             [*params, limit],
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def vector_search(
+        self,
+        *,
+        query_embedding: list[float],
+        source_types: list[str],
+        limit: int,
+    ) -> list[dict]:
+        """Semantic (embedding) KNN search, mirroring search()'s return shape
+        exactly (same columns, `relevance` reused as the sort key — lower is
+        "better" for both BM25 and this method's cosine/L2 distance) so
+        callers can treat rows from either method identically.
+        """
+        load_vec_extension(self.conn)
+        dim = SettingsRepository(self.conn).get_int(
+            LLM_EMBEDDING_DIM_SETTING_KEY, len(query_embedding)
+        )
+        packed = pack_embedding(query_embedding, dim)
+        source_type_filter = ""
+        params: list[object] = [packed, limit * 4 if source_types else limit]
+        if source_types:
+            placeholders = ", ".join("?" for _ in source_types)
+            source_type_filter = f"AND analyses.source_type IN ({placeholders})"
+        rows = self.conn.execute(
+            f"""
+            WITH knn AS (
+              SELECT analysis_id, distance
+              FROM article_ai_embeddings
+              WHERE embedding MATCH ?
+              ORDER BY distance
+              LIMIT ?
+            )
+            SELECT article_search.source_type,
+                   CAST(article_search.article_id AS INTEGER) AS article_id,
+                   CAST(article_search.source_id AS INTEGER) AS source_id,
+                   article_search.source_title, article_search.title,
+                   article_search.summary, article_search.url,
+                   article_search.published, article_search.created_at,
+                   analyses.ai_summary, analyses.key_points_json,
+                   analyses.topics_json, analyses.keywords_json,
+                   analyses.entities_json, analyses.search_aliases_json,
+                   knn.distance AS relevance
+            FROM knn
+            JOIN article_ai_analyses AS analyses ON analyses.id = knn.analysis_id
+            JOIN article_search
+              ON article_search.source_type = analyses.source_type
+             AND CAST(article_search.article_id AS INTEGER) = analyses.article_id
+            WHERE analyses.status = 'completed' {source_type_filter}
+            ORDER BY knn.distance ASC
+            LIMIT ?
+            """,
+            [*params, *source_types, limit],
         ).fetchall()
         return [dict(row) for row in rows]

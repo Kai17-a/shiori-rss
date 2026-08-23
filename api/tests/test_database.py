@@ -2,8 +2,44 @@ import sqlite3
 import tempfile
 from contextlib import contextmanager
 
-from api.database import initialize_database
+from api.database import (
+    PLACEHOLDER_VECTOR_EMBEDDING_DIM,
+    initialize_database,
+    load_vec_extension,
+    pack_embedding,
+)
 from api.tests.test_support import build_test_db
+
+
+def test_initialize_database_leaves_the_vec0_table_insert_and_query_able():
+    """Guards that sqlite-vec stays loadable/usable after a fresh init: if
+    this ever regresses (bad install, incompatible SQLite build, etc.),
+    semantic search would silently stop working without this failing loudly.
+    """
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        db_path = f.name
+    try:
+        initialize_database(db_path)
+
+        vector = [0.1] * PLACEHOLDER_VECTOR_EMBEDDING_DIM
+        conn = sqlite3.connect(db_path)
+        load_vec_extension(conn)
+        conn.execute(
+            "INSERT INTO article_ai_embeddings(analysis_id, embedding) VALUES (1, ?)",
+            (pack_embedding(vector),),
+        )
+        row = conn.execute(
+            "SELECT analysis_id, distance FROM article_ai_embeddings "
+            "WHERE embedding MATCH ? ORDER BY distance LIMIT 1",
+            (pack_embedding(vector),),
+        ).fetchone()
+        conn.close()
+
+        assert row == (1, 0.0)
+    finally:
+        import os
+
+        os.unlink(db_path)
 
 
 def test_build_test_db_creates_all_tables():
@@ -89,6 +125,7 @@ def test_initialize_database_applies_every_migration_idempotently(tmp_path):
             "202608121720",
             "202608121952",
             "202608230029",
+            "202608230115",
         }
     assert "published" in article_columns
     assert "summary" in article_columns

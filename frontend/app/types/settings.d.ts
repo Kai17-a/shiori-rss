@@ -85,6 +85,8 @@ export interface LLMSettingsResponse {
   base_url: string;
   api_key_configured: boolean;
   model: string;
+  embedding_model: string | null;
+  timeout_seconds: number;
 }
 
 export interface LLMSettingsUpdateRequest {
@@ -93,6 +95,8 @@ export interface LLMSettingsUpdateRequest {
   api_key?: string | null;
   clear_api_key?: boolean;
   model: string;
+  embedding_model?: string | null;
+  timeout_seconds?: number;
 }
 
 export interface LLMSettingsTestResponse {

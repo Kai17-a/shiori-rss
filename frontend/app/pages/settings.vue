@@ -150,6 +150,32 @@
               class="lg:col-span-2"
             />
 
+            <UFormField
+              label="Embedding model (optional)"
+              description="Enables semantic search in Ask AI. Leave blank to keep using keyword search only. Changing this re-embeds saved articles on the next analysis run."
+              class="w-full lg:col-span-2"
+            >
+              <UInput
+                v-model="llmForm.embeddingModel"
+                class="w-full"
+                placeholder="e.g. nomic-embed-text or text-embedding-3-small"
+              />
+            </UFormField>
+
+            <UFormField
+              label="Request timeout (seconds)"
+              description="Applies to every LLM call: chat, embeddings, connection tests, and custom RSS site analysis. Increase this if requests to a slow model or a large page time out."
+              class="w-full"
+            >
+              <UInput
+                v-model.number="llmForm.timeoutSeconds"
+                type="number"
+                :min="5"
+                :max="600"
+                class="w-full"
+              />
+            </UFormField>
+
             <div class="flex flex-wrap items-center gap-3 lg:col-span-2">
               <UButton
                 type="button"
@@ -174,6 +200,16 @@
                 @click="llmDeleteOpen = true"
               >
                 Delete
+              </UButton>
+              <UButton
+                to="/ai-search-guide"
+                type="button"
+                variant="outline"
+                color="neutral"
+                icon="i-lucide-info"
+                class="ml-auto"
+              >
+                About AI search
               </UButton>
             </div>
           </form>
@@ -557,6 +593,8 @@ const llmForm = reactive({
   model: "",
   apiKey: "",
   clearApiKey: false,
+  embeddingModel: "",
+  timeoutSeconds: 90,
 });
 const llmProviderOptions = [
   { label: "Ollama", value: "ollama" as const },
@@ -674,6 +712,8 @@ const loadLlmSettings = async () => {
     llmForm.model = response.model;
     llmForm.apiKey = "";
     llmForm.clearApiKey = false;
+    llmForm.embeddingModel = response.embedding_model ?? "";
+    llmForm.timeoutSeconds = response.timeout_seconds;
   } catch (err) {
     if (!(err instanceof Error) || !err.message.includes("not configured")) {
       toast.show({
@@ -695,6 +735,8 @@ const buildLlmBody = () => ({
   model: llmForm.model.trim(),
   ...(llmForm.apiKey.trim() ? { api_key: llmForm.apiKey.trim() } : {}),
   clear_api_key: llmForm.clearApiKey,
+  embedding_model: llmForm.embeddingModel.trim() || null,
+  timeout_seconds: llmForm.timeoutSeconds,
 });
 
 const validateLlmForm = () => {

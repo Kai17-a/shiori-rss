@@ -4,7 +4,10 @@ pub mod github;
 pub mod runner;
 pub mod webhook;
 
-pub use analysis::{AnalysisRunReport, run_article_analysis_manual};
+pub use analysis::{
+    AnalysisRunReport, ensure_vec_extension_registered, run_article_analysis_manual,
+    run_single_article_analysis,
+};
 pub use db::{
     RSSFeed, WebhookEndpoint, database_path, fetch_rss_feeds, fetch_webhook_endpoints,
     rss_periodic_execution_enabled, rss_webhook_notification_enabled, webhook_article_limit,

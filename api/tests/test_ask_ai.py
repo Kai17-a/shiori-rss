@@ -205,6 +205,53 @@ def test_article_search_uses_multilingual_aliases(tmp_path):
         assert [row["article_id"] for row in rows] == [article_id]
 
 
+def test_vector_search_returns_the_same_row_shape_as_search(tmp_path):
+    """_select_relevant_rows/_answer_messages consume these dict keys
+    regardless of which repository method produced the row, so the two
+    methods' outputs must be interchangeable."""
+    from api.database import load_vec_extension, pack_embedding
+
+    db_path = str(tmp_path / "vector-shape.db")
+    build_test_db(db_path)
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        conn.execute(
+            "INSERT INTO rss_feeds (id, url, title) VALUES (1, ?, ?)",
+            ("https://example.com/feed.xml", "Tech Feed"),
+        )
+        article_id = conn.execute(
+            "INSERT INTO rss_feed_articles (feed_id, url, title, summary) VALUES (1, ?, ?, ?)",
+            ("https://example.com/piece", "A piece of news", "Some summary text."),
+        ).lastrowid
+        analysis_id = conn.execute(
+            """
+            INSERT INTO article_ai_analyses (
+              source_type, article_id, content_hash, model, prompt_version, status
+            ) VALUES ('rss', ?, 'hash', 'model', 'article-analysis-v3', 'completed')
+            """,
+            (article_id,),
+        ).lastrowid
+        load_vec_extension(conn)
+        vector = [0.5] * 8
+        conn.execute(
+            "INSERT INTO article_ai_embeddings(analysis_id, embedding) VALUES (?, ?)",
+            (analysis_id, pack_embedding(vector)),
+        )
+
+        repo = ArticleSearchRepository(conn)
+        keyword_rows = repo.search(
+            keywords=["piece"], source_types=[], published_after=None,
+            published_before=None, limit=10,
+        )
+        vector_rows = repo.vector_search(
+            query_embedding=vector, source_types=[], limit=10
+        )
+
+        assert keyword_rows and vector_rows
+        assert set(keyword_rows[0].keys()) == set(vector_rows[0].keys())
+        assert vector_rows[0]["article_id"] == article_id
+
+
 def test_ask_ai_removes_unrelated_candidates_before_answering(monkeypatch):
     import api.services.ask_ai_service as ask_ai_module
 
@@ -417,3 +464,110 @@ def test_ask_ai_removes_date_filter_after_relaxed_search_finds_nothing(
     response = ask_ai_module.AskAIService().ask("今日のAI記事を教えて")
 
     assert response.sources[0].title == "AI systems"
+
+
+def test_ask_ai_surfaces_semantically_similar_articles_via_vector_search(
+    tmp_path, monkeypatch
+):
+    """An article sharing no keywords with the question, but with a close
+    embedding, must still be found and cited once embedding_model is set."""
+    from api.database import load_vec_extension, pack_embedding
+
+    db_path = str(tmp_path / "vector-search.db")
+    build_test_db(db_path)
+
+    @contextmanager
+    def patched_get_db(database_url=db_path):
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            yield conn
+            conn.commit()
+        finally:
+            conn.close()
+
+    import api.services.ask_ai_service as ask_ai_module
+
+    monkeypatch.setattr(ask_ai_module, "get_db", patched_get_db)
+    embedding_vector = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]
+    with patched_get_db() as conn:
+        conn.execute(
+            "INSERT INTO rss_feeds (id, url, title) VALUES (1, ?, ?)",
+            ("https://example.com/feed.xml", "Tech Feed"),
+        )
+        article_id = conn.execute(
+            """
+            INSERT INTO rss_feed_articles (feed_id, url, title, summary)
+            VALUES (1, ?, ?, ?)
+            """,
+            (
+                "https://example.com/workforce",
+                "Company announces workforce reduction",
+                "The company will reduce headcount across several divisions.",
+            ),
+        ).lastrowid
+        analysis_id = conn.execute(
+            """
+            INSERT INTO article_ai_analyses (
+              source_type, article_id, content_hash, model, prompt_version, status
+            ) VALUES ('rss', ?, 'hash', 'model', 'article-analysis-v3', 'completed')
+            """,
+            (article_id,),
+        ).lastrowid
+        load_vec_extension(conn)
+        conn.execute(
+            "INSERT INTO article_ai_embeddings(analysis_id, embedding) VALUES (?, ?)",
+            (analysis_id, pack_embedding(embedding_vector)),
+        )
+        for key, value in (
+            ("llm_provider", "openai"),
+            ("llm_base_url", "https://llm.example.com/v1"),
+            ("llm_model", "example-model"),
+            ("embedding_model", "test-embedding-model"),
+        ):
+            conn.execute(
+                "INSERT INTO app_settings (key, value) VALUES (?, ?)", (key, value)
+            )
+
+    # The search plan's keywords ("layoffs") share no terms with the saved
+    # article's title/summary at all: FTS/LIKE search alone would find
+    # nothing, so a citation can only come from the vector-search branch.
+    replies = iter(
+        [
+            '{"keywords":["layoffs"],"source_types":[],"published_after":null,"published_before":null}',
+            '{"references":["S1"]}',
+            "The saved article discusses layoffs. [S1]",
+        ]
+    )
+    monkeypatch.setattr(
+        ask_ai_module, "chat_completion", lambda *args, **kwargs: next(replies)
+    )
+    monkeypatch.setattr(
+        ask_ai_module, "embeddings", lambda config, text, **kwargs: embedding_vector
+    )
+
+    response = ask_ai_module.AskAIService().ask("Tell me about recent layoffs")
+
+    assert response.sources[0].title == "Company announces workforce reduction"
+
+
+def test_ask_ai_never_calls_embeddings_when_embedding_model_is_unset(monkeypatch):
+    """Regression guard: with no embedding_model configured, the vector
+    search branch must be a complete no-op, byte-for-byte the old behavior."""
+    import api.services.ask_ai_service as ask_ai_module
+
+    def _fail(*args, **kwargs):
+        raise AssertionError("embeddings() must not be called when unset")
+
+    monkeypatch.setattr(ask_ai_module, "embeddings", _fail)
+
+    plan = ask_ai_module.ArticleSearchPlan()
+    config = ask_ai_module.LLMConfig(
+        provider="openai", base_url="https://llm.example.com", api_key=None, model="m"
+    )
+
+    result = ask_ai_module.AskAIService()._vector_search_rows(
+        config, object(), "any question", plan  # type: ignore[arg-type]
+    )
+
+    assert result == []

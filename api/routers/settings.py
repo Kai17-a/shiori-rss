@@ -1,3 +1,5 @@
+from typing import Literal
+
 from fastapi import APIRouter, Depends
 
 from api.dependencies import get_article_analysis_service, get_settings_service
@@ -54,6 +56,19 @@ def execute_ai_article_analysis(
     service: ArticleAnalysisService = Depends(get_article_analysis_service),
 ):
     return service.run_manual()
+
+
+@router.post(
+    "/ai-article-analysis/{source_type}/{article_id}/execute",
+    status_code=200,
+    response_model=SettingsAIArticleAnalysisRunResponse,
+)
+def execute_ai_article_analysis_for_article(
+    source_type: Literal["rss", "custom"],
+    article_id: int,
+    service: ArticleAnalysisService = Depends(get_article_analysis_service),
+):
+    return service.run_single(source_type, article_id)
 
 
 @router.post(

@@ -3,7 +3,7 @@ import sqlite3
 import httpx
 from fastapi import HTTPException
 
-from api.database import get_db
+from api.database import get_db, recreate_vector_search_schema
 from api.model.models import (
     LLMSettingsResponse,
     LLMSettingsTestRequest,
@@ -29,10 +29,13 @@ from api.model.models import (
 from api.repositories.settings_repo import SettingsRepository
 from api.repositories.webhook_endpoint_repo import WebhookEndpointRepository
 from api.services.llm_service import (
+    LLM_DEFAULT_TIMEOUT_SECONDS,
+    LLM_EMBEDDING_DIM_SETTING_KEY,
     LLM_SETTING_KEYS,
     LLMConfig,
     load_llm_config,
     save_llm_config,
+    test_embedding_connection,
     test_llm_connection,
 )
 from api.services.webhook_service import (
@@ -153,6 +156,8 @@ class SettingsService:
             base_url=config.base_url,
             api_key_configured=bool(config.api_key),
             model=config.model,
+            embedding_model=config.embedding_model,
+            timeout_seconds=config.timeout_seconds,
         )
 
     def get_llm_settings(self) -> LLMSettingsResponse:
@@ -177,8 +182,22 @@ class SettingsService:
             base_url=str(data.base_url),
             api_key=api_key,
             model=data.model,
+            embedding_model=data.embedding_model,
+            timeout_seconds=data.timeout_seconds,
         )
         test_llm_connection(config)
+        if config.embedding_model:
+            vector = test_embedding_connection(config)
+            with get_db() as conn:
+                repo = SettingsRepository(conn)
+                previous_dim = repo.get_int(LLM_EMBEDDING_DIM_SETTING_KEY, 0)
+                if previous_dim != len(vector):
+                    # First time an embedding model is set, or switched to a
+                    # differently-sized one: the vec0 table's width must
+                    # match exactly, and any existing rows are for the old
+                    # model's vector space anyway (already stale).
+                    recreate_vector_search_schema(conn, len(vector))
+                    repo.set(LLM_EMBEDDING_DIM_SETTING_KEY, str(len(vector)))
         with get_db() as conn:
             save_llm_config(SettingsRepository(conn), config)
         return self._to_llm_settings_response(config)
@@ -220,11 +239,23 @@ class SettingsService:
             if data.api_key is not None
             else (saved.api_key if saved else None)
         )
+        embedding_model = (
+            data.embedding_model
+            if data.embedding_model is not None
+            else (saved.embedding_model if saved else None)
+        )
+        timeout_seconds = (
+            data.timeout_seconds
+            if data.timeout_seconds is not None
+            else (saved.timeout_seconds if saved else LLM_DEFAULT_TIMEOUT_SECONDS)
+        )
         return LLMConfig(
             provider=provider,
             base_url=base_url,
             api_key=api_key,
             model=model,
+            embedding_model=embedding_model,
+            timeout_seconds=timeout_seconds,
         )
 
     def get_rss_execution(self) -> SettingsRssExecutionResponse:

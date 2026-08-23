@@ -245,6 +245,32 @@ class CompatTestClient:
             return self._ok(ArticleAnalysisService().clear_results().model_dump())
         if method == "GET" and path == "/settings/ai-article-analysis/status":
             return self._ok(ArticleAnalysisService().status().model_dump())
+        if (
+            method == "POST"
+            and path.startswith("/settings/ai-article-analysis/")
+            and path.endswith("/execute")
+            and path != "/settings/ai-article-analysis/execute"
+        ):
+            parts = path.strip("/").split("/")
+            if len(parts) == 5:
+                source_type, raw_article_id = parts[2], parts[3]
+                if source_type not in ("rss", "custom"):
+                    return self._error(
+                        422,
+                        [{"msg": "Input should be 'rss' or 'custom'", "loc": ["path", "source_type"]}],
+                    )
+                try:
+                    article_id = int(raw_article_id)
+                except ValueError:
+                    return self._error(
+                        422,
+                        [{"msg": "Input should be a valid integer", "loc": ["path", "article_id"]}],
+                    )
+                return self._ok(
+                    ArticleAnalysisService()
+                    .run_single(source_type, article_id)
+                    .model_dump()
+                )
         if method == "GET" and path == "/settings/llm":
             return self._ok(service.get_llm_settings().model_dump())
         if method == "PUT" and path == "/settings/llm":
