@@ -4,6 +4,8 @@ export type ApiErrorBody = {
 
 export const trimTrailingSlash = (value: string) => value.replace(/\/+$/, "");
 
+export const DEFAULT_REQUEST_TIMEOUT_MS = 20_000;
+
 export const getDefaultApiBase = () => "/api";
 
 export const buildRequestHeaders = (options: RequestInit = {}) => {
@@ -43,10 +45,20 @@ export const parseJsonBody = async <T>(response: Response) =>
 export const createHttpFetcher = (getBaseUrl: () => string) => {
   const request = async <T = unknown>(path: string, options: RequestInit = {}): Promise<T> => {
     const { headers: mergedHeaders, rest } = buildRequestHeaders(options);
-    const response = await fetch(`${trimTrailingSlash(getBaseUrl())}${path}`, {
-      headers: mergedHeaders,
-      ...rest,
-    });
+    let response: Response;
+    try {
+      response = await fetch(`${trimTrailingSlash(getBaseUrl())}${path}`, {
+        cache: "no-store",
+        ...rest,
+        headers: mergedHeaders,
+        signal: rest.signal ?? AbortSignal.timeout(DEFAULT_REQUEST_TIMEOUT_MS),
+      });
+    } catch (error) {
+      if (error instanceof DOMException && (error.name === "TimeoutError" || error.name === "AbortError")) {
+        throw new Error("The request timed out. Check that the API server is reachable.");
+      }
+      throw error;
+    }
     const body = await parseJsonBody<T>(response);
     if (!response.ok) {
       throw new Error(extractErrorMessage(response.status, body as ApiErrorBody | null));

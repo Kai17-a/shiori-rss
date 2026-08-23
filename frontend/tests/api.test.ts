@@ -49,4 +49,19 @@ describe("API helpers", () => {
 
     Object.defineProperty(globalThis, "fetch", { configurable: true, value: originalFetch });
   });
+
+  it("surfaces a clear error instead of hanging when a request times out", async () => {
+    const originalFetch = globalThis.fetch;
+    const fetchMock = vi.fn(async () => {
+      throw new DOMException("The operation timed out.", "TimeoutError");
+    });
+    Object.defineProperty(globalThis, "fetch", { configurable: true, value: fetchMock });
+
+    const { request } = createHttpFetcher(() => "/api");
+    await expect(request("/dashboard")).rejects.toThrow(
+      "The request timed out. Check that the API server is reachable.",
+    );
+
+    Object.defineProperty(globalThis, "fetch", { configurable: true, value: originalFetch });
+  });
 });
