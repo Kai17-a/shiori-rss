@@ -42,23 +42,23 @@ run = "uv run --directory api pytest -q"
 
 [tasks.frontend-dev]
 description = "Start the frontend development server"
-run = "bun --cwd frontend run dev"
+run = "bun run --cwd frontend dev"
 
 [tasks.frontend-install]
 description = "Install the frontend dependencies"
-run = "bun --cwd frontend install --frozen-lockfile"
+run = "bun install --cwd frontend --frozen-lockfile"
 
 [tasks.frontend-generate]
 description = "Generate the frontend static distribution"
-run = "bun --cwd frontend run generate"
+run = "bun run --cwd frontend generate"
 
 [tasks.frontend-test]
 description = "Run frontend unit tests"
-run = "bun --cwd frontend run test"
+run = "bun run --cwd frontend test"
 
 [tasks.frontend-typecheck]
 description = "Type-check the frontend"
-run = "bun --cwd frontend run typecheck"
+run = "bun run --cwd frontend typecheck"
 
 [tasks.e2e]
 description = "Run frontend end-to-end tests"
