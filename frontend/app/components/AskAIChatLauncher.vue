@@ -52,7 +52,6 @@
           :messages="uiMessages"
           :status="chatStatus"
           should-auto-scroll
-          :auto-scroll="false"
           class="flex-1 space-y-5 overflow-y-auto p-5"
           aria-live="polite"
         >
@@ -244,13 +243,19 @@ const submitQuestion = async () => {
   chatStatus.value = "submitted";
   errorMessage.value = "";
   question.value = "";
-  const exchange: ChatExchange = {
+  messages.value.push({
     id: crypto.randomUUID(),
     question: message,
     answer: "",
     sources: [],
-  };
-  messages.value.push(exchange);
+  });
+  // Mutate through the reactive proxy Vue creates when reading the pushed
+  // item back out of `messages.value`, not the raw object literal above —
+  // writes to the raw object never pass through a reactive `set` trap, so
+  // Vue would never notice `answer` changing and the answer would only
+  // appear once something else (the final status change) forced a re-render,
+  // i.e. deltas would never visibly stream in.
+  const exchange = messages.value.at(-1)!;
   const previousMessages = messages.value.slice(0, -1).slice(-4);
   const history = previousMessages.flatMap((item) => [
     { role: "user", content: item.question },
