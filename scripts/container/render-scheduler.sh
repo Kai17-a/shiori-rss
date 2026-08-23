@@ -19,3 +19,4 @@ if [ "$#" -eq 0 ]; then
 fi
 
 printf '%s shiori-feed-batch\n' "$schedule"
+printf '%s cd /app && python -m api.scripts.run_news_sites\n' "$schedule"

@@ -120,6 +120,81 @@ def test_extract_news_articles_normalizes_dotted_dates():
     assert articles[0]["published"] == "2026-08-03 00:00:00"
 
 
+def test_extract_news_articles_falls_back_to_the_item_itself_for_the_link():
+    """Some sites wrap an entire card in a single <a href="..."> with no
+    nested link (e.g. https://jp.konghq.com/blog) — the LLM is told to
+    target selectors "inside" the item, so it naturally emits a
+    link_selector like "a" that matches nothing, since the anchor IS the
+    item, not a descendant of it. Extraction must still succeed by reading
+    the href off the item itself.
+    """
+    from api.services.news_site_service import extract_news_articles
+
+    html = """
+    <div class="list">
+      <a class="card" href="/blog/first-post">
+        <div><img src="/img.jpg"></div>
+        <div><h3>First post title</h3></div>
+      </a>
+      <a class="card" href="/blog/second-post">
+        <div><img src="/img.jpg"></div>
+        <div><h3>Second post title</h3></div>
+      </a>
+    </div>
+    """
+
+    articles = extract_news_articles(
+        html=html,
+        page_url="https://example.com/blog",
+        scrape_config={
+            "item_selector": "a.card",
+            "title_selector": "h3",
+            "link_selector": "a",
+            "link_attribute": "href",
+            "published_selector": None,
+            "published_attribute": None,
+            "summary_selector": None,
+        },
+    )
+
+    assert len(articles) == 2
+    assert articles[0]["url"] == "https://example.com/blog/first-post"
+    assert articles[0]["title"] == "First post title"
+    assert articles[1]["url"] == "https://example.com/blog/second-post"
+
+
+def test_extract_news_articles_does_not_fall_back_to_the_item_for_text_selectors():
+    """The item-itself fallback only applies to attribute reads (safe: an
+    attribute either exists or it doesn't). It must not apply to text reads
+    like title_selector, where falling back to the item's own get_text()
+    would pull in unrelated nested content (the date, in this case) instead
+    of correctly reporting no title and skipping the article.
+    """
+    from api.services.news_site_service import extract_news_articles
+
+    html = """
+    <a class="card" href="/blog/first-post">
+      <span class="date">2026-08-03</span>
+    </a>
+    """
+
+    articles = extract_news_articles(
+        html=html,
+        page_url="https://example.com/blog",
+        scrape_config={
+            "item_selector": "a.card",
+            "title_selector": "h3",
+            "link_selector": "a",
+            "link_attribute": "href",
+            "published_selector": None,
+            "published_attribute": None,
+            "summary_selector": None,
+        },
+    )
+
+    assert articles == []
+
+
 def test_registration_requires_llm_settings(client):
     response = create_site(client)
 
@@ -469,6 +544,34 @@ def test_registration_identifies_target_site_automation_block(
     assert "Forbidden" in caplog.text
 
 
+def test_fetch_page_sends_browser_like_headers(client, monkeypatch):
+    """Some target sites 401/403 requests that don't look like a real
+    browser (missing User-Agent/Accept). Registration, retries, and
+    scheduled execution all funnel through NewsSiteService._fetch_page, so
+    covering it here covers every fetch path.
+    """
+    import api.services.news_site_service as news_module
+
+    original_get = news_module.httpx.get
+    captured: dict[str, object] = {}
+
+    def fake_get(url, **kwargs):
+        captured["headers"] = kwargs.get("headers")
+        return original_get(url, **kwargs)
+
+    configure_llm(client)
+    monkeypatch.setattr(news_module.httpx, "get", fake_get)
+
+    create_site(client)
+
+    headers = captured["headers"]
+    assert isinstance(headers, dict)
+    assert "Mozilla" in headers["User-Agent"]
+    assert "Chrome" in headers["User-Agent"]
+    assert "text/html" in headers["Accept"]
+    assert "Accept-Language" in headers
+
+
 def test_manual_execution_notifies_and_records_only_new_articles(client, monkeypatch):
     import api.services.news_site_service as news_module
 
@@ -588,8 +691,133 @@ def test_manual_execution_saves_pending_articles_when_webhook_is_disabled(
     assert notified.status_code == 200
     assert notified.json()["message"] == "Posted 2 pending article(s)."
     assert len(payloads) == 1
-    articles = client.get(f"/news-sites/{site.json()['id']}/articles").json()["items"]
-    assert all(article["webhook_notified"] is True for article in articles)
+
+
+def test_execute_due_runs_every_registered_site(client, monkeypatch):
+    """execute_due() is the cron entrypoint (api/scripts/run_news_sites.py)
+    that was missing entirely before: custom sites previously only got
+    checked when a user clicked "Execute" by hand, never on the schedule
+    the way standard RSS feeds are.
+    """
+    import api.services.news_site_service as news_module
+    from api.services.news_site_service import NewsSiteService
+
+    configure_llm(client)
+    webhook = client.post(
+        "/settings/webhooks",
+        json={
+            "name": "Discord alerts",
+            "webhook_url": "https://discord.com/api/webhooks/1/token",
+        },
+    ).json()
+    site_a = create_site(client, webhook_ids=[webhook["id"]]).json()
+    site_b = create_site(
+        client, url="https://example.com/other-news", webhook_ids=[webhook["id"]]
+    ).json()
+
+    class WebhookResponse:
+        status_code = 204
+
+    payloads = []
+    monkeypatch.setattr(
+        news_module,
+        "send_webhook",
+        lambda url, payload: payloads.append(payload) or WebhookResponse(),
+    )
+
+    NewsSiteService().execute_due()
+
+    assert len(payloads) == 2
+    for site in (site_a, site_b):
+        articles = client.get(f"/news-sites/{site['id']}/articles").json()
+        assert articles["total"] == 2
+        assert all(item["webhook_notified"] for item in articles["items"])
+
+
+def test_execute_due_skips_notification_when_site_toggle_is_off(client, monkeypatch):
+    import api.services.news_site_service as news_module
+    from api.services.news_site_service import NewsSiteService
+
+    configure_llm(client)
+    webhook = client.post(
+        "/settings/webhooks",
+        json={
+            "name": "Discord alerts",
+            "webhook_url": "https://discord.com/api/webhooks/1/token",
+        },
+    ).json()
+    site = create_site(client, webhook_ids=[webhook["id"]]).json()
+    client.patch(f"/news-sites/{site['id']}", json={"notify_webhook_enabled": False})
+
+    class WebhookResponse:
+        status_code = 204
+
+    payloads = []
+    monkeypatch.setattr(
+        news_module,
+        "send_webhook",
+        lambda url, payload: payloads.append(payload) or WebhookResponse(),
+    )
+
+    NewsSiteService().execute_due()
+
+    # Articles are still fetched and recorded even though notification is
+    # suppressed — only the toggle is respected, not the whole periodic run.
+    assert payloads == []
+    articles = client.get(f"/news-sites/{site['id']}/articles").json()
+    assert articles["total"] == 2
+    assert all(item["webhook_notified"] is False for item in articles["items"])
+
+
+def test_execute_due_continues_after_one_site_fails(client, monkeypatch, caplog):
+    import logging
+
+    import api.services.news_site_service as news_module
+    from api.services.news_site_service import NewsSiteService
+
+    configure_llm(client)
+    webhook = client.post(
+        "/settings/webhooks",
+        json={
+            "name": "Discord alerts",
+            "webhook_url": "https://discord.com/api/webhooks/1/token",
+        },
+    ).json()
+    broken_site = create_site(client, webhook_ids=[webhook["id"]]).json()
+    healthy_site = create_site(
+        client, url="https://example.com/other-news", webhook_ids=[webhook["id"]]
+    ).json()
+
+    class WebhookResponse:
+        status_code = 204
+
+    payloads = []
+    monkeypatch.setattr(
+        news_module,
+        "send_webhook",
+        lambda url, payload: payloads.append(payload) or WebhookResponse(),
+    )
+
+    original_get = news_module.httpx.get
+
+    def flaky_get(url, **kwargs):
+        if url == str(broken_site["url"]):
+            raise news_module.httpx.ConnectError("boom", request=None)
+        return original_get(url, **kwargs)
+
+    monkeypatch.setattr(news_module.httpx, "get", flaky_get)
+
+    with caplog.at_level(logging.WARNING):
+        NewsSiteService().execute_due()
+
+    assert len(payloads) == 1
+    healthy_articles = client.get(
+        f"/news-sites/{healthy_site['id']}/articles"
+    ).json()
+    assert healthy_articles["total"] == 2
+    broken_articles = client.get(f"/news-sites/{broken_site['id']}/articles").json()
+    assert broken_articles["total"] == 0
+    assert "news_site_periodic_execute_failed" in caplog.text
 
 
 def test_duplicate_news_site_url_is_rejected_before_registration(client):

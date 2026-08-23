@@ -73,6 +73,17 @@ class NewsSiteRepository:
         ).fetchone()
         return self._with_webhook_ids(dict(row)) if row else None
 
+    def find_all_ids(self) -> list[dict]:
+        """Lightweight listing for the periodic batch: just enough per site
+        (id, notify flag) to decide whether to run it and whether webhook
+        notification should fire, without the full row/webhook-id lookup
+        `find_all` does for the paginated UI listing.
+        """
+        rows = self.conn.execute(
+            "SELECT id, notify_webhook_enabled FROM news_sites ORDER BY id ASC"
+        ).fetchall()
+        return [dict(row) for row in rows]
+
     def count_all(self, q: str | None = None) -> int:
         query = "SELECT COUNT(*) AS total FROM news_sites"
         params: list[object] = []

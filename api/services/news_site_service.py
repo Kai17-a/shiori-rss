@@ -45,6 +45,22 @@ logger = logging.getLogger(__name__)
 MAX_ARTICLES_PER_RUN = 100
 LOG_PREVIEW_CHARS = 300
 
+# Some target sites reject requests that look automated (missing/blank
+# User-Agent, no Accept/Accept-Language) with 401/403. Sending headers that
+# match what a real browser sends avoids that without doing anything more
+# invasive (no JS execution, no cookies/session emulation).
+_BROWSER_LIKE_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    ),
+    "Accept": (
+        "text/html,application/xhtml+xml,application/xml;q=0.9,"
+        "image/avif,image/webp,*/*;q=0.8"
+    ),
+    "Accept-Language": "ja,en-US;q=0.9,en;q=0.8",
+}
+
 
 def _safe_target_url(value: str) -> str:
     parsed = urlparse(value)
@@ -65,6 +81,18 @@ def _read_element_value(element, selector: object, attribute: object) -> str | N
         return None
     selected = element.select_one(selector)
     if selected is None:
+        # Some sites wrap an entire card in a single element (e.g. the
+        # whole item is itself an <a href="..."> with no separate nested
+        # link, or a <time datetime="..."> with no nested date element) —
+        # the LLM's selector, aimed "inside" the item as instructed, then
+        # matches nothing even though the item itself carries the data.
+        # Falling back to the item is safe for attributes (either it has
+        # the attribute or it doesn't) but not for text, where the item's
+        # own get_text() would pull in unrelated nested content (date,
+        # summary, ...) instead of failing cleanly.
+        if isinstance(attribute, str) and attribute:
+            value = element.get(attribute)
+            return str(value).strip() if value else None
         return None
     if isinstance(attribute, str) and attribute:
         value = selected.get(attribute)
@@ -215,7 +243,12 @@ class NewsSiteService:
     def _fetch_page(self, url: str, *, reference_id: str | None = None) -> str:
         reference_id = reference_id or new_diagnostic_reference()
         try:
-            response = httpx.get(url, timeout=15.0, follow_redirects=True)
+            response = httpx.get(
+                url,
+                timeout=15.0,
+                follow_redirects=True,
+                headers=_BROWSER_LIKE_HEADERS,
+            )
         except httpx.HTTPError as exc:
             logger.error(
                 "news_site_fetch_failed reference_id=%s target_url=%s exception=%s",
@@ -692,13 +725,15 @@ class NewsSiteService:
                 total_pages=total_pages,
             )
 
-    def execute(self, site_id: int) -> NewsSiteExecuteResponse:
+    def execute(self, site_id: int, *, notify: bool = True) -> NewsSiteExecuteResponse:
         with get_db() as conn:
             repo = NewsSiteRepository(conn)
             row = repo.find_by_id(site_id)
             if row is None:
                 raise HTTPException(status_code=404, detail="News site not found")
-            webhook_rows = WebhookEndpointRepository(conn).find_enabled()
+            webhook_rows = (
+                WebhookEndpointRepository(conn).find_enabled() if notify else []
+            )
             selected = set(repo.find_webhook_ids(site_id))
             if selected:
                 webhook_rows = [
@@ -804,3 +839,32 @@ class NewsSiteService:
             delivered_count=delivered_count,
             message=f"Posted {len(notification_articles)} pending article(s).",
         )
+
+    def execute_due(self) -> None:
+        """Runs every custom news site once, meant to be called on a
+        schedule (see api/scripts/run_news_sites.py) the same way the Rust
+        batch periodically checks standard RSS feeds — custom sites
+        otherwise only ever get checked when a user clicks "Execute"
+        manually. Unlike the manual endpoint, this respects each site's
+        `notify_webhook_enabled` toggle (mirroring how the RSS feed batch
+        only honors that flag for its own periodic run, not its manual
+        per-feed execute). One site's failure (fetch error, all webhooks
+        down, ...) is logged and skipped so it can't block the rest.
+        """
+        with get_db() as conn:
+            sites = NewsSiteRepository(conn).find_all_ids()
+        for site in sites:
+            site_id = int(site["id"])
+            try:
+                self.execute(site_id, notify=bool(site["notify_webhook_enabled"]))
+            except HTTPException as exc:
+                logger.warning(
+                    "news_site_periodic_execute_failed site_id=%s status_code=%s detail=%s",
+                    site_id,
+                    exc.status_code,
+                    exc.detail,
+                )
+            except Exception:
+                logger.exception(
+                    "news_site_periodic_execute_error site_id=%s", site_id
+                )
