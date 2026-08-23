@@ -1,5 +1,5 @@
 # Frontend build stage
-FROM oven/bun:1.3.14-alpine AS frontend-build
+FROM oven/bun:1.4.0-alpine AS frontend-build
 
 WORKDIR /app/frontend
 
