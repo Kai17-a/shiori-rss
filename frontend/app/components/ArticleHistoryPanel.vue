@@ -50,42 +50,12 @@
         class="flex flex-col gap-3 border-b border-default pb-4 md:flex-row md:items-center md:justify-between"
       >
         <p class="text-xs uppercase tracking-[0.08em] text-muted">Total {{ total }} articles</p>
-        <div class="flex items-center gap-2">
-          <UButton
-            size="sm"
-            variant="ghost"
-            color="neutral"
-            :disabled="currentPage <= 1 || loading"
-            @click="$emit('page', currentPage - 1)"
-          >
-            Prev
-          </UButton>
-          <template
-            v-for="(item, index) in paginationItems"
-            :key="`${item.type}-${index}-${item.type === 'page' ? item.value : 'ellipsis'}`"
-          >
-            <UButton
-              v-if="item.type === 'page'"
-              size="sm"
-              :color="item.value === currentPage ? 'primary' : 'neutral'"
-              :variant="item.value === currentPage ? 'solid' : 'ghost'"
-              :disabled="loading"
-              @click="$emit('page', item.value)"
-            >
-              {{ item.label }}
-            </UButton>
-            <UButton v-else size="sm" variant="ghost" color="neutral" disabled> ... </UButton>
-          </template>
-          <UButton
-            size="sm"
-            variant="ghost"
-            color="neutral"
-            :disabled="currentPage >= pageCount || loading"
-            @click="$emit('page', currentPage + 1)"
-          >
-            Next
-          </UButton>
-        </div>
+        <ListPagination
+          :page="currentPage"
+          :total-pages="pageCount"
+          :loading="loading"
+          @update:page="$emit('page', $event)"
+        />
       </div>
 
       <div
@@ -162,8 +132,6 @@ interface ArticleListItem {
   webhook_notified: boolean;
 }
 
-type PaginationItem = { type: "page"; label: string; value: number } | { type: "ellipsis" };
-
 const props = defineProps<{
   items: ArticleListItem[];
   total: number;
@@ -190,26 +158,4 @@ const pageCount = computed(() => Math.max(props.totalPages, 1));
 const hasFilters = computed(
   () => Boolean(searchTitle.value || publishedRange.value?.start || publishedRange.value?.end),
 );
-const paginationItems = computed<PaginationItem[]>(() => {
-  const total = pageCount.value;
-  const current = props.currentPage;
-  if (total <= 5) {
-    return Array.from({ length: total }, (_, index) => ({
-      type: "page" as const,
-      label: String(index + 1),
-      value: index + 1,
-    }));
-  }
-  const pages = new Set<number>([1, total, current]);
-  if (current > 1) pages.add(current - 1);
-  if (current < total) pages.add(current + 1);
-  return Array.from(pages)
-    .sort((left, right) => left - right)
-    .reduce<PaginationItem[]>((items, value, index, values) => {
-      items.push({ type: "page", label: String(value), value });
-      const next = values[index + 1];
-      if (next && next - value > 1) items.push({ type: "ellipsis" });
-      return items;
-    }, []);
-});
 </script>

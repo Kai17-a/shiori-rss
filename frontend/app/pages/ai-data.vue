@@ -146,24 +146,7 @@
             <p class="text-xs uppercase tracking-[0.08em] text-muted">
               {{ analyses.total }} records · Page {{ analyses.page }} of {{ pageCount }}
             </p>
-            <div class="flex items-center gap-2">
-              <UButton
-                label="Prev"
-                size="sm"
-                color="neutral"
-                variant="ghost"
-                :disabled="analyses.page <= 1 || loading"
-                @click="setPage(analyses.page - 1)"
-              />
-              <UButton
-                label="Next"
-                size="sm"
-                color="neutral"
-                variant="ghost"
-                :disabled="analyses.page >= pageCount || loading"
-                @click="setPage(analyses.page + 1)"
-              />
-            </div>
+            <ListPagination :page="analyses.page" :total-pages="pageCount" :loading="loading" @update:page="setPage" />
           </div>
 
           <div
@@ -276,6 +259,7 @@ import type {
   SettingsAIArticleAnalysisCancelResponse,
   SettingsAIArticleAnalysisStatusResponse,
 } from "~/types";
+import { formatDateTime } from "~/utils/dateTime";
 
 const { request } = useApi();
 const toast = useSingleToast();
@@ -332,13 +316,6 @@ const analysisProgressPercent = computed(() => analysisStatus.value.total
 const analysisProgressDescription = computed(() => analysisStatus.value.total
   ? `${analysisStopping.value || analysisStatus.value.stopping ? "Stopping after the current article" : "Analyzing saved articles"}: ${analysisStatus.value.processed} of ${analysisStatus.value.total} processed.`
   : "Preparing saved articles for analysis. This page updates automatically.");
-
-const formatDateTime = (value: string) => {
-  const normalized = /(?:Z|[+-]\d{2}:\d{2})$/.test(value) ? value : `${value}Z`;
-  return new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(
-    new Date(normalized),
-  );
-};
 
 const deleteFailedAnalyses = async () => {
   if (deletingFailed.value || analysisRunning.value) return;

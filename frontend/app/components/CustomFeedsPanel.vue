@@ -17,6 +17,15 @@
       </div>
     </div>
 
+    <div
+      class="flex flex-col gap-3 border-b border-default pb-4 md:flex-row md:items-center md:justify-between"
+    >
+      <p class="text-xs uppercase tracking-[0.08em] text-muted">
+        Total {{ sites.total }} sources · Page {{ sites.page }} of {{ pageCount }}
+      </p>
+      <ListPagination :page="page" :total-pages="pageCount" :loading="loading" @update:page="setPage" />
+    </div>
+
     <div v-if="sites.items.length" class="grid gap-4 lg:grid-cols-2">
       <NewsSiteCard
         v-for="site in sites.items"
@@ -87,6 +96,7 @@ const modalOpen = ref(false);
 const deleteOpen = ref(false);
 const saveError = ref("");
 const pendingSite = ref<NewsSiteResponse | null>(null);
+const page = ref(1);
 const sites = ref<NewsSiteListResponse>({
   items: [],
   total: 0,
@@ -94,6 +104,7 @@ const sites = ref<NewsSiteListResponse>({
   per_page: 20,
   total_pages: 0,
 });
+const pageCount = computed(() => Math.max(sites.value.total_pages, 1));
 const form = reactive({
   id: "",
   title: "",
@@ -168,7 +179,8 @@ const openEdit = (site: NewsSiteResponse) => {
 const loadSites = async (showToast = false) => {
   loading.value = true;
   try {
-    sites.value = await request<NewsSiteListResponse>("/news-sites");
+    sites.value = await request<NewsSiteListResponse>(`/news-sites?page=${page.value}`);
+    page.value = sites.value.page;
     if (showToast) {
       toast.show({ title: "Custom RSS refreshed.", color: "success", icon: "i-lucide-check" });
     }
@@ -182,6 +194,11 @@ const loadSites = async (showToast = false) => {
   } finally {
     loading.value = false;
   }
+};
+
+const setPage = async (nextPage: number) => {
+  page.value = Math.min(Math.max(nextPage, 1), pageCount.value);
+  await loadSites();
 };
 
 const saveSite = async () => {

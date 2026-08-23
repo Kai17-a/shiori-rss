@@ -25,42 +25,7 @@
             <p class="text-xs uppercase tracking-[0.08em] text-muted">
               Total {{ feedList.total }} feeds · Page {{ feedList.page }} of {{ pageCount }}
             </p>
-            <div class="flex items-center gap-2">
-              <UButton
-                size="sm"
-                variant="ghost"
-                color="neutral"
-                :disabled="page <= 1 || loading"
-                @click="setPage(page - 1)"
-              >
-                Prev
-              </UButton>
-              <template
-                v-for="(item, index) in paginationItems"
-                :key="`${item.type}-${index}-${item.type === 'page' ? item.value : 'ellipsis'}`"
-              >
-                <UButton
-                  v-if="item.type === 'page'"
-                  size="sm"
-                  :color="item.value === page ? 'primary' : 'neutral'"
-                  :variant="item.value === page ? 'solid' : 'ghost'"
-                  :disabled="loading"
-                  @click="setPage(item.value)"
-                >
-                  {{ item.label }}
-                </UButton>
-                <UButton v-else size="sm" variant="ghost" color="neutral" disabled> ... </UButton>
-              </template>
-              <UButton
-                size="sm"
-                variant="ghost"
-                color="neutral"
-                :disabled="page >= pageCount || loading"
-                @click="setPage(page + 1)"
-              >
-                Next
-              </UButton>
-            </div>
+            <ListPagination :page="page" :total-pages="pageCount" :loading="loading" @update:page="setPage" />
           </div>
 
           <div v-if="feedList.items.length" class="grid gap-4 lg:grid-cols-2">
@@ -132,8 +97,6 @@ import type {
   SettingsWebhookResponse,
 } from "~/types";
 
-type PaginationItem = { type: "page"; label: string; value: number } | { type: "ellipsis" };
-
 const { request } = useApi();
 const toast = useSingleToast();
 const { refresh: refreshSidebarCatalog } = useSidebarCatalog();
@@ -169,28 +132,6 @@ const feedForm = reactive({
 });
 
 const pageCount = computed(() => Math.max(feedList.value.total_pages, 1));
-const paginationItems = computed<PaginationItem[]>(() => {
-  const total = pageCount.value;
-  const current = page.value;
-  if (total <= 5) {
-    return Array.from({ length: total }, (_, index) => ({
-      type: "page" as const,
-      label: String(index + 1),
-      value: index + 1,
-    }));
-  }
-  const pages = new Set<number>([1, total, current]);
-  if (current > 1) pages.add(current - 1);
-  if (current < total) pages.add(current + 1);
-  return Array.from({ length: total }, (_, index) => index + 1)
-    .filter((value) => pages.has(value))
-    .reduce<PaginationItem[]>((items, value, index, arr) => {
-      items.push({ type: "page", label: String(value), value });
-      const next = arr[index + 1];
-      if (next && next - value > 1) items.push({ type: "ellipsis" });
-      return items;
-    }, []);
-});
 
 const openCreateModal = () => {
   feedForm.id = "";
