@@ -36,6 +36,24 @@ RUN --mount=type=cache,id=cargo-registry-${TARGETPLATFORM},target=/usr/local/car
     cargo build --release \
     && cp target/release/shiori-feed-batch /bin/
 
+# Python dependency export stage: generates requirements.txt straight from
+# api/pyproject.toml + api/uv.lock (the same lockfile `uv sync` uses in
+# development), so the pinned set installed at runtime can never drift from
+# what development actually uses. A hand-maintained requirements.txt did
+# exactly that once already — sqlite-vec was added to pyproject.toml for the
+# embedding feature but never copied into the old requirements.txt by hand,
+# so a shipped image crashed at runtime with `ModuleNotFoundError:
+# No module named 'sqlite_vec'` the first time that code path ran.
+FROM python:3.14-slim AS api-deps
+
+WORKDIR /app/api
+
+RUN pip install --no-cache-dir uv
+
+COPY api/pyproject.toml api/uv.lock ./
+RUN uv export --no-dev --no-emit-project --no-hashes --format requirements.txt \
+    -o requirements.txt
+
 # Runtime stage
 FROM python:3.14-slim
 
@@ -72,7 +90,7 @@ RUN case "$TARGETARCH" in \
 RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-COPY api/requirements.txt /app/api/requirements.txt
+COPY --from=api-deps /app/api/requirements.txt /app/api/requirements.txt
 RUN pip install --no-cache-dir -r /app/api/requirements.txt
 
 COPY api /app/api
