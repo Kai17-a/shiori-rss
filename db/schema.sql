@@ -14,7 +14,8 @@ CREATE TABLE rss_feed_articles (
   url TEXT NOT NULL,
   title TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
-, published DATETIME, summary TEXT, webhook_notified INTEGER NOT NULL DEFAULT 0);
+, published DATETIME, summary TEXT, webhook_notified INTEGER NOT NULL DEFAULT 0, effective_published_at TEXT
+  GENERATED ALWAYS AS (datetime(coalesce(published, created_at))) VIRTUAL);
 CREATE UNIQUE INDEX idx_rss_feed_articles_feed_url_unique
   ON rss_feed_articles(feed_id, url);
 CREATE TABLE app_settings (
@@ -64,7 +65,8 @@ CREATE TABLE news_site_articles (
   published DATETIME,
   webhook_notified INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
+, effective_published_at TEXT
+  GENERATED ALWAYS AS (datetime(coalesce(published, created_at))) VIRTUAL);
 CREATE UNIQUE INDEX idx_news_site_articles_site_url_unique
   ON news_site_articles(site_id, url);
 CREATE INDEX idx_news_site_articles_site_published_id
@@ -247,6 +249,14 @@ CREATE TRIGGER article_ai_search_delete AFTER DELETE ON article_ai_analyses BEGI
   DELETE FROM article_ai_search
   WHERE source_type = old.source_type AND article_id = old.article_id;
 END;
+CREATE INDEX idx_rss_feed_articles_effective_published_at
+  ON rss_feed_articles(effective_published_at);
+CREATE INDEX idx_rss_feed_articles_pending_notification_only
+  ON rss_feed_articles(id) WHERE webhook_notified = 0;
+CREATE INDEX idx_news_site_articles_effective_published_at
+  ON news_site_articles(effective_published_at);
+CREATE INDEX idx_news_site_articles_pending_notification_only
+  ON news_site_articles(id) WHERE webhook_notified = 0;
 -- Dbmate schema migrations
 INSERT INTO "schema_migrations" (version) VALUES
   ('010'),
@@ -269,4 +279,5 @@ INSERT INTO "schema_migrations" (version) VALUES
   ('202608121631'),
   ('202608121710'),
   ('202608121720'),
-  ('202608121952');
+  ('202608121952'),
+  ('202608230029');

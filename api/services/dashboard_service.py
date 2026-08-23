@@ -22,12 +22,12 @@ class DashboardService:
                   (SELECT COUNT(*) FROM news_sites) AS custom_feed_count,
                   (
                     SELECT COUNT(*) FROM rss_feed_articles
-                    WHERE datetime(coalesce(published, created_at)) >= datetime(?)
-                      AND datetime(coalesce(published, created_at)) <= datetime(?)
+                    WHERE effective_published_at >= datetime(?)
+                      AND effective_published_at <= datetime(?)
                   ) + (
                     SELECT COUNT(*) FROM news_site_articles
-                    WHERE datetime(coalesce(published, created_at)) >= datetime(?)
-                      AND datetime(coalesce(published, created_at)) <= datetime(?)
+                    WHERE effective_published_at >= datetime(?)
+                      AND effective_published_at <= datetime(?)
                   ) AS recent_article_count,
                   (
                     SELECT COUNT(*) FROM rss_feed_articles
@@ -48,23 +48,23 @@ class DashboardService:
                          feeds.title AS source_title, feeds.icon_url AS source_icon_url,
                          articles.url, articles.title,
                          articles.summary, articles.published, articles.created_at,
-                         articles.webhook_notified
+                         articles.webhook_notified, articles.effective_published_at
                   FROM rss_feed_articles AS articles
                   JOIN rss_feeds AS feeds ON feeds.id = articles.feed_id
-                  WHERE datetime(coalesce(articles.published, articles.created_at)) >= datetime(?)
-                    AND datetime(coalesce(articles.published, articles.created_at)) <= datetime(?)
+                  WHERE articles.effective_published_at >= datetime(?)
+                    AND articles.effective_published_at <= datetime(?)
                   UNION ALL
                   SELECT 'custom' AS source_type, sites.id AS source_id,
                          sites.title AS source_title, sites.icon_url AS source_icon_url,
                          articles.url, articles.title,
                          articles.summary, articles.published, articles.created_at,
-                         articles.webhook_notified
+                         articles.webhook_notified, articles.effective_published_at
                   FROM news_site_articles AS articles
                   JOIN news_sites AS sites ON sites.id = articles.site_id
-                  WHERE datetime(coalesce(articles.published, articles.created_at)) >= datetime(?)
-                    AND datetime(coalesce(articles.published, articles.created_at)) <= datetime(?)
+                  WHERE articles.effective_published_at >= datetime(?)
+                    AND articles.effective_published_at <= datetime(?)
                 )
-                ORDER BY datetime(coalesce(published, created_at)) DESC, source_type, source_id
+                ORDER BY effective_published_at DESC, source_type, source_id
                 LIMIT ?
                 """,
                 (window_start, window_end, window_start, window_end, limit),
