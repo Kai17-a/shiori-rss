@@ -61,7 +61,7 @@
           <IconButton
             size="sm"
             label="Fetch now"
-            icon="i-lucide-refresh-cw"
+            icon="i-lucide-play"
             color="primary"
             variant="soft"
             :loading="executing"

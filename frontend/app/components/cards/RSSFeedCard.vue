@@ -33,13 +33,13 @@
           {{ feed.description || "No description yet. Open the feed to browse its saved articles." }}
         </p>
 
-        <div class="mt-5 flex items-center justify-between gap-3 border-t border-default pt-4">
+        <div class="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-default pt-4">
           <NuxtLink :to="to" class="inline-flex items-center gap-1.5 text-sm font-semibold text-primary">
             Browse articles
             <UIcon name="i-lucide-arrow-right" class="size-4 transition group-hover:translate-x-0.5" />
           </NuxtLink>
 
-          <div class="flex items-center gap-1">
+          <div class="flex flex-wrap items-center gap-1">
             <IconButton
               :color="feed.notify_webhook_enabled ? 'warning' : 'neutral'"
               :icon="feed.notify_webhook_enabled ? 'i-lucide-bell' : 'i-lucide-bell-off'"
@@ -49,7 +49,7 @@
             />
             <IconButton
               label="Fetch now"
-              icon="i-lucide-refresh-cw"
+              icon="i-lucide-play"
               color="primary"
               :loading="running"
               @click.stop="$emit('execute', feed)"
