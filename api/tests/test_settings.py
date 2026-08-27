@@ -468,6 +468,8 @@ def test_ai_article_analysis_reanalyze_is_blocked_while_a_batch_run_is_active(
 ):
     import api.services.article_analysis_service as analysis_module
 
+    monkeypatch.setenv("SHIORI_FEED_BATCH_BIN", "/tmp/mock-shiori-feed-batch")
+
     assert analysis_module._manual_run_lock.acquire(blocking=False)
     try:
         response = client.post("/settings/ai-article-analysis/rss/7/execute")
