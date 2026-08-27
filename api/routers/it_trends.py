@@ -12,6 +12,6 @@ def get_it_trends(service: ITTrendService = Depends(get_it_trend_service)):
     return service.get()
 
 
-@router.post("/refresh", response_model=ITTrendResponse)
-def refresh_it_trends(service: ITTrendService = Depends(get_it_trend_service)):
-    return service.get(force=True)
+@router.post("/research", response_model=ITTrendResponse)
+def research_it_trends(service: ITTrendService = Depends(get_it_trend_service)):
+    return service.research()

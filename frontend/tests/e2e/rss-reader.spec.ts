@@ -72,6 +72,63 @@ test("shows live global IT trends on mobile", async ({ page }) => {
   )).toBe(true);
 });
 
+test("starts IT trend research only after user action and shows progress", async ({ page }) => {
+  let researchRequests = 0;
+  await page.route("**/api/it-trends", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        generated_at: null,
+        window_hours: 24,
+        region: "Global",
+        sources: [],
+        ai_summarized: false,
+        stale: false,
+        items: [],
+      }),
+    });
+  });
+  await page.route("**/api/it-trends/research", async (route) => {
+    researchRequests += 1;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        generated_at: "2026-08-27T04:00:00Z",
+        window_hours: 24,
+        region: "Global",
+        sources: ["Hacker News"],
+        ai_summarized: true,
+        stale: false,
+        items: [{
+          id: "agents",
+          rank: 1,
+          title: "AI agent research result",
+          summary: "A user-triggered research result.",
+          category: "AI",
+          momentum: "rising",
+          score: 70,
+          source_count: 1,
+          mention_count: 42,
+          sources: ["Hacker News"],
+          related_links: [{ title: "Discussion", url: "https://example.com", source: "Hacker News" }],
+        }],
+      }),
+    });
+  });
+
+  await page.goto("/trends");
+  await expect(page.getByText("No research results for today")).toBeVisible();
+  expect(researchRequests).toBe(0);
+
+  await page.getByRole("button", { name: "Research", exact: true }).click();
+  await expect(page.getByText("Research in progress", { exact: true })).toBeVisible();
+  await expect(page.getByRole("progressbar", { name: "Trend research is in progress" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Researching…" })).toBeDisabled();
+  await expect(page.getByRole("heading", { name: "AI agent research result" })).toBeVisible();
+  expect(researchRequests).toBe(1);
+});
+
 test("shows configured feed icons in the recent news list", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await page.route("**/api/rss-feeds/3/icon", async (route) => {

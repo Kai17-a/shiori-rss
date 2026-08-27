@@ -791,7 +791,7 @@ class ITTrendItem(BaseModel):
 
 
 class ITTrendResponse(BaseModel):
-    generated_at: datetime
+    generated_at: datetime | None
     window_hours: int
     region: str
     sources: list[str]

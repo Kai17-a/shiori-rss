@@ -21,7 +21,7 @@ export interface ITTrendItem {
 }
 
 export interface ITTrendResponse {
-  generated_at: string;
+  generated_at: string | null;
   window_hours: number;
   region: string;
   sources: string[];

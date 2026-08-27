@@ -2,7 +2,15 @@
   <UDashboardPanel id="it-trends" class="min-w-0">
     <template #header>
       <PageHeaderActions title="IT trends">
-        <RefreshButton :loading="loading" @click="loadTrends(true)" />
+        <UButton
+          :label="researching ? 'Researching…' : 'Research'"
+          icon="i-lucide-search"
+          :loading="researching"
+          loading-icon="i-lucide-loader-circle"
+          :disabled="researching"
+          size="sm"
+          @click="researchTrends"
+        />
       </PageHeaderActions>
     </template>
 
@@ -57,14 +65,22 @@
           </div>
         </UPageCard>
 
-        <UAlert
-          v-if="trends.stale"
-          title="Showing the last successful update"
-          description="External sources could not be refreshed. The cached ranking remains available."
-          color="warning"
-          variant="soft"
-          icon="i-lucide-history"
-        />
+        <div v-if="researching" class="space-y-2" aria-live="polite">
+          <UAlert
+            title="Research in progress"
+            description="Collecting live signals and asking the configured AI model to summarize them. You can keep this page open until it finishes."
+            color="info"
+            variant="soft"
+            icon="i-lucide-loader-circle"
+          />
+          <div
+            role="progressbar"
+            aria-label="Trend research is in progress"
+            aria-valuetext="Indeterminate"
+          >
+            <UProgress animation="carousel" color="primary" size="sm" />
+          </div>
+        </div>
 
         <UAlert
           v-if="loadError"
@@ -75,7 +91,13 @@
           icon="i-lucide-circle-alert"
         >
           <template #actions>
-            <UButton label="Try again" color="error" variant="soft" size="xs" @click="loadTrends()" />
+            <UButton
+              :label="failedAction === 'research' ? 'Research again' : 'Try again'"
+              color="error"
+              variant="soft"
+              size="xs"
+              @click="retryFailedAction"
+            />
           </template>
         </UAlert>
 
@@ -161,8 +183,21 @@
         >
           <div>
             <UIcon name="i-lucide-radar" class="mx-auto size-7 text-muted" />
-            <p class="mt-3 font-semibold text-default">No trends in this category</p>
-            <p class="mt-1 text-sm text-muted">Choose another category or refresh the external sources.</p>
+            <p class="mt-3 font-semibold text-default">
+              {{ selectedCategory === 'all' ? 'No research results for today' : 'No trends in this category' }}
+            </p>
+            <p class="mt-1 text-sm text-muted">
+              {{ selectedCategory === 'all' ? 'Run Research to collect live signals and create an AI summary.' : 'Choose another category to view today’s results.' }}
+            </p>
+            <UButton
+              v-if="selectedCategory === 'all'"
+              label="Research IT trends"
+              icon="i-lucide-search"
+              :loading="researching"
+              loading-icon="i-lucide-loader-circle"
+              class="mt-4"
+              @click="researchTrends"
+            />
           </div>
         </div>
       </div>
@@ -177,7 +212,7 @@ import { formatDateTime } from "~/utils/dateTime";
 const { request } = useApi();
 
 const emptyTrends = (): ITTrendResponse => ({
-  generated_at: "",
+  generated_at: null,
   window_hours: 24,
   region: "Global",
   sources: [],
@@ -188,7 +223,9 @@ const emptyTrends = (): ITTrendResponse => ({
 
 const trends = ref<ITTrendResponse>(emptyTrends());
 const loading = ref(false);
+const researching = ref(false);
 const loadError = ref("");
+const failedAction = ref<"load" | "research">("load");
 const selectedCategory = ref("all");
 
 const categoryOptions = computed(() => [
@@ -208,19 +245,34 @@ const momentumLabel = (momentum: ITTrendMomentum) => ({
   steady: "Steady",
 })[momentum];
 
-const loadTrends = async (force = false) => {
+const loadTrends = async () => {
   loading.value = true;
   loadError.value = "";
   try {
-    trends.value = await request<ITTrendResponse>(force ? "/it-trends/refresh" : "/it-trends", {
-      method: force ? "POST" : "GET",
-    });
+    trends.value = await request<ITTrendResponse>("/it-trends");
   } catch (error) {
+    failedAction.value = "load";
     loadError.value = error instanceof Error ? error.message : "The trends could not be loaded.";
   } finally {
     loading.value = false;
   }
 };
+
+const researchTrends = async () => {
+  researching.value = true;
+  loadError.value = "";
+  try {
+    trends.value = await request<ITTrendResponse>("/it-trends/research", { method: "POST" });
+    selectedCategory.value = "all";
+  } catch (error) {
+    failedAction.value = "research";
+    loadError.value = error instanceof Error ? error.message : "The research could not be completed.";
+  } finally {
+    researching.value = false;
+  }
+};
+
+const retryFailedAction = () => failedAction.value === "research" ? researchTrends() : loadTrends();
 
 onMounted(() => loadTrends());
 </script>

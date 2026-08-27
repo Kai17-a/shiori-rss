@@ -23,7 +23,6 @@ from api.services.llm_service import chat_completion, load_llm_config
 logger = logging.getLogger(__name__)
 
 WINDOW_HOURS = 24
-CACHE_HOURS = 1
 MAX_CANDIDATES_PER_SOURCE = 20
 
 
@@ -48,12 +47,17 @@ class TrendCandidate:
 
 
 class ITTrendService:
-    def get(self, *, force: bool = False) -> ITTrendResponse:
-        now = datetime.now(UTC)
+    def get(self) -> ITTrendResponse:
         cached = self._load_cache()
-        if cached and not force and cached[0] > now:
-            return cached[1]
+        if cached is None:
+            return self._empty_response()
+        generated_at = cached.generated_at
+        if generated_at is None or generated_at.astimezone().date() != datetime.now().astimezone().date():
+            return self._empty_response()
+        return cached
 
+    def research(self) -> ITTrendResponse:
+        now = datetime.now(UTC)
         try:
             candidates = self._fetch_hacker_news(now) + self._fetch_github(now)
             if not candidates:
@@ -61,36 +65,41 @@ class ITTrendService:
                     status_code=502, detail="Trend sources returned no recent items"
                 )
             response = self._build_response(candidates, now)
-            self._save_cache(response, now + timedelta(hours=CACHE_HOURS))
+            self._save_cache(response, now + timedelta(days=1))
             return response
         except Exception as exc:
-            if cached:
-                logger.warning(
-                    "it_trends_refresh_failed_using_stale_cache", exc_info=True
-                )
-                return cached[1].model_copy(update={"stale": True})
             if isinstance(exc, HTTPException):
                 raise
-            logger.exception("it_trends_refresh_failed")
+            logger.exception("it_trends_research_failed")
             raise HTTPException(
-                status_code=502, detail="Could not refresh IT trends"
+                status_code=502, detail="Could not research IT trends"
             ) from exc
 
-    def _load_cache(self) -> tuple[datetime, ITTrendResponse] | None:
+    def _empty_response(self) -> ITTrendResponse:
+        return ITTrendResponse(
+            generated_at=None,
+            window_hours=WINDOW_HOURS,
+            region="Global",
+            sources=[],
+            ai_summarized=False,
+            stale=False,
+            items=[],
+        )
+
+    def _load_cache(self) -> ITTrendResponse | None:
         with get_db() as conn:
             row = ITTrendRepository(conn).get()
         if row is None:
             return None
         try:
-            expires_at = datetime.fromisoformat(
-                str(row["expires_at"]).replace("Z", "+00:00")
-            )
-            return expires_at, ITTrendResponse.model_validate_json(row["payload_json"])
+            return ITTrendResponse.model_validate_json(row["payload_json"])
         except (ValueError, TypeError):
             logger.warning("invalid_it_trend_cache", exc_info=True)
             return None
 
     def _save_cache(self, response: ITTrendResponse, expires_at: datetime) -> None:
+        if response.generated_at is None:
+            raise ValueError("A researched trend response must have generated_at")
         with get_db() as conn:
             ITTrendRepository(conn).save(
                 response.generated_at.isoformat(),
