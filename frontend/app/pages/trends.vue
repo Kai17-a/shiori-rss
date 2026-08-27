@@ -71,7 +71,6 @@
             description="Collecting live signals and asking the configured AI model to summarize them. You can keep this page open until it finishes."
             color="info"
             variant="soft"
-            icon="i-lucide-loader-circle"
           />
           <div
             role="progressbar"
