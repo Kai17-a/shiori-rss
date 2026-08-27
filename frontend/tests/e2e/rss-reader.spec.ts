@@ -13,6 +13,24 @@ test("opens the rolling 24-hour news summary as the app home", async ({ page }) 
   await expect(page.getByRole("link", { name: "Bookmarks" })).toHaveCount(0);
 });
 
+test("shows mock global IT trends on mobile", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto("/trends");
+
+  await expect(page.getByRole("heading", { name: "What the IT world is talking about" })).toBeVisible();
+  await expect(page.getByText("Mock data", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "AI coding agents move into team workflows" })).toBeVisible();
+  await expect(page.getByText("Score 96", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Filter IT trends by category")).toBeVisible();
+  await page.getByLabel("Filter IT trends by category").click();
+  await page.getByRole("option", { name: "Security" }).click();
+  await expect(page.getByRole("heading", { name: "Post-quantum cryptography migration" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "AI coding agents move into team workflows" })).toBeHidden();
+  await expect.poll(() => page.evaluate(
+    () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+  )).toBe(true);
+});
+
 test("shows configured feed icons in the recent news list", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await page.route("**/api/rss-feeds/3/icon", async (route) => {

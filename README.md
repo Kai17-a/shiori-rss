@@ -27,6 +27,7 @@ docker run --rm -p 3000:3000 -p 8000:8000 \
 - 通知への記事概要の有無、ライト・ダーク・システムテーマ設定
 - Ollama、vLLM、OpenAI互換LLMの接続設定と疎通テスト
 - 保存済み記事のAI事前解析と、定期・手動実行
+- IT分野の世界的な注目トピックを確認するトレンド画面（現在はモックデータ）
 - GitHubリポジトリの登録、最新リリース確認、Webhook新着通知
 
 ## Screens
@@ -38,6 +39,7 @@ docker run --rm -p 3000:3000 -p 8000:8000 \
 - `/custom-feeds/{id}`: LLMカスタムRSSの記事一覧と検索
 - `/settings`: General、Automation、Webhooks、LLMのタブ別設定
 - `/github`: 登録したGitHubリポジトリごとの最新リリース一覧
+- `/trends`: 世界のITトレンドランキング（モックデータ）
 
 データは SQLite に保存されます。フィード URL と Webhook URL は重複登録できません。
 

@@ -121,6 +121,13 @@ const primaryLinks = computed<NavigationMenuItem[]>(() => [
     onSelect: closeSidebar,
   },
   {
+    label: "IT trends",
+    icon: "i-lucide-flame",
+    to: "/trends",
+    active: isActive("/trends"),
+    onSelect: closeSidebar,
+  },
+  {
     label: "RSS feeds",
     icon: "i-lucide-rss",
     to: "/feeds",
