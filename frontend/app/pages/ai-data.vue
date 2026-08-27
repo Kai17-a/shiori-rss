@@ -72,8 +72,6 @@
             :description="analysisProgressDescription"
             color="info"
             variant="soft"
-            icon="i-lucide-loader-circle"
-            :ui="{ leadingIcon: 'animate-spin' }"
           />
 
           <div

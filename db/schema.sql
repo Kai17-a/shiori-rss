@@ -257,6 +257,14 @@ CREATE INDEX idx_news_site_articles_effective_published_at
   ON news_site_articles(effective_published_at);
 CREATE INDEX idx_news_site_articles_pending_notification_only
   ON news_site_articles(id) WHERE webhook_notified = 0;
+CREATE TABLE it_trend_snapshots (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  generated_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 -- Dbmate schema migrations
 INSERT INTO "schema_migrations" (version) VALUES
   ('010'),
@@ -281,4 +289,5 @@ INSERT INTO "schema_migrations" (version) VALUES
   ('202608121720'),
   ('202608121952'),
   ('202608230029'),
-  ('202608230115');
+  ('202608230115'),
+  ('202608271200');
