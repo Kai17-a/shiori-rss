@@ -32,11 +32,15 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(dashboard_module, "get_db", patched_get_db)
     with patched_get_db() as conn:
         conn.execute(
-            "INSERT INTO rss_feeds (id, url, title, icon_url) VALUES (1, ?, ?, ?)",
+            """
+            INSERT INTO rss_feeds (id, url, title, icon_url, icon_data, icon_media_type)
+            VALUES (1, ?, ?, ?, ?, 'image/png')
+            """,
             (
                 "https://example.com/feed.xml",
                 "Daily RSS",
-                "https://cdn.example.com/rss.png",
+                "http://localhost:3000/api/rss-feeds/1/icon",
+                b"saved-icon",
             ),
         )
         conn.execute(
@@ -110,7 +114,7 @@ def test_dashboard_summarizes_sources_and_articles_from_the_last_24_hours(client
     assert response.json()["articles"][0]["source_type"] == "custom"
     assert [article["source_icon_url"] for article in response.json()["articles"]] == [
         "https://cdn.example.com/custom.png",
-        "https://cdn.example.com/rss.png",
+        "/api/rss-feeds/1/icon",
     ]
     assert response.json()["generated_at"] == "2026-08-09T09:00:00Z"
     assert response.json()["window_started_at"] == "2026-08-08T09:00:00Z"

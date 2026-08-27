@@ -39,6 +39,12 @@ MAX_ICON_BYTES = 1024 * 1024
 
 
 class RSSFeedService:
+    def _to_response(self, row: dict) -> RSSFeedResponse:
+        response_row = dict(row)
+        if response_row.get("icon_uploaded"):
+            response_row["icon_url"] = f"/api/rss-feeds/{response_row['id']}/icon"
+        return RSSFeedResponse(**response_row)
+
     def _parse_article_published(self, value: object | None) -> datetime | None:
         if value is None:
             return None
@@ -311,7 +317,7 @@ class RSSFeedService:
             self._sync_webhook_endpoints(repo, row["id"], data.webhook_ids)
             saved_row = repo.find_by_id(row["id"])
             assert saved_row is not None
-            return RSSFeedResponse(**saved_row)
+            return self._to_response(saved_row)
 
     def list(
         self, q: str | None = None, page: int = 1, per_page: int = 20
@@ -325,7 +331,7 @@ class RSSFeedService:
                 page = total_pages
             offset = (page - 1) * per_page
             rows = repo.find_all(q=q, limit=per_page, offset=offset)
-            items = [RSSFeedResponse(**row) for row in rows]
+            items = [self._to_response(row) for row in rows]
             return RSSFeedListResponse(
                 items=items,
                 total=total,
@@ -340,7 +346,7 @@ class RSSFeedService:
             row = repo.find_by_id(feed_id)
             if row is None:
                 raise HTTPException(status_code=404, detail="RSS feed not found")
-            return RSSFeedResponse(**row)
+            return self._to_response(row)
 
     def list_articles(
         self,
@@ -453,7 +459,7 @@ class RSSFeedService:
                 fields["icon_media_type"] = None
             row = repo.update(feed_id, fields)
             assert row is not None
-            return RSSFeedResponse(**row)
+            return self._to_response(row)
 
     def set_icon(
         self, feed_id: int, *, content: bytes, media_type: str, public_url: str
@@ -478,7 +484,7 @@ class RSSFeedService:
             )
             if row is None:
                 raise HTTPException(status_code=404, detail="RSS feed not found")
-            return RSSFeedResponse(**row)
+            return self._to_response(row)
 
     def get_icon(self, feed_id: int) -> tuple[bytes, str]:
         with get_db() as conn:
@@ -500,7 +506,7 @@ class RSSFeedService:
             )
             if row is None:
                 raise HTTPException(status_code=404, detail="RSS feed not found")
-            return RSSFeedResponse(**row)
+            return self._to_response(row)
 
     def delete(self, feed_id: int) -> None:
         with get_db() as conn:

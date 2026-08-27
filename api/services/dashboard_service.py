@@ -45,7 +45,11 @@ class DashboardService:
                        published, created_at, webhook_notified
                 FROM (
                   SELECT 'rss' AS source_type, feeds.id AS source_id,
-                         feeds.title AS source_title, feeds.icon_url AS source_icon_url,
+                         feeds.title AS source_title,
+                         CASE WHEN feeds.icon_data IS NOT NULL
+                           THEN '/api/rss-feeds/' || feeds.id || '/icon'
+                           ELSE feeds.icon_url
+                         END AS source_icon_url,
                          articles.url, articles.title,
                          articles.summary, articles.published, articles.created_at,
                          articles.webhook_notified, articles.effective_published_at
@@ -55,7 +59,11 @@ class DashboardService:
                     AND articles.effective_published_at <= datetime(?)
                   UNION ALL
                   SELECT 'custom' AS source_type, sites.id AS source_id,
-                         sites.title AS source_title, sites.icon_url AS source_icon_url,
+                         sites.title AS source_title,
+                         CASE WHEN sites.icon_data IS NOT NULL
+                           THEN '/api/news-sites/' || sites.id || '/icon'
+                           ELSE sites.icon_url
+                         END AS source_icon_url,
                          articles.url, articles.title,
                          articles.summary, articles.published, articles.created_at,
                          articles.webhook_notified, articles.effective_published_at

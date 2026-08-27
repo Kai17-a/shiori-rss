@@ -14,6 +14,16 @@ test("opens the rolling 24-hour news summary as the app home", async ({ page }) 
 });
 
 test("shows configured feed icons in the recent news list", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.route("**/api/rss-feeds/3/icon", async (route) => {
+    await route.fulfill({
+      contentType: "image/png",
+      body: Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+        "base64",
+      ),
+    });
+  });
   await page.route("**/api/dashboard", async (route) => {
     await route.fulfill({
       contentType: "application/json",
@@ -30,7 +40,7 @@ test("shows configured feed icons in the recent news list", async ({ page }) => 
           source_type: "rss",
           source_id: 3,
           source_title: "Tech Feed",
-          source_icon_url: "https://cdn.example.com/tech-feed.png",
+          source_icon_url: "/api/rss-feeds/3/icon",
           url: "https://example.com/article",
           title: "Recent article",
           summary: null,
@@ -46,8 +56,11 @@ test("shows configured feed icons in the recent news list", async ({ page }) => 
 
   await expect(page.getByRole("img", { name: "Tech Feed icon" })).toHaveAttribute(
     "src",
-    "https://cdn.example.com/tech-feed.png",
+    "/api/rss-feeds/3/icon",
   );
+  await expect.poll(() => page.getByRole("img", { name: "Tech Feed icon" }).evaluate(
+    (image: HTMLImageElement) => image.complete && image.naturalWidth > 0,
+  )).toBe(true);
 });
 
 test("keeps Home, Custom RSS, and GitHub within a mobile viewport", async ({ page }) => {

@@ -107,7 +107,7 @@ def test_rss_feed_icon_can_be_uploaded_and_served(client):
 
     assert response.status_code == 200
     assert response.json()["icon_uploaded"] is True
-    assert response.json()["icon_url"].endswith(f"/rss-feeds/{feed_id}/icon")
+    assert response.json()["icon_url"] == f"/api/rss-feeds/{feed_id}/icon"
 
     icon = client.get(f"/rss-feeds/{feed_id}/icon")
     assert icon.status_code == 200

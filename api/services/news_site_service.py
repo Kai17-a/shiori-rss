@@ -467,6 +467,8 @@ class NewsSiteService:
         except (TypeError, ValueError):
             scrape_config = {}
         response_row = {key: value for key, value in row.items() if key != "scrape_config"}
+        if response_row.get("icon_uploaded"):
+            response_row["icon_url"] = f"/api/news-sites/{response_row['id']}/icon"
         response_row["configuration_mode"] = (
             "manual" if scrape_config.get("configuration_mode") == "manual" else "ai"
         )

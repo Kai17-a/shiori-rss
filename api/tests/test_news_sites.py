@@ -250,6 +250,7 @@ def test_news_site_icon_can_be_uploaded_and_served(client):
 
     assert response.status_code == 200
     assert response.json()["icon_uploaded"] is True
+    assert response.json()["icon_url"] == f"/api/news-sites/{site_id}/icon"
 
     icon = client.get(f"/news-sites/{site_id}/icon")
     assert icon.status_code == 200

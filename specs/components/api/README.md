@@ -4,9 +4,9 @@ FastAPI は `/health`、`/dashboard`、`/rss-feeds`、`/news-sites`、`/github-r
 
 - RSS feed: 作成、一覧、詳細、更新、削除、通知状態付き記事履歴、Webhookなしでも保存できる手動実行。手動実行は定期通知とフィード別の自動通知設定を参照せず、有効な送信先があれば未通知記事を送る
 - Custom RSS: LLM生成または利用者が指定したCSSセレクタによる作成・設定更新、LLM再解析、一覧、詳細、削除、通知状態付き記事履歴、手動取得。手動設定はLLM接続を要求せず、保存前に対象ページでタイトルとリンクを1件以上抽出できることを検証する。設定方式とセレクタは作成・詳細レスポンスへ返す。定期巡回は行わない
-- Feed icon: 通常RSS・Custom RSSの外部画像URLを作成・更新APIで受け付け、`/{id}/icon` のGET/PUT/DELETEでアップロード画像を配信・設定・削除する。アップロードはPNG・JPEG・GIF・WebP、最大1 MBとし、公開HTTP(S) URLを同時に保存する
+- Feed icon: 通常RSS・Custom RSSの外部画像URLを作成・更新APIで受け付け、`/{id}/icon` のGET/PUT/DELETEでアップロード画像を配信・設定・削除する。アップロードはPNG・JPEG・GIF・WebP、最大1 MBとし、Webhook通知用の公開HTTP(S) URLを保存する。APIレスポンスではアップロード済み画像をアクセス元ホストに追従する `/api/.../{id}/icon` の相対URLとして返し、過去に保存したホスト名には依存しない
 - RSS記事の公開日時はXMLの `pubDate` / `published` を優先し、元のUTCオフセットを保ったISO 8601形式で保存・返却する。
-- Dashboard: リクエスト受信時刻を基準に、通常RSS・カスタムRSSの件数、直近24時間の記事数、未通知数、直近24時間の記事を集約して返す。各記事は配信元の設定済みアイコンURLを `source_icon_url` として返す
+- Dashboard: リクエスト受信時刻を基準に、通常RSS・カスタムRSSの件数、直近24時間の記事数、未通知数、直近24時間の記事を集約して返す。各記事は配信元の設定済みアイコンURLを `source_icon_url` として返し、アップロード済み画像は `/api/.../{id}/icon` の相対URLとする
 - GitHub releases: `GET/POST /github-repositories` で登録一覧・追加、`PATCH /github-repositories/{id}` で通知先Webhook選択、`POST /github-repositories/refresh` で全登録先の最新公開リリースを更新し、`DELETE /github-repositories/{id}` で削除する。登録時にも最新1件を取得して保存する。公開リポジトリは認証なしで利用でき、`GITHUB_TOKEN` が設定されていればGitHub APIリクエストに使用する。
 - GitHub release notifications: 定期バッチは登録リポジトリの最新公開リリースを確認し、最後に通知成功したタグから変化した場合だけ、リポジトリごとに選択された有効なWebhookへ通知する。未選択時は通知しない。1件以上成功した場合に通知済みタグを更新し、全送信が失敗した場合は次回再試行する。画面からの一括更新は表示キャッシュだけを更新し、未通知判定を失わない。
 - Settings: Webhook CRUD・疎通確認、定期実行、定期通知、記事概要、1回のフィード実行で通知する記事上限（既定20件、1〜100件）、デフォルトOFFのAI記事解析と利用上限の設定
