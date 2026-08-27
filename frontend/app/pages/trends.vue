@@ -2,7 +2,7 @@
   <UDashboardPanel id="it-trends" class="min-w-0">
     <template #header>
       <PageHeaderActions title="IT trends">
-        <RefreshButton :loading="loading" @click="loadTrends" />
+        <RefreshButton :loading="loading" @click="loadTrends(true)" />
       </PageHeaderActions>
     </template>
 
@@ -15,14 +15,19 @@
                 <p class="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
                   Global technology signals
                 </p>
-                <UBadge label="Mock data" color="warning" variant="soft" size="sm" />
+                <UBadge
+                  :label="trends.ai_summarized ? 'AI summarized' : 'Live ranking'"
+                  :color="trends.ai_summarized ? 'primary' : 'neutral'"
+                  variant="soft"
+                  size="sm"
+                />
               </div>
               <h1 class="mt-2 text-2xl font-bold tracking-tight text-highlighted">
                 What the IT world is talking about
               </h1>
               <p class="mt-2 text-sm leading-6 text-muted">
-                Topics are ranked from activity across developer communities, open-source
-                projects, security feeds, and technology media during the last 24 hours.
+                Live signals from Hacker News and GitHub are ranked by activity and recency,
+                then grouped and summarized by your configured AI model.
               </p>
             </div>
 
@@ -53,6 +58,15 @@
         </UPageCard>
 
         <UAlert
+          v-if="trends.stale"
+          title="Showing the last successful update"
+          description="External sources could not be refreshed. The cached ranking remains available."
+          color="warning"
+          variant="soft"
+          icon="i-lucide-history"
+        />
+
+        <UAlert
           v-if="loadError"
           title="Could not load IT trends"
           :description="loadError"
@@ -61,7 +75,7 @@
           icon="i-lucide-circle-alert"
         >
           <template #actions>
-            <UButton label="Try again" color="error" variant="soft" size="xs" @click="loadTrends" />
+            <UButton label="Try again" color="error" variant="soft" size="xs" @click="loadTrends()" />
           </template>
         </UAlert>
 
@@ -109,7 +123,7 @@
 
                 <div class="flex shrink-0 gap-4 text-xs text-muted lg:text-right">
                   <span><strong class="block text-sm text-default">{{ trend.source_count }}</strong>sources</span>
-                  <span><strong class="block text-sm text-default">{{ trend.mention_count }}</strong>mentions</span>
+                  <span><strong class="block text-sm text-default">{{ trend.mention_count }}</strong>reactions</span>
                 </div>
               </div>
 
@@ -148,7 +162,7 @@
           <div>
             <UIcon name="i-lucide-radar" class="mx-auto size-7 text-muted" />
             <p class="mt-3 font-semibold text-default">No trends in this category</p>
-            <p class="mt-1 text-sm text-muted">Choose another category to see the current mock results.</p>
+            <p class="mt-1 text-sm text-muted">Choose another category or refresh the external sources.</p>
           </div>
         </div>
       </div>
@@ -158,14 +172,17 @@
 
 <script setup lang="ts">
 import type { ITTrendMomentum, ITTrendResponse } from "~/types";
-import { fetchMockITTrends } from "~/mocks/itTrends";
 import { formatDateTime } from "~/utils/dateTime";
+
+const { request } = useApi();
 
 const emptyTrends = (): ITTrendResponse => ({
   generated_at: "",
   window_hours: 24,
   region: "Global",
   sources: [],
+  ai_summarized: false,
+  stale: false,
   items: [],
 });
 
@@ -191,17 +208,19 @@ const momentumLabel = (momentum: ITTrendMomentum) => ({
   steady: "Steady",
 })[momentum];
 
-const loadTrends = async () => {
+const loadTrends = async (force = false) => {
   loading.value = true;
   loadError.value = "";
   try {
-    trends.value = await fetchMockITTrends();
+    trends.value = await request<ITTrendResponse>(force ? "/it-trends/refresh" : "/it-trends", {
+      method: force ? "POST" : "GET",
+    });
   } catch (error) {
-    loadError.value = error instanceof Error ? error.message : "The mock response could not be loaded.";
+    loadError.value = error instanceof Error ? error.message : "The trends could not be loaded.";
   } finally {
     loading.value = false;
   }
 };
 
-onMounted(loadTrends);
+onMounted(() => loadTrends());
 </script>

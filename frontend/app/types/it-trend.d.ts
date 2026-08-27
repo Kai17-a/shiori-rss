@@ -25,5 +25,7 @@ export interface ITTrendResponse {
   window_hours: number;
   region: string;
   sources: string[];
+  ai_summarized: boolean;
+  stale: boolean;
   items: ITTrendItem[];
 }

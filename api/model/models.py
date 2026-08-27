@@ -768,3 +768,33 @@ class GitHubRepositoryResponse(BaseModel):
 class GitHubRepositoryListResponse(BaseModel):
     items: list[GitHubRepositoryResponse]
     total: int
+
+
+class ITTrendLink(BaseModel):
+    title: str
+    url: str
+    source: str
+
+
+class ITTrendItem(BaseModel):
+    id: str
+    rank: int
+    title: str
+    summary: str
+    category: str
+    momentum: Literal["surging", "rising", "steady"]
+    score: int
+    source_count: int
+    mention_count: int
+    sources: list[str]
+    related_links: list[ITTrendLink]
+
+
+class ITTrendResponse(BaseModel):
+    generated_at: datetime
+    window_hours: int
+    region: str
+    sources: list[str]
+    ai_summarized: bool
+    stale: bool
+    items: list[ITTrendItem]

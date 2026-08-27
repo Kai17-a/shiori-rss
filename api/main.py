@@ -12,6 +12,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from api.routers.ask_ai import router as ask_ai_router
 from api.routers.dashboard import router as dashboard_router
 from api.routers.github_repositories import router as github_repositories_router
+from api.routers.it_trends import router as it_trends_router
 from api.routers.news_sites import router as news_sites_router
 from api.routers.rss_feeds import router as rss_feeds_router
 from api.routers.settings import router as settings_router
@@ -68,6 +69,7 @@ def health_check():
 
 app.include_router(dashboard_router)
 app.include_router(github_repositories_router)
+app.include_router(it_trends_router)
 app.include_router(ask_ai_router)
 app.include_router(news_sites_router)
 app.include_router(rss_feeds_router)

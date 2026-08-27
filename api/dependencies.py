@@ -3,6 +3,7 @@ from api.services.ai_article_data_service import AIArticleDataService
 from api.services.article_analysis_service import ArticleAnalysisService
 from api.services.dashboard_service import DashboardService
 from api.services.github_repository_service import GitHubRepositoryService
+from api.services.it_trend_service import ITTrendService
 from api.services.news_site_service import NewsSiteService
 from api.services.rss_feed_service import RSSFeedService
 from api.services.settings_service import SettingsService
@@ -26,6 +27,10 @@ def get_dashboard_service() -> DashboardService:
 
 def get_github_repository_service() -> GitHubRepositoryService:
     return GitHubRepositoryService()
+
+
+def get_it_trend_service() -> ITTrendService:
+    return ITTrendService()
 
 
 def get_news_site_service() -> NewsSiteService:

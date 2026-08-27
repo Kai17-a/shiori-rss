@@ -13,12 +13,53 @@ test("opens the rolling 24-hour news summary as the app home", async ({ page }) 
   await expect(page.getByRole("link", { name: "Bookmarks" })).toHaveCount(0);
 });
 
-test("shows mock global IT trends on mobile", async ({ page }) => {
+test("shows live global IT trends on mobile", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
+  await page.route("**/api/it-trends", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        generated_at: "2026-08-27T03:00:00Z",
+        window_hours: 24,
+        region: "Global",
+        sources: ["Hacker News", "GitHub"],
+        ai_summarized: true,
+        stale: false,
+        items: [
+          {
+            id: "coding-agents",
+            rank: 1,
+            title: "AI coding agents move into team workflows",
+            summary: "Developers are comparing agent workflows.",
+            category: "AI",
+            momentum: "surging",
+            score: 96,
+            source_count: 2,
+            mention_count: 184,
+            sources: ["Hacker News", "GitHub"],
+            related_links: [{ title: "Agent discussion", url: "https://example.com/ai", source: "Hacker News" }],
+          },
+          {
+            id: "post-quantum-crypto",
+            rank: 2,
+            title: "Post-quantum cryptography migration",
+            summary: "Security teams are publishing practical migration guidance.",
+            category: "Security",
+            momentum: "rising",
+            score: 88,
+            source_count: 1,
+            mention_count: 121,
+            sources: ["Hacker News"],
+            related_links: [{ title: "Security discussion", url: "https://example.com/security", source: "Hacker News" }],
+          },
+        ],
+      }),
+    });
+  });
   await page.goto("/trends");
 
   await expect(page.getByRole("heading", { name: "What the IT world is talking about" })).toBeVisible();
-  await expect(page.getByText("Mock data", { exact: true })).toBeVisible();
+  await expect(page.getByText("AI summarized", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "AI coding agents move into team workflows" })).toBeVisible();
   await expect(page.getByText("Score 96", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Filter IT trends by category")).toBeVisible();

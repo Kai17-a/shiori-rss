@@ -39,7 +39,7 @@ docker run --rm -p 3000:3000 -p 8000:8000 \
 - `/custom-feeds/{id}`: LLMカスタムRSSの記事一覧と検索
 - `/settings`: General、Automation、Webhooks、LLMのタブ別設定
 - `/github`: 登録したGitHubリポジトリごとの最新リリース一覧
-- `/trends`: 世界のITトレンドランキング（モックデータ）
+- `/trends`: Hacker News・GitHubの実データをAIで集約する世界のITトレンドランキング
 
 データは SQLite に保存されます。フィード URL と Webhook URL は重複登録できません。
 

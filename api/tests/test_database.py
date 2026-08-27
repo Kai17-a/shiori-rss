@@ -72,6 +72,7 @@ def test_build_test_db_creates_all_tables():
         assert "article_ai_analyses" in tables
         assert "article_ai_search" in tables
         assert "article_ai_analysis_usage" in tables
+        assert "it_trend_snapshots" in tables
         assert "schema_migrations" in tables
     finally:
         import os
@@ -119,14 +120,15 @@ def test_initialize_database_applies_every_migration_idempotently(tmp_path):
         "202608081400",
         "202608090945",
         "202608091010",
-            "202608101000",
-            "202608121631",
-            "202608121710",
-            "202608121720",
-            "202608121952",
-            "202608230029",
-            "202608230115",
-        }
+        "202608101000",
+        "202608121631",
+        "202608121710",
+        "202608121720",
+        "202608121952",
+        "202608230029",
+        "202608230115",
+        "202608271200",
+    }
     assert "published" in article_columns
     assert "summary" in article_columns
     assert "webhook_notified" in article_columns
