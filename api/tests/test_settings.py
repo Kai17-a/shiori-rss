@@ -645,6 +645,7 @@ def test_llm_settings_are_tested_before_save_and_do_not_expose_api_key(
     import api.services.settings_service as settings_module
 
     tested = []
+    monkeypatch.setattr(settings_module, "probe_temperature_support", lambda _config: True)
     monkeypatch.setattr(
         settings_module,
         "test_llm_connection",
@@ -674,9 +675,67 @@ def test_llm_settings_are_tested_before_save_and_do_not_expose_api_key(
     assert client.get("/settings/llm").json() == saved.json()
 
 
+def test_llm_settings_persists_detected_temperature_support_and_future_calls_skip_it(
+    client, monkeypatch
+):
+    """A model that rejects a custom temperature (e.g. an OpenAI reasoning
+    model behind a Kong proxy) must be detected once at save time, not on
+    every later chat_completion call."""
+    import api.services.settings_service as settings_module
+    from api.database import get_db
+    from api.repositories.settings_repo import SettingsRepository
+    from api.services.llm_service import chat_completion, load_llm_config
+
+    tested = []
+    monkeypatch.setattr(settings_module, "probe_temperature_support", lambda _config: False)
+    monkeypatch.setattr(
+        settings_module,
+        "test_llm_connection",
+        lambda config: tested.append(config) or "pong",
+    )
+    saved = client.put(
+        "/settings/llm",
+        json={
+            "provider": "openai",
+            "base_url": "https://llm.example.com/v1",
+            "model": "o3",
+        },
+    )
+
+    assert saved.status_code == 200
+    # The connection test itself must already run with the detected setting.
+    assert tested[0].supports_temperature is False
+
+    with get_db() as conn:
+        config = load_llm_config(SettingsRepository(conn))
+    assert config is not None
+    assert config.supports_temperature is False
+
+    captured = {}
+
+    def fake_post(url, **kwargs):
+        captured["payload"] = kwargs["json"]
+
+        class Result:
+            status_code = 200
+
+            def json(self):
+                return {"choices": [{"message": {"content": "pong"}}]}
+
+        return Result()
+
+    import api.services.llm_service as llm_module
+
+    monkeypatch.setattr(llm_module.httpx, "post", fake_post)
+    chat_completion(config, [{"role": "user", "content": "hi"}], max_tokens=8)
+
+    assert "temperature" not in captured["payload"]
+
+
 def test_llm_settings_accepts_and_tests_an_optional_embedding_model(client, monkeypatch):
     import api.services.settings_service as settings_module
 
+    monkeypatch.setattr(settings_module, "probe_temperature_support", lambda _config: True)
     monkeypatch.setattr(settings_module, "test_llm_connection", lambda _config: "pong")
     monkeypatch.setattr(
         settings_module, "test_embedding_connection", lambda _config: [0.1, 0.2, 0.3]
@@ -703,6 +762,7 @@ def test_llm_settings_timeout_defaults_to_90_seconds_and_can_be_overridden(
     import api.services.settings_service as settings_module
 
     tested = []
+    monkeypatch.setattr(settings_module, "probe_temperature_support", lambda _config: True)
     monkeypatch.setattr(
         settings_module,
         "test_llm_connection",
@@ -756,6 +816,7 @@ def test_llm_request_uses_the_configured_timeout(client, monkeypatch):
     import api.services.settings_service as settings_module
     import api.services.llm_service as llm_module
 
+    monkeypatch.setattr(settings_module, "probe_temperature_support", lambda _config: True)
     monkeypatch.setattr(settings_module, "test_llm_connection", lambda _config: "pong")
     client.put(
         "/settings/llm",
@@ -807,6 +868,7 @@ def test_llm_settings_recreates_vector_schema_when_model_dimension_changes(
     import api.services.settings_service as settings_module
     from api.database import load_vec_extension, pack_embedding
 
+    monkeypatch.setattr(settings_module, "probe_temperature_support", lambda _config: True)
     monkeypatch.setattr(settings_module, "test_llm_connection", lambda _config: "pong")
 
     monkeypatch.setattr(
@@ -871,6 +933,7 @@ def test_clearing_embedding_model_does_not_delete_existing_embeddings(
     import api.services.settings_service as settings_module
     from api.database import load_vec_extension, pack_embedding
 
+    monkeypatch.setattr(settings_module, "probe_temperature_support", lambda _config: True)
     monkeypatch.setattr(settings_module, "test_llm_connection", lambda _config: "pong")
     monkeypatch.setattr(
         settings_module, "test_embedding_connection", lambda _config: [0.1, 0.2]
@@ -1041,6 +1104,7 @@ def test_llm_test_can_use_saved_settings_and_settings_can_be_deleted(
 ):
     import api.services.settings_service as settings_module
 
+    monkeypatch.setattr(settings_module, "probe_temperature_support", lambda _config: True)
     monkeypatch.setattr(settings_module, "test_llm_connection", lambda _config: "pong")
     client.put(
         "/settings/llm",

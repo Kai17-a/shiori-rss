@@ -34,6 +34,7 @@ from api.services.llm_service import (
     LLM_SETTING_KEYS,
     LLMConfig,
     load_llm_config,
+    probe_temperature_support,
     save_llm_config,
     test_embedding_connection,
     test_llm_connection,
@@ -185,6 +186,7 @@ class SettingsService:
             embedding_model=data.embedding_model,
             timeout_seconds=data.timeout_seconds,
         )
+        config.supports_temperature = probe_temperature_support(config)
         test_llm_connection(config)
         if config.embedding_model:
             vector = test_embedding_connection(config)
@@ -219,6 +221,7 @@ class SettingsService:
             raise HTTPException(
                 status_code=400, detail="LLM settings are not configured"
             )
+        config.supports_temperature = probe_temperature_support(config)
         reply = test_llm_connection(config)
         return LLMSettingsTestResponse(ok=True, reply=reply)
 

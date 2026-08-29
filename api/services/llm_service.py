@@ -28,6 +28,15 @@ LLM_EMBEDDING_MODEL_SETTING_KEY = "embedding_model"
 # vectors consistently with the article_ai_embeddings table's current width.
 LLM_EMBEDDING_DIM_SETTING_KEY = "embedding_dim"
 
+# Whether the configured model accepts a custom `temperature`. Some
+# OpenAI-compatible reasoning models (o1/o3/gpt-5 series, etc.) reject any
+# `temperature` other than their fixed default and return HTTP 400 on every
+# single request. Derived (not user-set) by settings_service via
+# probe_temperature_support() whenever the LLM connection is saved or
+# tested, so chat_completion can omit the field on every subsequent call
+# instead of paying a failing request on every one of them.
+LLM_TEMPERATURE_SUPPORTED_SETTING_KEY = "llm_temperature_supported"
+
 # Applies to every HTTP call this module makes to the LLM server (chat,
 # streaming chat, embeddings, connection tests, news-site analysis). Default
 # matches the longest timeout any of those calls used before this setting
@@ -86,6 +95,7 @@ class LLMConfig:
     model: str
     embedding_model: str | None = None
     timeout_seconds: int = LLM_DEFAULT_TIMEOUT_SECONDS
+    supports_temperature: bool = True
 
 
 def new_diagnostic_reference() -> str:
@@ -159,6 +169,9 @@ def load_llm_config(repo) -> LLMConfig | None:
         model=model,
         embedding_model=repo.get(LLM_EMBEDDING_MODEL_SETTING_KEY) or None,
         timeout_seconds=repo.get_int(LLM_TIMEOUT_SETTING_KEY, LLM_DEFAULT_TIMEOUT_SECONDS),
+        supports_temperature=repo.get_bool(
+            LLM_TEMPERATURE_SUPPORTED_SETTING_KEY, default=True
+        ),
     )
 
 
@@ -169,6 +182,7 @@ def save_llm_config(repo, config: LLMConfig) -> None:
     repo.set(LLM_MODEL_SETTING_KEY, config.model)
     repo.set(LLM_EMBEDDING_MODEL_SETTING_KEY, config.embedding_model or "")
     repo.set(LLM_TIMEOUT_SETTING_KEY, str(config.timeout_seconds))
+    repo.set_bool(LLM_TEMPERATURE_SUPPORTED_SETTING_KEY, config.supports_temperature)
 
 
 def _extract_reply_content(provider: str, data: dict) -> str | None:
@@ -212,8 +226,9 @@ def chat_completion(
             "model": config.model,
             "messages": messages,
             "max_tokens": max_tokens,
-            "temperature": 0,
         }
+        if config.supports_temperature:
+            payload["temperature"] = 0
 
     headers = {"Authorization": f"Bearer {config.api_key}"} if config.api_key else None
     try:
@@ -325,9 +340,10 @@ def chat_completion_stream(
             "model": config.model,
             "messages": messages,
             "max_tokens": max_tokens,
-            "temperature": 0,
             "stream": True,
         }
+        if config.supports_temperature:
+            payload["temperature"] = 0
     headers = {"Authorization": f"Bearer {config.api_key}"} if config.api_key else None
 
     try:
@@ -388,6 +404,38 @@ def test_llm_connection(config: LLMConfig) -> str:
         max_tokens=8,
         operation="connection_test",
     )
+
+
+def probe_temperature_support(config: LLMConfig) -> bool:
+    """Detect whether the configured model accepts a custom `temperature`.
+
+    Called once from settings_service whenever the LLM connection is saved
+    or tested, so the result can be cached on LLMConfig.supports_temperature
+    and every later chat_completion call can skip the field outright instead
+    of failing and retrying on each one. Any failure other than a clear
+    temperature rejection is left for the real connection-test call right
+    after this to surface with full error handling and logging.
+    """
+    if config.provider == "ollama":
+        return True
+    base_url = config.base_url.rstrip("/")
+    url = f"{base_url}/chat/completions"
+    payload = {
+        "model": config.model,
+        "messages": [{"role": "user", "content": "Reply with: pong"}],
+        "max_tokens": 8,
+        "temperature": 0,
+    }
+    headers = {"Authorization": f"Bearer {config.api_key}"} if config.api_key else None
+    try:
+        response = httpx.post(
+            url, json=payload, headers=headers, timeout=config.timeout_seconds
+        )
+    except httpx.HTTPError:
+        return True
+    if response.status_code == 400 and "temperature" in response.text.lower():
+        return False
+    return True
 
 
 def _extract_embedding_vector(provider: str, data: dict) -> list[float] | None:
