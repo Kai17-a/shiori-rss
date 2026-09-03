@@ -162,7 +162,7 @@ CREATE TABLE article_ai_analyses (
   error_message TEXT,
   attempt_count INTEGER NOT NULL DEFAULT 1,
   analyzed_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now')), search_aliases_json TEXT NOT NULL DEFAULT '[]', embedding BLOB, embedding_content_hash TEXT, embedding_model TEXT, embedding_dim INTEGER, embedding_updated_at TEXT,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')), search_aliases_json TEXT NOT NULL DEFAULT '[]', embedding BLOB, embedding_content_hash TEXT, embedding_model TEXT, embedding_dim INTEGER, embedding_updated_at TEXT, embedding_provider TEXT, embedding_base_url TEXT,
   UNIQUE (source_type, article_id)
 );
 CREATE INDEX idx_article_ai_analyses_status_updated
@@ -290,4 +290,5 @@ INSERT INTO "schema_migrations" (version) VALUES
   ('202608121952'),
   ('202608230029'),
   ('202608230115'),
-  ('202608271200');
+  ('202608271200'),
+  ('202609031300');

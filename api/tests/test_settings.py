@@ -668,6 +668,10 @@ def test_llm_settings_are_tested_before_save_and_do_not_expose_api_key(
         "api_key_configured": True,
         "model": "example-model",
         "embedding_model": None,
+        "embedding_use_separate_provider": False,
+        "embedding_provider": None,
+        "embedding_base_url": None,
+        "embedding_api_key_configured": False,
         "timeout_seconds": 90,
     }
     assert tested[0].api_key == "secret-token"
@@ -754,6 +758,162 @@ def test_llm_settings_accepts_and_tests_an_optional_embedding_model(client, monk
     assert saved.status_code == 200
     assert saved.json()["embedding_model"] == "example-embedding-model"
     assert client.get("/settings/llm").json()["embedding_model"] == "example-embedding-model"
+
+
+def test_llm_settings_requires_embedding_provider_and_url_when_separate_provider_enabled(
+    client,
+):
+    response = client.put(
+        "/settings/llm",
+        json={
+            "provider": "openai",
+            "base_url": "https://llm.example.com/v1",
+            "model": "example-model",
+            "embedding_model": "example-embedding-model",
+            "embedding_use_separate_provider": True,
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_llm_settings_allows_a_separate_embedding_provider_with_no_embedding_model_yet(
+    client, monkeypatch
+):
+    """Configuring the separate connection ahead of picking an embedding
+    model is harmless dead configuration, not an error: embeddings() itself
+    already refuses to run without an embedding_model."""
+    import api.services.settings_service as settings_module
+
+    monkeypatch.setattr(settings_module, "probe_temperature_support", lambda _config: True)
+    monkeypatch.setattr(settings_module, "test_llm_connection", lambda _config: "pong")
+
+    saved = client.put(
+        "/settings/llm",
+        json={
+            "provider": "openai",
+            "base_url": "https://llm.example.com/v1",
+            "model": "example-model",
+            "embedding_use_separate_provider": True,
+            "embedding_provider": "openai",
+            "embedding_base_url": "https://embedding.example.com/v1",
+        },
+    )
+
+    assert saved.status_code == 200
+    assert saved.json()["embedding_model"] is None
+    assert saved.json()["embedding_use_separate_provider"] is True
+
+
+def test_llm_settings_accepts_a_separate_embedding_provider(client, monkeypatch):
+    import api.services.settings_service as settings_module
+
+    monkeypatch.setattr(settings_module, "probe_temperature_support", lambda _config: True)
+    monkeypatch.setattr(settings_module, "test_llm_connection", lambda _config: "pong")
+    monkeypatch.setattr(
+        settings_module, "test_embedding_connection", lambda _config: [0.1, 0.2, 0.3]
+    )
+
+    saved = client.put(
+        "/settings/llm",
+        json={
+            "provider": "ollama",
+            "base_url": "http://chat.example.com/v1",
+            "model": "example-model",
+            "embedding_model": "example-embedding-model",
+            "embedding_use_separate_provider": True,
+            "embedding_provider": "openai",
+            "embedding_base_url": "https://embedding.example.com/v1",
+            "embedding_api_key": "embedding-secret",
+        },
+    )
+
+    assert saved.status_code == 200
+    assert saved.json() == {
+        "provider": "ollama",
+        "base_url": "http://chat.example.com/v1",
+        "api_key_configured": False,
+        "model": "example-model",
+        "embedding_model": "example-embedding-model",
+        "embedding_use_separate_provider": True,
+        "embedding_provider": "openai",
+        "embedding_base_url": "https://embedding.example.com/v1",
+        "embedding_api_key_configured": True,
+        "timeout_seconds": 90,
+    }
+    assert client.get("/settings/llm").json() == saved.json()
+
+    # Switching back to a shared provider must drop the stored embedding
+    # connection, including its credential, rather than leaving it dormant.
+    reverted = client.put(
+        "/settings/llm",
+        json={
+            "provider": "ollama",
+            "base_url": "http://chat.example.com/v1",
+            "model": "example-model",
+            "embedding_model": "example-embedding-model",
+        },
+    )
+    assert reverted.status_code == 200
+    assert reverted.json()["embedding_use_separate_provider"] is False
+    assert reverted.json()["embedding_provider"] is None
+    assert reverted.json()["embedding_base_url"] is None
+    assert reverted.json()["embedding_api_key_configured"] is False
+
+
+def test_embedding_call_uses_the_separate_provider_not_the_chat_connection(client, monkeypatch):
+    """The whole point of this setting: embeddings() must hit the embedding
+    host/credential, never the chat one, once separate mode is enabled."""
+    import api.services.settings_service as settings_module
+    import api.services.llm_service as llm_module
+
+    monkeypatch.setattr(settings_module, "probe_temperature_support", lambda _config: True)
+    monkeypatch.setattr(settings_module, "test_llm_connection", lambda _config: "pong")
+    monkeypatch.setattr(
+        settings_module, "test_embedding_connection", lambda _config: [0.1, 0.2, 0.3]
+    )
+    client.put(
+        "/settings/llm",
+        json={
+            "provider": "ollama",
+            "base_url": "http://chat.example.com/v1",
+            "api_key": "chat-secret",
+            "model": "example-model",
+            "embedding_model": "example-embedding-model",
+            "embedding_use_separate_provider": True,
+            "embedding_provider": "openai",
+            "embedding_base_url": "https://embedding.example.com/v1",
+            "embedding_api_key": "embedding-secret",
+        },
+    )
+
+    captured = {}
+
+    def fake_post(url, json, headers, timeout):
+        captured["url"] = url
+        captured["headers"] = headers
+        return type(
+            "Resp",
+            (),
+            {
+                "status_code": 200,
+                "json": lambda self: {"data": [{"embedding": [0.1, 0.2, 0.3]}]},
+            },
+        )()
+
+    monkeypatch.setattr(llm_module.httpx, "post", fake_post)
+
+    from api.database import get_db
+    from api.repositories.settings_repo import SettingsRepository
+
+    with get_db() as conn:
+        config = llm_module.load_llm_config(SettingsRepository(conn))
+    assert config is not None
+
+    llm_module.embeddings(config, "hello world")
+
+    assert captured["url"] == "https://embedding.example.com/v1/embeddings"
+    assert captured["headers"] == {"Authorization": "Bearer embedding-secret"}
 
 
 def test_llm_settings_timeout_defaults_to_90_seconds_and_can_be_overridden(
@@ -1133,3 +1293,42 @@ def test_llm_test_can_use_saved_settings_and_settings_can_be_deleted(
     assert client.delete("/settings/llm").status_code == 204
     assert client.get("/settings/llm").status_code == 404
     assert client.get("/settings/ai-article-analysis").json()["enabled"] is False
+
+
+def test_delete_llm_settings_removes_the_separate_embedding_connection_and_its_credential(
+    client, monkeypatch
+):
+    """A deleted LLM connection must not leave a dormant embedding
+    credential behind in app_settings, even though embedding_model itself
+    is deliberately kept (see LLM_SETTING_KEYS)."""
+    import api.services.settings_service as settings_module
+    from api.database import get_db
+    from api.repositories.settings_repo import SettingsRepository
+
+    monkeypatch.setattr(settings_module, "probe_temperature_support", lambda _config: True)
+    monkeypatch.setattr(settings_module, "test_llm_connection", lambda _config: "pong")
+    monkeypatch.setattr(
+        settings_module, "test_embedding_connection", lambda _config: [0.1, 0.2, 0.3]
+    )
+    client.put(
+        "/settings/llm",
+        json={
+            "provider": "ollama",
+            "base_url": "http://chat.example.com/v1",
+            "model": "example-model",
+            "embedding_model": "example-embedding-model",
+            "embedding_use_separate_provider": True,
+            "embedding_provider": "openai",
+            "embedding_base_url": "https://embedding.example.com/v1",
+            "embedding_api_key": "embedding-secret",
+        },
+    )
+
+    assert client.delete("/settings/llm").status_code == 204
+
+    with get_db() as conn:
+        repo = SettingsRepository(conn)
+        assert repo.get("embedding_use_separate_provider") is None
+        assert repo.get("embedding_provider") is None
+        assert repo.get("embedding_base_url") is None
+        assert repo.get("embedding_api_key") is None

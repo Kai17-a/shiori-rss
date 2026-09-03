@@ -21,6 +21,14 @@ LLM_BASE_URL_SETTING_KEY = "llm_base_url"
 LLM_API_KEY_SETTING_KEY = "llm_api_key"
 LLM_MODEL_SETTING_KEY = "llm_model"
 LLM_EMBEDDING_MODEL_SETTING_KEY = "embedding_model"
+# Whether the embedding model is served by a different provider/endpoint than
+# the chat model. When false (the default, matching every install created
+# before this setting existed), the embedding call reuses the chat
+# provider/base_url/api_key below.
+LLM_EMBEDDING_USE_SEPARATE_PROVIDER_SETTING_KEY = "embedding_use_separate_provider"
+LLM_EMBEDDING_PROVIDER_SETTING_KEY = "embedding_provider"
+LLM_EMBEDDING_BASE_URL_SETTING_KEY = "embedding_base_url"
+LLM_EMBEDDING_API_KEY_SETTING_KEY = "embedding_api_key"
 # The currently configured embedding model's native vector dimension.
 # Derived (not user-set) by settings_service whenever embedding_model is
 # saved, from the actual length of a test embedding call. Read by
@@ -94,8 +102,44 @@ class LLMConfig:
     api_key: str | None
     model: str
     embedding_model: str | None = None
+    embedding_use_separate_provider: bool = False
+    embedding_provider: str | None = None
+    embedding_base_url: str | None = None
+    embedding_api_key: str | None = None
     timeout_seconds: int = LLM_DEFAULT_TIMEOUT_SECONDS
     supports_temperature: bool = True
+
+    @property
+    def _uses_separate_embedding_connection(self) -> bool:
+        # Gates provider/base_url/api_key together so an incomplete separate
+        # config (e.g. the flag saved but embedding_provider missing) can
+        # never mix a chat endpoint with an embedding-only credential, or
+        # vice versa — it falls back to the whole chat connection instead.
+        return bool(
+            self.embedding_use_separate_provider
+            and self.embedding_provider
+            and self.embedding_base_url
+        )
+
+    @property
+    def effective_embedding_provider(self) -> str:
+        if self._uses_separate_embedding_connection:
+            assert self.embedding_provider is not None
+            return self.embedding_provider
+        return self.provider
+
+    @property
+    def effective_embedding_base_url(self) -> str:
+        if self._uses_separate_embedding_connection:
+            assert self.embedding_base_url is not None
+            return self.embedding_base_url
+        return self.base_url
+
+    @property
+    def effective_embedding_api_key(self) -> str | None:
+        if self._uses_separate_embedding_connection:
+            return self.embedding_api_key
+        return self.api_key
 
 
 def new_diagnostic_reference() -> str:
@@ -168,6 +212,12 @@ def load_llm_config(repo) -> LLMConfig | None:
         api_key=repo.get(LLM_API_KEY_SETTING_KEY) or None,
         model=model,
         embedding_model=repo.get(LLM_EMBEDDING_MODEL_SETTING_KEY) or None,
+        embedding_use_separate_provider=repo.get_bool(
+            LLM_EMBEDDING_USE_SEPARATE_PROVIDER_SETTING_KEY, default=False
+        ),
+        embedding_provider=repo.get(LLM_EMBEDDING_PROVIDER_SETTING_KEY) or None,
+        embedding_base_url=repo.get(LLM_EMBEDDING_BASE_URL_SETTING_KEY) or None,
+        embedding_api_key=repo.get(LLM_EMBEDDING_API_KEY_SETTING_KEY) or None,
         timeout_seconds=repo.get_int(LLM_TIMEOUT_SETTING_KEY, LLM_DEFAULT_TIMEOUT_SECONDS),
         supports_temperature=repo.get_bool(
             LLM_TEMPERATURE_SUPPORTED_SETTING_KEY, default=True
@@ -181,6 +231,13 @@ def save_llm_config(repo, config: LLMConfig) -> None:
     repo.set(LLM_API_KEY_SETTING_KEY, config.api_key or "")
     repo.set(LLM_MODEL_SETTING_KEY, config.model)
     repo.set(LLM_EMBEDDING_MODEL_SETTING_KEY, config.embedding_model or "")
+    repo.set_bool(
+        LLM_EMBEDDING_USE_SEPARATE_PROVIDER_SETTING_KEY,
+        config.embedding_use_separate_provider,
+    )
+    repo.set(LLM_EMBEDDING_PROVIDER_SETTING_KEY, config.embedding_provider or "")
+    repo.set(LLM_EMBEDDING_BASE_URL_SETTING_KEY, config.embedding_base_url or "")
+    repo.set(LLM_EMBEDDING_API_KEY_SETTING_KEY, config.embedding_api_key or "")
     repo.set(LLM_TIMEOUT_SETTING_KEY, str(config.timeout_seconds))
     repo.set_bool(LLM_TEMPERATURE_SUPPORTED_SETTING_KEY, config.supports_temperature)
 
@@ -473,15 +530,17 @@ def embeddings(
         )
     reference_id = reference_id or new_diagnostic_reference()
     timeout = timeout if timeout is not None else config.timeout_seconds
-    base_url = config.base_url.rstrip("/")
-    if config.provider == "ollama":
+    provider = config.effective_embedding_provider
+    base_url = config.effective_embedding_base_url.rstrip("/")
+    if provider == "ollama":
         url = f"{base_url}/api/embed"
         payload: dict = {"model": config.embedding_model, "input": text}
     else:
         url = f"{base_url}/embeddings"
         payload = {"model": config.embedding_model, "input": [text]}
 
-    headers = {"Authorization": f"Bearer {config.api_key}"} if config.api_key else None
+    api_key = config.effective_embedding_api_key
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else None
     try:
         response = httpx.post(url, json=payload, headers=headers, timeout=timeout)
     except httpx.HTTPError as exc:
@@ -489,7 +548,7 @@ def embeddings(
             "llm_connection_failed reference_id=%s operation=embedding provider=%s "
             "model=%s endpoint=%s exception=%s",
             reference_id,
-            config.provider,
+            provider,
             config.embedding_model,
             _safe_url(url),
             type(exc).__name__,
@@ -508,7 +567,7 @@ def embeddings(
             "llm_request_rejected reference_id=%s operation=embedding provider=%s "
             "model=%s endpoint=%s upstream_status=%s response_preview=%r",
             reference_id,
-            config.provider,
+            provider,
             config.embedding_model,
             _safe_url(url),
             response.status_code,
@@ -530,7 +589,7 @@ def embeddings(
             ),
         ) from exc
 
-    vector = _extract_embedding_vector(config.provider, data)
+    vector = _extract_embedding_vector(provider, data)
     if not vector:
         raise HTTPException(
             status_code=502,

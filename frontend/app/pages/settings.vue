@@ -162,6 +162,67 @@
               />
             </UFormField>
 
+            <template v-if="llmForm.embeddingModel.trim()">
+              <div class="flex items-start justify-between gap-4 rounded-2xl bg-elevated/60 p-4 lg:col-span-2">
+                <div class="space-y-1">
+                  <p class="text-sm font-semibold text-default">Use a separate provider for embeddings</p>
+                  <p class="text-sm text-muted">
+                    By default the embedding model is called on the same provider and base URL as the chat model above.
+                  </p>
+                </div>
+                <USwitch
+                  v-model="llmForm.embeddingUseSeparateProvider"
+                  aria-label="Use a separate provider for embeddings"
+                />
+              </div>
+
+              <template v-if="llmForm.embeddingUseSeparateProvider">
+                <UFormField label="Embedding provider" required class="w-full">
+                  <USelect
+                    v-model="llmForm.embeddingProvider"
+                    :items="llmProviderOptions"
+                    value-key="value"
+                    label-key="label"
+                    class="w-full"
+                  />
+                </UFormField>
+
+                <UFormField
+                  label="Embedding base URL"
+                  required
+                  description="For vLLM and OpenAI-compatible servers, include the /v1 path."
+                  class="w-full lg:col-span-2"
+                >
+                  <UInput
+                    v-model="llmForm.embeddingBaseUrl"
+                    class="w-full"
+                    placeholder="http://127.0.0.1:11434"
+                  />
+                </UFormField>
+
+                <UFormField
+                  label="Embedding API key"
+                  :description="llmEmbeddingApiKeyDescription"
+                  class="w-full lg:col-span-2"
+                >
+                  <UInput
+                    v-model="llmForm.embeddingApiKey"
+                    type="password"
+                    autocomplete="new-password"
+                    class="w-full"
+                    placeholder="Optional for local servers"
+                  />
+                </UFormField>
+
+                <UCheckbox
+                  v-if="llmSettings?.embedding_api_key_configured"
+                  v-model="llmForm.clearEmbeddingApiKey"
+                  label="Remove the saved embedding API key"
+                  class="lg:col-span-2"
+                />
+              </template>
+            </template>
+
             <UFormField
               label="Request timeout (seconds)"
               description="Applies to every LLM call: chat, embeddings, connection tests, and custom RSS site analysis. Increase this if requests to a slow model or a large page time out."
@@ -594,6 +655,11 @@ const llmForm = reactive({
   apiKey: "",
   clearApiKey: false,
   embeddingModel: "",
+  embeddingUseSeparateProvider: false,
+  embeddingProvider: "ollama" as LLMProvider,
+  embeddingBaseUrl: "",
+  embeddingApiKey: "",
+  clearEmbeddingApiKey: false,
   timeoutSeconds: 90,
 });
 const llmProviderOptions = [
@@ -604,6 +670,11 @@ const llmProviderOptions = [
 const llmConfigured = computed(() => llmSettings.value !== null);
 const llmApiKeyDescription = computed(() =>
   llmSettings.value?.api_key_configured
+    ? "An API key is saved. Leave this blank to keep it unchanged."
+    : "Optional for local servers that do not require authentication.",
+);
+const llmEmbeddingApiKeyDescription = computed(() =>
+  llmSettings.value?.embedding_api_key_configured
     ? "An API key is saved. Leave this blank to keep it unchanged."
     : "Optional for local servers that do not require authentication.",
 );
@@ -713,6 +784,11 @@ const loadLlmSettings = async () => {
     llmForm.apiKey = "";
     llmForm.clearApiKey = false;
     llmForm.embeddingModel = response.embedding_model ?? "";
+    llmForm.embeddingUseSeparateProvider = response.embedding_use_separate_provider;
+    llmForm.embeddingProvider = response.embedding_provider ?? response.provider;
+    llmForm.embeddingBaseUrl = response.embedding_base_url ?? "";
+    llmForm.embeddingApiKey = "";
+    llmForm.clearEmbeddingApiKey = false;
     llmForm.timeoutSeconds = response.timeout_seconds;
   } catch (err) {
     if (!(err instanceof Error) || !err.message.includes("not configured")) {
@@ -729,6 +805,10 @@ const loadLlmSettings = async () => {
   }
 };
 
+const llmUsesSeparateEmbeddingProvider = computed(
+  () => Boolean(llmForm.embeddingModel.trim()) && llmForm.embeddingUseSeparateProvider,
+);
+
 const buildLlmBody = () => ({
   provider: llmForm.provider,
   base_url: llmForm.baseUrl.trim(),
@@ -736,17 +816,38 @@ const buildLlmBody = () => ({
   ...(llmForm.apiKey.trim() ? { api_key: llmForm.apiKey.trim() } : {}),
   clear_api_key: llmForm.clearApiKey,
   embedding_model: llmForm.embeddingModel.trim() || null,
+  embedding_use_separate_provider: llmUsesSeparateEmbeddingProvider.value,
+  ...(llmUsesSeparateEmbeddingProvider.value
+    ? {
+        embedding_provider: llmForm.embeddingProvider,
+        embedding_base_url: llmForm.embeddingBaseUrl.trim(),
+        ...(llmForm.embeddingApiKey.trim()
+          ? { embedding_api_key: llmForm.embeddingApiKey.trim() }
+          : {}),
+        clear_embedding_api_key: llmForm.clearEmbeddingApiKey,
+      }
+    : {}),
   timeout_seconds: llmForm.timeoutSeconds,
 });
 
 const validateLlmForm = () => {
-  if (llmForm.baseUrl.trim() && llmForm.model.trim()) return true;
-  toast.show({
-    title: "Base URL and model are required.",
-    color: "error",
-    icon: "i-lucide-circle-alert",
-  });
-  return false;
+  if (!llmForm.baseUrl.trim() || !llmForm.model.trim()) {
+    toast.show({
+      title: "Base URL and model are required.",
+      color: "error",
+      icon: "i-lucide-circle-alert",
+    });
+    return false;
+  }
+  if (llmUsesSeparateEmbeddingProvider.value && !llmForm.embeddingBaseUrl.trim()) {
+    toast.show({
+      title: "Embedding base URL is required.",
+      color: "error",
+      icon: "i-lucide-circle-alert",
+    });
+    return false;
+  }
+  return true;
 };
 
 const testLlmSettings = async () => {
@@ -784,6 +885,8 @@ const saveLlmSettings = async () => {
     });
     llmForm.apiKey = "";
     llmForm.clearApiKey = false;
+    llmForm.embeddingApiKey = "";
+    llmForm.clearEmbeddingApiKey = false;
     toast.show({
       title: "LLM settings tested and saved.",
       color: "success",
@@ -809,6 +912,8 @@ const deleteLlmSettings = async () => {
     aiAnalysisForm.enabled = false;
     llmForm.apiKey = "";
     llmForm.clearApiKey = false;
+    llmForm.embeddingApiKey = "";
+    llmForm.clearEmbeddingApiKey = false;
     llmDeleteOpen.value = false;
     toast.show({
       title: "LLM settings deleted.",

@@ -290,6 +290,23 @@ class RSSFeedExecuteResponse(BaseModel):
     message: str | None = None
 
 
+class RSSFeedExecuteResult(BaseModel):
+    feed_id: int
+    title: str
+    success: bool
+    delivered: bool
+    delivered_count: int
+    message: str | None = None
+    error: str | None = None
+
+
+class RSSFeedExecuteAllResponse(BaseModel):
+    items: list[RSSFeedExecuteResult]
+    total: int
+    succeeded: int
+    failed: int
+
+
 def _reject_duplicate_ids(value: list[int] | None) -> list[int] | None:
     if value is not None and len(value) != len(set(value)):
         raise ValueError("IDs must not contain duplicates")
@@ -556,6 +573,11 @@ class LLMSettingsUpdate(BaseModel):
     clear_api_key: bool = False
     model: str = PydField(min_length=1)
     embedding_model: str | None = None
+    embedding_use_separate_provider: bool = False
+    embedding_provider: Literal["vllm", "ollama", "openai"] | None = None
+    embedding_base_url: AnyHttpUrl | None = None
+    embedding_api_key: str | None = None
+    clear_embedding_api_key: bool = False
     timeout_seconds: int = PydField(default=90, ge=5, le=600)
 
     @field_validator("model")
@@ -580,6 +602,24 @@ class LLMSettingsUpdate(BaseModel):
             return value
         return value.strip() or None
 
+    @field_validator("embedding_api_key")
+    @classmethod
+    def normalize_embedding_api_key(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        return value.strip() or None
+
+    @model_validator(mode="after")
+    def validate_embedding_provider(self) -> "LLMSettingsUpdate":
+        if self.embedding_use_separate_provider and (
+            not self.embedding_provider or not self.embedding_base_url
+        ):
+            raise ValueError(
+                "embedding_provider and embedding_base_url are required when "
+                "embedding_use_separate_provider is enabled"
+            )
+        return self
+
 
 class LLMSettingsResponse(BaseModel):
     provider: str
@@ -587,6 +627,10 @@ class LLMSettingsResponse(BaseModel):
     api_key_configured: bool
     model: str
     embedding_model: str | None = None
+    embedding_use_separate_provider: bool = False
+    embedding_provider: str | None = None
+    embedding_base_url: str | None = None
+    embedding_api_key_configured: bool = False
     timeout_seconds: int = 90
 
 
@@ -597,6 +641,11 @@ class LLMSettingsTestRequest(BaseModel):
     clear_api_key: bool = False
     model: str | None = None
     embedding_model: str | None = None
+    embedding_use_separate_provider: bool | None = None
+    embedding_provider: Literal["vllm", "ollama", "openai"] | None = None
+    embedding_base_url: AnyHttpUrl | None = None
+    embedding_api_key: str | None = None
+    clear_embedding_api_key: bool = False
     timeout_seconds: int | None = PydField(default=None, ge=5, le=600)
 
 
@@ -724,6 +773,28 @@ class DashboardResponse(BaseModel):
     window_started_at: datetime
     summary: DashboardSummary
     articles: list[DashboardArticle]
+
+
+class ArticleListItem(BaseModel):
+    source_type: Literal["rss", "custom"]
+    article_id: int
+    source_id: int
+    source_title: str
+    source_icon_url: str | None
+    url: str
+    title: str | None
+    summary: str | None
+    published: datetime | None
+    created_at: datetime
+    webhook_notified: bool
+
+
+class ArticleListResponse(BaseModel):
+    items: list[ArticleListItem]
+    total: int
+    page: int
+    per_page: int
+    total_pages: int
 
 
 class GitHubRepositoryCreate(BaseModel):

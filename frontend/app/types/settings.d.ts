@@ -86,6 +86,10 @@ export interface LLMSettingsResponse {
   api_key_configured: boolean;
   model: string;
   embedding_model: string | null;
+  embedding_use_separate_provider: boolean;
+  embedding_provider: LLMProvider | null;
+  embedding_base_url: string | null;
+  embedding_api_key_configured: boolean;
   timeout_seconds: number;
 }
 
@@ -96,6 +100,11 @@ export interface LLMSettingsUpdateRequest {
   clear_api_key?: boolean;
   model: string;
   embedding_model?: string | null;
+  embedding_use_separate_provider?: boolean;
+  embedding_provider?: LLMProvider | null;
+  embedding_base_url?: string | null;
+  embedding_api_key?: string | null;
+  clear_embedding_api_key?: boolean;
   timeout_seconds?: number;
 }
 

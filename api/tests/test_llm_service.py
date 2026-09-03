@@ -10,6 +10,54 @@ from api.services.llm_service import (
 )
 
 
+def test_effective_embedding_connection_uses_the_separate_provider_when_complete():
+    config = LLMConfig(
+        "ollama",
+        "http://chat.example.com",
+        "chat-secret",
+        "model",
+        embedding_use_separate_provider=True,
+        embedding_provider="openai",
+        embedding_base_url="https://embedding.example.com/v1",
+        embedding_api_key="embedding-secret",
+    )
+
+    assert config.effective_embedding_provider == "openai"
+    assert config.effective_embedding_base_url == "https://embedding.example.com/v1"
+    assert config.effective_embedding_api_key == "embedding-secret"
+
+
+@pytest.mark.parametrize(
+    ("embedding_provider", "embedding_base_url"),
+    [
+        (None, "https://embedding.example.com/v1"),
+        ("openai", None),
+        (None, None),
+    ],
+)
+def test_effective_embedding_connection_falls_back_atomically_when_incomplete(
+    embedding_provider, embedding_base_url
+):
+    """An incomplete separate config (flag on but provider/base_url missing —
+    only reachable via a hand-edited or partially-written DB row, the API
+    itself requires both together) must fall back to the *whole* chat
+    connection, never mix a chat endpoint with the embedding-only API key."""
+    config = LLMConfig(
+        "ollama",
+        "http://chat.example.com",
+        "chat-secret",
+        "model",
+        embedding_use_separate_provider=True,
+        embedding_provider=embedding_provider,
+        embedding_base_url=embedding_base_url,
+        embedding_api_key="embedding-secret",
+    )
+
+    assert config.effective_embedding_provider == "ollama"
+    assert config.effective_embedding_base_url == "http://chat.example.com"
+    assert config.effective_embedding_api_key == "chat-secret"
+
+
 @pytest.mark.parametrize(
     ("provider", "expected_path", "response"),
     [

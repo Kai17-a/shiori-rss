@@ -82,6 +82,12 @@ struct LlmConfig {
     // always matches that model's native dimension. Absent only if
     // embedding_model was set through some path other than the Settings API.
     embedding_dim: Option<usize>,
+    // Resolved connection to use for embedding calls: the chat
+    // provider/base_url/api_key above, unless embedding_use_separate_provider
+    // is set, in which case these come from the embedding_* settings.
+    embedding_provider: String,
+    embedding_base_url: String,
+    embedding_api_key: Option<String>,
     timeout_seconds: u64,
 }
 
@@ -97,6 +103,12 @@ struct ArticleCandidate {
     existing_status: Option<String>,
     existing_embedding_hash: Option<String>,
     existing_embedding_model: Option<String>,
+    // Which provider/base URL produced the stored embedding — compared
+    // against the currently configured embedding connection so a provider
+    // swap (even under an identically-named model) is detected as stale,
+    // not just a change of embedding_model itself.
+    existing_embedding_provider: Option<String>,
+    existing_embedding_base_url: Option<String>,
 }
 
 #[derive(Debug)]
@@ -210,20 +222,55 @@ fn load_llm_config(conn: &Connection) -> rusqlite::Result<Option<LlmConfig>> {
     let base_url = setting(conn, "llm_base_url")?;
     let model = setting(conn, "llm_model")?;
     match (provider, base_url, model) {
-        (Some(provider), Some(base_url), Some(model)) => Ok(Some(LlmConfig {
-            provider,
-            base_url,
-            api_key: setting(conn, "llm_api_key")?.filter(|value| !value.is_empty()),
-            model,
-            embedding_model: setting(conn, "embedding_model")?.filter(|value| !value.is_empty()),
-            embedding_dim: setting(conn, "embedding_dim")?.and_then(|value| value.parse().ok()),
-            timeout_seconds: int_setting(
-                conn,
-                "llm_request_timeout_seconds",
-                DEFAULT_LLM_TIMEOUT_SECONDS as i64,
-            )?
-            .clamp(5, 600) as u64,
-        })),
+        (Some(provider), Some(base_url), Some(model)) => {
+            let api_key = setting(conn, "llm_api_key")?.filter(|value| !value.is_empty());
+            let use_separate_embedding_provider =
+                setting(conn, "embedding_use_separate_provider")?.as_deref() == Some("1");
+            let raw_embedding_provider =
+                setting(conn, "embedding_provider")?.filter(|value| !value.is_empty());
+            let raw_embedding_base_url =
+                setting(conn, "embedding_base_url")?.filter(|value| !value.is_empty());
+            // Gate provider/base_url/api_key together: an incomplete separate
+            // config (flag set but provider/base_url missing) must fall back
+            // to the whole chat connection, never mix a chat endpoint with an
+            // embedding-only credential or vice versa.
+            let uses_separate_embedding_provider = use_separate_embedding_provider
+                && raw_embedding_provider.is_some()
+                && raw_embedding_base_url.is_some();
+            let embedding_provider = if uses_separate_embedding_provider {
+                raw_embedding_provider.expect("checked above")
+            } else {
+                provider.clone()
+            };
+            let embedding_base_url = if uses_separate_embedding_provider {
+                raw_embedding_base_url.expect("checked above")
+            } else {
+                base_url.clone()
+            };
+            let embedding_api_key = if uses_separate_embedding_provider {
+                setting(conn, "embedding_api_key")?.filter(|value| !value.is_empty())
+            } else {
+                api_key.clone()
+            };
+            Ok(Some(LlmConfig {
+                provider,
+                base_url,
+                api_key,
+                model,
+                embedding_model: setting(conn, "embedding_model")?
+                    .filter(|value| !value.is_empty()),
+                embedding_dim: setting(conn, "embedding_dim")?.and_then(|value| value.parse().ok()),
+                embedding_provider,
+                embedding_base_url,
+                embedding_api_key,
+                timeout_seconds: int_setting(
+                    conn,
+                    "llm_request_timeout_seconds",
+                    DEFAULT_LLM_TIMEOUT_SECONDS as i64,
+                )?
+                .clamp(5, 600) as u64,
+            }))
+        }
         _ => Ok(None),
     }
 }
@@ -239,7 +286,8 @@ fn load_candidates(
         SELECT candidates.source_type, candidates.article_id,
                coalesce(candidates.title, ''), coalesce(candidates.summary, ''),
                analyses.content_hash, analyses.model, analyses.prompt_version,
-               analyses.status, analyses.embedding_content_hash, analyses.embedding_model
+               analyses.status, analyses.embedding_content_hash, analyses.embedding_model,
+               analyses.embedding_provider, analyses.embedding_base_url
         FROM (
           SELECT 'rss' AS source_type, id AS article_id, title, summary,
                  coalesce(published, created_at) AS article_date
@@ -272,6 +320,8 @@ fn load_candidates(
             existing_status: row.get(7)?,
             existing_embedding_hash: row.get(8)?,
             existing_embedding_model: row.get(9)?,
+            existing_embedding_provider: row.get(10)?,
+            existing_embedding_base_url: row.get(11)?,
         })
     })?;
     rows.collect()
@@ -295,7 +345,8 @@ fn load_candidate(
         r#"
         SELECT coalesce(articles.title, ''), coalesce(articles.summary, ''),
                analyses.content_hash, analyses.model, analyses.prompt_version,
-               analyses.status, analyses.embedding_content_hash, analyses.embedding_model
+               analyses.status, analyses.embedding_content_hash, analyses.embedding_model,
+               analyses.embedding_provider, analyses.embedding_base_url
         FROM {table} AS articles
         LEFT JOIN article_ai_analyses AS analyses
           ON analyses.source_type = ?1 AND analyses.article_id = articles.id
@@ -314,6 +365,8 @@ fn load_candidate(
             existing_status: row.get(5)?,
             existing_embedding_hash: row.get(6)?,
             existing_embedding_model: row.get(7)?,
+            existing_embedding_provider: row.get(8)?,
+            existing_embedding_base_url: row.get(9)?,
         })
     })
     .optional()
@@ -550,8 +603,8 @@ async fn embed_article(
         &format!("{}\n{}", article.title, article.summary),
         MAX_INPUT_CHARS,
     );
-    let base_url = config.base_url.trim_end_matches('/');
-    let (url, payload) = if config.provider == "ollama" {
+    let base_url = config.embedding_base_url.trim_end_matches('/');
+    let (url, payload) = if config.embedding_provider == "ollama" {
         (
             format!("{base_url}/api/embed"),
             json!({"model": embedding_model, "input": input}),
@@ -563,7 +616,7 @@ async fn embed_article(
         )
     };
     let mut request = client.post(url).json(&payload);
-    if let Some(api_key) = &config.api_key {
+    if let Some(api_key) = &config.embedding_api_key {
         request = request.bearer_auth(api_key);
     }
     let response = request.send().await?;
@@ -571,7 +624,7 @@ async fn embed_article(
         return Err(format!("Embedding request failed with HTTP {}", response.status()).into());
     }
     let data: Value = response.json().await?;
-    let vector = embedding_vector(&config.provider, &data)?;
+    let vector = embedding_vector(&config.embedding_provider, &data)?;
     Ok((vector, estimated_tokens(&input)))
 }
 
@@ -599,6 +652,8 @@ fn save_embedding(
     conn: &Connection,
     article: &ArticleCandidate,
     embedding_model: &str,
+    embedding_provider: &str,
+    embedding_base_url: &str,
     hash: &str,
     dim: usize,
     packed: &[u8],
@@ -609,6 +664,8 @@ fn save_embedding(
           embedding = ?,
           embedding_content_hash = ?,
           embedding_model = ?,
+          embedding_provider = ?,
+          embedding_base_url = ?,
           embedding_dim = ?,
           embedding_updated_at = datetime('now')
         WHERE source_type = ? AND article_id = ?
@@ -617,6 +674,8 @@ fn save_embedding(
             packed,
             hash,
             embedding_model,
+            embedding_provider,
+            embedding_base_url,
             dim as i64,
             article.source_type,
             article.article_id
@@ -791,13 +850,18 @@ async fn run_article_analysis_with_mode(
             && article.existing_status.as_deref() == Some("completed");
         // Embedding staleness is independent of text-analysis staleness: an
         // article can have a fresh analysis but a missing/stale embedding
-        // (embedding just configured or switched to a different model), or
-        // vice versa. When no embedding_model is configured, embeddings are
-        // "current" by definition — nothing to do, zero behavior change.
+        // (embedding just configured, switched to a different model, or
+        // repointed at a different provider/URL under the same model name),
+        // or vice versa. When no embedding_model is configured, embeddings
+        // are "current" by definition — nothing to do, zero behavior change.
         let embedding_current = config.embedding_model.is_none()
             || (article.existing_embedding_hash.as_deref() == Some(&hash)
                 && article.existing_embedding_model.as_deref()
-                    == config.embedding_model.as_deref());
+                    == config.embedding_model.as_deref()
+                && article.existing_embedding_provider.as_deref()
+                    == Some(config.embedding_provider.as_str())
+                && article.existing_embedding_base_url.as_deref()
+                    == Some(config.embedding_base_url.as_str()));
         if analysis_current && embedding_current {
             report.skipped_current += 1;
             continue;
@@ -924,6 +988,8 @@ async fn run_article_analysis_with_mode(
                                 conn,
                                 &article,
                                 embedding_model,
+                                &config.embedding_provider,
+                                &config.embedding_base_url,
                                 &hash,
                                 vector.len(),
                                 &packed,
@@ -1103,6 +1169,8 @@ pub async fn run_single_article_analysis(
                             conn,
                             &article,
                             embedding_model,
+                            &config.embedding_provider,
+                            &config.embedding_base_url,
                             &hash,
                             vector.len(),
                             &packed,
@@ -1288,6 +1356,7 @@ mod tests {
               updated_at TEXT NOT NULL DEFAULT (datetime('now')),
               embedding BLOB, embedding_content_hash TEXT, embedding_model TEXT,
               embedding_dim INTEGER, embedding_updated_at TEXT,
+              embedding_provider TEXT, embedding_base_url TEXT,
               UNIQUE (source_type, article_id)
             );
             CREATE TABLE article_ai_analysis_usage (
@@ -1374,6 +1443,7 @@ mod tests {
           updated_at TEXT NOT NULL DEFAULT (datetime('now')),
           embedding BLOB, embedding_content_hash TEXT, embedding_model TEXT,
           embedding_dim INTEGER, embedding_updated_at TEXT,
+          embedding_provider TEXT, embedding_base_url TEXT,
           UNIQUE (source_type, article_id)
         );
         CREATE TABLE article_ai_analysis_usage (
@@ -1434,6 +1504,8 @@ mod tests {
             existing_status: None,
             existing_embedding_hash: None,
             existing_embedding_model: None,
+            existing_embedding_provider: None,
+            existing_embedding_base_url: None,
         };
         let hash = content_hash(&article);
         conn.execute(
@@ -1619,6 +1691,7 @@ mod tests {
               updated_at TEXT NOT NULL DEFAULT (datetime('now')),
               embedding BLOB, embedding_content_hash TEXT, embedding_model TEXT,
               embedding_dim INTEGER, embedding_updated_at TEXT,
+              embedding_provider TEXT, embedding_base_url TEXT,
               UNIQUE (source_type, article_id)
             );
             CREATE TABLE article_ai_analysis_usage (
@@ -1736,6 +1809,8 @@ mod tests {
             existing_status: None,
             existing_embedding_hash: None,
             existing_embedding_model: None,
+            existing_embedding_provider: None,
+            existing_embedding_base_url: None,
         });
         conn.execute(
             "INSERT INTO article_ai_analyses (source_type, article_id, content_hash, model, prompt_version, status) \
@@ -1780,6 +1855,204 @@ mod tests {
         assert_eq!(embedding_dim, 8);
         // article_ai_analyses.model/ai_summary must be untouched (chat mock
         // was never called) even though the row was written before this run.
+        let model: String = conn
+            .query_row(
+                "SELECT model FROM article_ai_analyses WHERE source_type = 'rss' AND article_id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("load model");
+        assert_eq!(model, "test-model");
+    }
+
+    #[tokio::test]
+    async fn embedding_uses_separate_provider_when_configured() {
+        // Chat host: must never receive an /embeddings call.
+        let chat_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+            .expect(0)
+            .mount(&chat_server)
+            .await;
+        let unused_vector: Vec<f32> = vec![0.0; 8];
+        Mock::given(method("POST"))
+            .and(path("/embeddings"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "data": [{"embedding": unused_vector}]
+            })))
+            .expect(0)
+            .mount(&chat_server)
+            .await;
+
+        // Embedding host: must receive exactly the one /embeddings call.
+        let embedding_server = MockServer::start().await;
+        let embedding_vector: Vec<f32> = (0..8).map(|index| index as f32 * 0.1).collect();
+        Mock::given(method("POST"))
+            .and(path("/embeddings"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "data": [{"embedding": embedding_vector}]
+            })))
+            .expect(1)
+            .mount(&embedding_server)
+            .await;
+
+        let conn = build_embedding_test_db();
+        conn.execute(
+            "INSERT INTO rss_feed_articles (id, title, summary) VALUES (1, 'Agent systems', 'A saved article about reliable agents.')",
+            [],
+        )
+        .expect("insert article");
+        let hash = super::content_hash(&super::ArticleCandidate {
+            source_type: "rss".to_string(),
+            article_id: 1,
+            title: "Agent systems".to_string(),
+            summary: "A saved article about reliable agents.".to_string(),
+            existing_hash: None,
+            existing_model: None,
+            existing_prompt_version: None,
+            existing_status: None,
+            existing_embedding_hash: None,
+            existing_embedding_model: None,
+            existing_embedding_provider: None,
+            existing_embedding_base_url: None,
+        });
+        conn.execute(
+            "INSERT INTO article_ai_analyses (source_type, article_id, content_hash, model, prompt_version, status) \
+             VALUES ('rss', 1, ?, 'test-model', ?, 'completed')",
+            rusqlite::params![hash, super::PROMPT_VERSION],
+        )
+        .expect("seed existing analysis");
+        conn.execute_batch(
+            r#"
+            INSERT INTO app_settings (key, value) VALUES
+              ('ai_article_analysis_enabled', '0'),
+              ('ai_article_analysis_max_articles_per_run', '5'),
+              ('ai_article_analysis_daily_token_limit', '50000'),
+              ('ai_article_analysis_lookback_days', '30'),
+              ('llm_provider', 'openai'),
+              ('llm_model', 'test-model'),
+              ('embedding_model', 'test-embedding-model'),
+              ('embedding_use_separate_provider', '1'),
+              ('embedding_provider', 'openai');
+            "#,
+        )
+        .expect("save settings");
+        conn.execute(
+            "INSERT INTO app_settings (key, value) VALUES ('llm_base_url', ?)",
+            [chat_server.uri()],
+        )
+        .expect("save mock chat URL");
+        conn.execute(
+            "INSERT INTO app_settings (key, value) VALUES ('embedding_base_url', ?)",
+            [embedding_server.uri()],
+        )
+        .expect("save mock embedding URL");
+
+        let report = run_article_analysis_manual(&conn)
+            .await
+            .expect("analyze article manually");
+
+        assert_eq!(report.succeeded, 1);
+        assert_eq!(report.failed, 0);
+        let embedding_dim: i64 = conn
+            .query_row(
+                "SELECT embedding_dim FROM article_ai_analyses WHERE source_type = 'rss' AND article_id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("load embedding metadata");
+        assert_eq!(embedding_dim, 8);
+    }
+
+    #[tokio::test]
+    async fn embedding_is_regenerated_when_the_provider_changes_under_the_same_model_name() {
+        // Two backends can serve a model under the identical name but
+        // produce different vectors, so a provider/URL change must force
+        // re-embedding even though embedding_model didn't change.
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+            .expect(0)
+            .mount(&server)
+            .await;
+        let embedding_vector: Vec<f32> = (0..8).map(|index| index as f32 * 0.1).collect();
+        Mock::given(method("POST"))
+            .and(path("/embeddings"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "data": [{"embedding": embedding_vector}]
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let conn = build_embedding_test_db();
+        conn.execute(
+            "INSERT INTO rss_feed_articles (id, title, summary) VALUES (1, 'Agent systems', 'A saved article about reliable agents.')",
+            [],
+        )
+        .expect("insert article");
+        let candidate = super::ArticleCandidate {
+            source_type: "rss".to_string(),
+            article_id: 1,
+            title: "Agent systems".to_string(),
+            summary: "A saved article about reliable agents.".to_string(),
+            existing_hash: None,
+            existing_model: None,
+            existing_prompt_version: None,
+            existing_status: None,
+            existing_embedding_hash: None,
+            existing_embedding_model: None,
+            existing_embedding_provider: None,
+            existing_embedding_base_url: None,
+        };
+        let hash = super::content_hash(&candidate);
+        conn.execute(
+            "INSERT INTO article_ai_analyses \
+             (source_type, article_id, content_hash, model, prompt_version, status, \
+              embedding_content_hash, embedding_model, embedding_provider, embedding_base_url, embedding_dim) \
+             VALUES ('rss', 1, ?, 'test-model', ?, 'completed', ?, 'test-embedding-model', 'ollama', 'http://old-embedding-host', 8)",
+            rusqlite::params![hash, super::PROMPT_VERSION, hash],
+        )
+        .expect("seed existing analysis with a stale provider/base_url");
+        conn.execute_batch(
+            r#"
+            INSERT INTO app_settings (key, value) VALUES
+              ('ai_article_analysis_enabled', '0'),
+              ('ai_article_analysis_max_articles_per_run', '5'),
+              ('ai_article_analysis_daily_token_limit', '50000'),
+              ('ai_article_analysis_lookback_days', '30'),
+              ('llm_provider', 'openai'),
+              ('llm_model', 'test-model'),
+              ('embedding_model', 'test-embedding-model');
+            "#,
+        )
+        .expect("save settings");
+        conn.execute(
+            "INSERT INTO app_settings (key, value) VALUES ('llm_base_url', ?)",
+            [server.uri()],
+        )
+        .expect("save mock LLM URL (also the current, unchanged embedding host)");
+
+        let report = run_article_analysis_manual(&conn)
+            .await
+            .expect("analyze article manually");
+
+        assert_eq!(report.succeeded, 1);
+        assert_eq!(report.failed, 0);
+        let (embedding_provider, embedding_base_url): (String, String) = conn
+            .query_row(
+                "SELECT embedding_provider, embedding_base_url FROM article_ai_analyses \
+                 WHERE source_type = 'rss' AND article_id = 1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("load embedding source metadata");
+        assert_eq!(embedding_provider, "openai");
+        assert_eq!(embedding_base_url, server.uri());
+        // article_ai_analyses.model/ai_summary must be untouched (chat mock
+        // was never called): only the embedding was stale, not the analysis.
         let model: String = conn
             .query_row(
                 "SELECT model FROM article_ai_analyses WHERE source_type = 'rss' AND article_id = 1",

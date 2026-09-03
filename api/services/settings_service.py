@@ -30,7 +30,11 @@ from api.repositories.settings_repo import SettingsRepository
 from api.repositories.webhook_endpoint_repo import WebhookEndpointRepository
 from api.services.llm_service import (
     LLM_DEFAULT_TIMEOUT_SECONDS,
+    LLM_EMBEDDING_API_KEY_SETTING_KEY,
+    LLM_EMBEDDING_BASE_URL_SETTING_KEY,
     LLM_EMBEDDING_DIM_SETTING_KEY,
+    LLM_EMBEDDING_PROVIDER_SETTING_KEY,
+    LLM_EMBEDDING_USE_SEPARATE_PROVIDER_SETTING_KEY,
     LLM_SETTING_KEYS,
     LLMConfig,
     load_llm_config,
@@ -158,6 +162,16 @@ class SettingsService:
             api_key_configured=bool(config.api_key),
             model=config.model,
             embedding_model=config.embedding_model,
+            embedding_use_separate_provider=config.embedding_use_separate_provider,
+            embedding_provider=(
+                config.embedding_provider if config.embedding_use_separate_provider else None
+            ),
+            embedding_base_url=(
+                config.embedding_base_url if config.embedding_use_separate_provider else None
+            ),
+            embedding_api_key_configured=(
+                bool(config.embedding_api_key) if config.embedding_use_separate_provider else False
+            ),
             timeout_seconds=config.timeout_seconds,
         )
 
@@ -178,12 +192,28 @@ class SettingsService:
             if data.clear_api_key
             else data.api_key or (saved.api_key if saved is not None else None)
         )
+        embedding_api_key = (
+            None
+            if not data.embedding_use_separate_provider or data.clear_embedding_api_key
+            else data.embedding_api_key
+            or (saved.embedding_api_key if saved is not None else None)
+        )
         config = LLMConfig(
             provider=data.provider,
             base_url=str(data.base_url),
             api_key=api_key,
             model=data.model,
             embedding_model=data.embedding_model,
+            embedding_use_separate_provider=data.embedding_use_separate_provider,
+            embedding_provider=(
+                data.embedding_provider if data.embedding_use_separate_provider else None
+            ),
+            embedding_base_url=(
+                str(data.embedding_base_url)
+                if data.embedding_use_separate_provider and data.embedding_base_url
+                else None
+            ),
+            embedding_api_key=embedding_api_key,
             timeout_seconds=data.timeout_seconds,
         )
         config.supports_temperature = probe_temperature_support(config)
@@ -209,6 +239,14 @@ class SettingsService:
             repo = SettingsRepository(conn)
             for key in LLM_SETTING_KEYS:
                 repo.delete(key)
+            # embedding_model is deliberately kept (see LLM_SETTING_KEYS'
+            # comment), but the separate-provider connection — and above
+            # all its credential — must not survive a delete just because
+            # the model name does.
+            repo.delete(LLM_EMBEDDING_USE_SEPARATE_PROVIDER_SETTING_KEY)
+            repo.delete(LLM_EMBEDDING_PROVIDER_SETTING_KEY)
+            repo.delete(LLM_EMBEDDING_BASE_URL_SETTING_KEY)
+            repo.delete(LLM_EMBEDDING_API_KEY_SETTING_KEY)
             repo.set(AI_ARTICLE_ANALYSIS_ENABLED_KEY, "0")
 
     def test_llm_settings(
