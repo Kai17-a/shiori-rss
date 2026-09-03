@@ -23,15 +23,9 @@
 import type { NavigationMenuItem } from "@nuxt/ui";
 
 const primaryModelValue = defineModel<string[]>("primaryModelValue", { required: true });
-const emit = defineEmits<{ primaryToggle: [value: string] }>();
 
 const updatePrimaryModelValue = (value: string | string[] | undefined) => {
-  const nextValue = value === undefined ? [] : Array.isArray(value) ? value : [value];
-  const changedValue = [...primaryModelValue.value, ...nextValue].find(
-    (item) => primaryModelValue.value.includes(item) !== nextValue.includes(item),
-  );
-  primaryModelValue.value = nextValue;
-  if (changedValue) emit("primaryToggle", changedValue);
+  primaryModelValue.value = value === undefined ? [] : Array.isArray(value) ? value : [value];
 };
 
 defineProps<{

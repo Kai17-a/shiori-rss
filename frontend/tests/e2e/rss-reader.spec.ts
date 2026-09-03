@@ -350,20 +350,25 @@ test("lists custom RSS sources in the sidebar", async ({ page }) => {
 
   await page.goto("/");
 
+  // Clicking the "Custom RSS" trigger only expands its children — it must
+  // not navigate away from the current page.
   await page.getByRole("button", { name: "Custom RSS", exact: true }).click();
-  await expect(page).toHaveURL(/\/custom-feeds$/);
-  await expect(page.getByRole("link", { name: "All custom RSS" })).toHaveCount(0);
+  await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole("link", { name: "LLM Daily" })).toHaveAttribute(
     "href",
     "/custom-feeds/7",
   );
+
+  // The "All" child link is what actually navigates to the library.
+  await page.getByRole("link", { name: "All", exact: true }).click();
+  await expect(page).toHaveURL(/\/custom-feeds$/);
+
   await page.getByRole("button", { name: "Custom RSS", exact: true }).click();
   await expect(page.getByRole("link", { name: "LLM Daily" })).toBeHidden();
 
   await page.goto("/custom-feeds/7");
   await expect(page.getByRole("link", { name: "LLM Daily" })).toBeVisible();
   await page.getByRole("button", { name: "Custom RSS", exact: true }).click();
-  await expect(page).toHaveURL(/\/custom-feeds$/);
   await expect(page.getByRole("link", { name: "LLM Daily" })).toBeHidden();
 });
 
