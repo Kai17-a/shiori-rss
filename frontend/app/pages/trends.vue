@@ -39,10 +39,15 @@
               </p>
             </div>
 
-            <UFormField label="Category" class="w-full sm:w-56">
+            <UFormField
+              label="Category"
+              :description="categoryFilterAvailable ? undefined : 'Available once trends are AI-summarized.'"
+              class="w-full sm:w-56"
+            >
               <USelect
                 v-model="selectedCategory"
                 :items="categoryOptions"
+                :disabled="!categoryFilterAvailable"
                 aria-label="Filter IT trends by category"
                 class="w-full"
               />
@@ -227,6 +232,12 @@ const loadError = ref("");
 const failedAction = ref<"load" | "research">("load");
 const selectedCategory = ref("all");
 
+// Without AI, every item falls back to a single "Other" category (see
+// ITTrendService._fallback_items), so narrowing by category would offer
+// no real signal — only let it be used once the AI actually grouped and
+// categorized this batch of trends.
+const categoryFilterAvailable = computed(() => trends.value.ai_summarized);
+
 const categoryOptions = computed(() => [
   { label: "All categories", value: "all" },
   ...Array.from(new Set(trends.value.items.map((trend) => trend.category)))
@@ -234,9 +245,16 @@ const categoryOptions = computed(() => [
     .map((category) => ({ label: category, value: category })),
 ]);
 
-const filteredTrends = computed(() => selectedCategory.value === "all"
+const filteredTrends = computed(() => !categoryFilterAvailable.value || selectedCategory.value === "all"
   ? trends.value.items
   : trends.value.items.filter((trend) => trend.category === selectedCategory.value));
+
+watch(
+  () => trends.value.ai_summarized,
+  (available) => {
+    if (!available) selectedCategory.value = "all";
+  },
+);
 
 const momentumLabel = (momentum: ITTrendMomentum) => ({
   surging: "Surging",

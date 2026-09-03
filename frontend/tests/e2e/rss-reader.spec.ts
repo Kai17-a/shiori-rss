@@ -72,6 +72,41 @@ test("shows live global IT trends on mobile", async ({ page }) => {
   )).toBe(true);
 });
 
+test("disables the category filter when trends are not AI-summarized", async ({ page }) => {
+  await page.route("**/api/it-trends", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        generated_at: "2026-08-27T03:00:00Z",
+        window_hours: 24,
+        region: "Global",
+        sources: ["Hacker News"],
+        ai_summarized: false,
+        stale: false,
+        items: [{
+          id: "fallback-item",
+          rank: 1,
+          title: "A trend ranked without AI",
+          summary: "No configured LLM, so this is a plain engagement ranking.",
+          category: "Other",
+          momentum: "steady",
+          score: 40,
+          source_count: 1,
+          mention_count: 12,
+          sources: ["Hacker News"],
+          related_links: [],
+        }],
+      }),
+    });
+  });
+  await page.goto("/trends");
+
+  await expect(page.getByText("Live ranking", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "A trend ranked without AI" })).toBeVisible();
+  await expect(page.getByLabel("Filter IT trends by category")).toBeDisabled();
+  await expect(page.getByText("Available once trends are AI-summarized.")).toBeVisible();
+});
+
 test("starts IT trend research only after user action and shows progress", async ({ page }) => {
   let researchRequests = 0;
   await page.route("**/api/it-trends", async (route) => {
