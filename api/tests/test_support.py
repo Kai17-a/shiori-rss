@@ -28,6 +28,7 @@ from api.model.models import (
 from api.services.ask_ai_service import AskAIService
 from api.services.ai_article_data_service import AIArticleDataService
 from api.services.article_analysis_service import ArticleAnalysisService
+from api.services.article_service import ArticleService
 from api.services.rss_feed_service import RSSFeedService
 from api.services.dashboard_service import DashboardService
 from api.services.news_site_service import NewsSiteService
@@ -130,6 +131,23 @@ class CompatTestClient:
             service.delete(feed_id)
             return self._ok(None, 204)
         return None
+
+    def _articles_response(self, method: str, path: str, query):
+        if method != "GET" or path != "/articles":
+            return None
+        source_id_raw = query.get("source_id", [None])[0]
+        payload = (
+            ArticleService()
+            .list_articles(
+                q=query.get("q", [None])[0],
+                source_type=query.get("source_type", [None])[0],
+                source_id=int(source_id_raw) if source_id_raw is not None else None,
+                page=int(query.get("page", [1])[0]),
+                per_page=int(query.get("per_page", [20])[0]),
+            )
+            .model_dump(mode="json")
+        )
+        return self._ok(payload)
 
     def _dashboard_response(self, method: str, path: str, query):
         if method != "GET" or path != "/dashboard":
@@ -352,6 +370,9 @@ class CompatTestClient:
         try:
             if method == "GET" and parsed.path == "/health":
                 return self._ok({"status": "ok"})
+            response = self._articles_response(method, parsed.path, query)
+            if response is not None:
+                return response
             response = self._dashboard_response(method, parsed.path, query)
             if response is not None:
                 return response

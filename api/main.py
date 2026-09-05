@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from api.routers.articles import router as articles_router
 from api.routers.ask_ai import router as ask_ai_router
 from api.routers.dashboard import router as dashboard_router
 from api.routers.github_repositories import router as github_repositories_router
@@ -67,6 +68,7 @@ def health_check():
     return {"status": "ok"}
 
 
+app.include_router(articles_router)
 app.include_router(dashboard_router)
 app.include_router(github_repositories_router)
 app.include_router(it_trends_router)

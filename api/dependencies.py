@@ -1,6 +1,7 @@
 from api.services.ask_ai_service import AskAIService
 from api.services.ai_article_data_service import AIArticleDataService
 from api.services.article_analysis_service import ArticleAnalysisService
+from api.services.article_service import ArticleService
 from api.services.dashboard_service import DashboardService
 from api.services.github_repository_service import GitHubRepositoryService
 from api.services.it_trend_service import ITTrendService
@@ -19,6 +20,10 @@ def get_ai_article_data_service() -> AIArticleDataService:
 
 def get_article_analysis_service() -> ArticleAnalysisService:
     return ArticleAnalysisService()
+
+
+def get_article_service() -> ArticleService:
+    return ArticleService()
 
 
 def get_dashboard_service() -> DashboardService:
