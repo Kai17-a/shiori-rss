@@ -16,6 +16,16 @@ class RSSFeedRepository:
         row.pop("icon_media_type", None)
         return row
 
+    def find_all_ids(self) -> list[dict]:
+        """Lightweight listing for "execute all": just id and title, without
+        the full row/webhook-id lookup `find_all` does for the paginated UI
+        listing.
+        """
+        rows = self.conn.execute(
+            "SELECT id, title FROM rss_feeds ORDER BY id ASC"
+        ).fetchall()
+        return [dict(row) for row in rows]
+
     def find_icon(self, feed_id: int) -> tuple[bytes, str] | None:
         row = self.conn.execute(
             "SELECT icon_data, icon_media_type FROM rss_feeds WHERE id = ?", (feed_id,)

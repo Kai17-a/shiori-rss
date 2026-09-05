@@ -15,6 +15,16 @@
             </div>
             <div class="flex flex-wrap items-center gap-2">
               <RefreshButton :loading="loading" @click="refreshFeeds" />
+              <UButton
+                label="Fetch all"
+                icon="i-lucide-play-circle"
+                color="neutral"
+                variant="soft"
+                :loading="executingAll"
+                loading-icon="i-lucide-loader-circle"
+                :disabled="executingAll || executingFeedId !== null || feedList.total === 0"
+                @click="executeAllFeeds"
+              />
               <UButton label="Add feed" icon="i-lucide-plus" @click="openCreateModal" />
             </div>
           </div>
@@ -35,6 +45,7 @@
               :feed="feed"
               :to="`/feeds/${feed.id}`"
               :running="executingFeedId === feed.id"
+              :actions-disabled="executingAll"
               :notification-loading="updatingNotificationFeedId === feed.id"
               @edit="openEditModal"
               @execute="executeFeed"
@@ -90,6 +101,7 @@
 
 <script setup lang="ts">
 import type {
+  RSSFeedExecuteAllResponse,
   RSSFeedExecuteResponse,
   RSSFeedListResponse,
   RSSFeedResponse,
@@ -105,6 +117,7 @@ const loading = ref(false);
 const saving = ref(false);
 const deleting = ref(false);
 const executingFeedId = ref<number | null>(null);
+const executingAll = ref(false);
 const updatingNotificationFeedId = ref<number | null>(null);
 const loadError = ref("");
 const modalOpen = ref(false);
@@ -302,6 +315,45 @@ const executeFeed = async (feed: RSSFeedResponse) => {
     });
   } finally {
     executingFeedId.value = null;
+  }
+};
+
+const executeAllFeeds = async () => {
+  if (executingAll.value || executingFeedId.value !== null) return;
+  executingAll.value = true;
+  try {
+    const result = await request<RSSFeedExecuteAllResponse>("/rss-feeds/execute-all", {
+      method: "POST",
+    });
+    if (result.total === 0) {
+      toast.show({
+        title: "No RSS feeds to fetch.",
+        color: "neutral",
+        icon: "i-lucide-info",
+      });
+    } else if (result.failed === 0) {
+      toast.show({
+        title: `Fetched all ${result.succeeded} feed(s).`,
+        color: "success",
+        icon: "i-lucide-check",
+      });
+    } else {
+      toast.show({
+        title: `Fetched ${result.succeeded}/${result.total} feed(s).`,
+        description: `${result.failed} feed(s) failed to fetch.`,
+        color: result.succeeded === 0 ? "error" : "warning",
+        icon: result.succeeded === 0 ? "i-lucide-circle-alert" : "i-lucide-triangle-alert",
+      });
+    }
+  } catch (err) {
+    toast.show({
+      title: "Failed to fetch all RSS feeds.",
+      description: err instanceof Error ? err.message : undefined,
+      color: "error",
+      icon: "i-lucide-circle-alert",
+    });
+  } finally {
+    executingAll.value = false;
   }
 };
 

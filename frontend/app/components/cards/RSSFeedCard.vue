@@ -45,6 +45,7 @@
               :icon="feed.notify_webhook_enabled ? 'i-lucide-bell' : 'i-lucide-bell-off'"
               :label="feed.notify_webhook_enabled ? 'Mute feed delivery' : 'Enable feed delivery'"
               :loading="notificationLoading"
+              :disabled="actionsDisabled"
               @click.stop="$emit('toggleWebhook', feed)"
             />
             <IconButton
@@ -52,10 +53,22 @@
               icon="i-lucide-play"
               color="primary"
               :loading="running"
+              :disabled="actionsDisabled"
               @click.stop="$emit('execute', feed)"
             />
-            <IconButton label="Edit feed" icon="i-lucide-pencil" @click.stop="$emit('edit', feed)" />
-            <IconButton label="Delete feed" icon="i-lucide-trash-2" color="error" @click.stop="$emit('remove', feed)" />
+            <IconButton
+              label="Edit feed"
+              icon="i-lucide-pencil"
+              :disabled="actionsDisabled"
+              @click.stop="$emit('edit', feed)"
+            />
+            <IconButton
+              label="Delete feed"
+              icon="i-lucide-trash-2"
+              color="error"
+              :disabled="actionsDisabled"
+              @click.stop="$emit('remove', feed)"
+            />
           </div>
         </div>
       </div>
@@ -71,6 +84,7 @@ const props = defineProps<{
   to: string;
   running?: boolean;
   notificationLoading?: boolean;
+  actionsDisabled?: boolean;
 }>();
 
 defineEmits<{

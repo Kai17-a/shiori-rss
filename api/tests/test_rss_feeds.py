@@ -465,6 +465,105 @@ def test_execute_rss_feed_returns_200(client):
     assert resp.json()["delivered"] is True
 
 
+def test_execute_all_rss_feeds_runs_every_registered_feed(client):
+    feed_id_1 = create_feed(client, url="https://example.com/feed-1.xml", title="Feed 1").json()["id"]
+    feed_id_2 = create_feed(client, url="https://example.com/feed-2.xml", title="Feed 2").json()["id"]
+
+    resp = client.post("/rss-feeds/execute-all")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total"] == 2
+    assert body["succeeded"] == 2
+    assert body["failed"] == 0
+    assert {item["feed_id"] for item in body["items"]} == {feed_id_1, feed_id_2}
+    assert all(item["success"] for item in body["items"])
+
+
+def test_execute_all_rss_feeds_continues_after_one_feed_fails(client, monkeypatch):
+    import httpx
+
+    import api.services.rss_feed_service as rss_module
+
+    ok_feed_id = create_feed(
+        client, url="https://example.com/ok-feed.xml", title="OK feed"
+    ).json()["id"]
+    broken_feed_id = create_feed(
+        client, url="https://example.com/broken-feed.xml", title="Broken feed"
+    ).json()["id"]
+
+    def selective_get(url, timeout=5.0, follow_redirects=True):
+        if url == "https://example.com/broken-feed.xml":
+            raise httpx.ConnectError("boom")
+
+        class Response:
+            status_code = 200
+            text = "<?xml version='1.0'?><rss><channel><title>Example</title></channel></rss>"
+            content = text.encode()
+
+        return Response()
+
+    monkeypatch.setattr(rss_module.httpx, "get", selective_get)
+
+    resp = client.post("/rss-feeds/execute-all")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total"] == 2
+    assert body["succeeded"] == 1
+    assert body["failed"] == 1
+    results_by_id = {item["feed_id"]: item for item in body["items"]}
+    assert results_by_id[ok_feed_id]["success"] is True
+    assert results_by_id[broken_feed_id]["success"] is False
+    assert results_by_id[broken_feed_id]["error"]
+
+
+def test_execute_all_rss_feeds_reports_unexpected_errors_without_crashing(client, monkeypatch):
+    import api.services.rss_feed_service as rss_module
+
+    feed_id = create_feed(client).json()["id"]
+
+    def broken_parse(content):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(rss_module.feedparser, "parse", broken_parse)
+
+    resp = client.post("/rss-feeds/execute-all")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total"] == 1
+    assert body["succeeded"] == 0
+    assert body["failed"] == 1
+    assert body["items"][0]["feed_id"] == feed_id
+    assert body["items"][0]["success"] is False
+    assert body["items"][0]["error"] == "Unexpected error while executing feed"
+
+
+def test_execute_all_rss_feeds_is_registered_on_the_real_app_with_expected_schema():
+    from fastapi.routing import APIRoute
+
+    from api.main import app
+    from api.model.models import RSSFeedExecuteAllResponse
+
+    route = cast(
+        APIRoute,
+        next(
+            r for r in app.routes if getattr(r, "path", None) == "/rss-feeds/execute-all"
+        ),
+    )
+    assert "POST" in route.methods
+    assert route.response_model is RSSFeedExecuteAllResponse
+
+
+def test_execute_all_rss_feeds_returns_empty_summary_when_no_feeds_registered(client):
+    resp = client.post("/rss-feeds/execute-all")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body == {"items": [], "total": 0, "succeeded": 0, "failed": 0}
+
+
 def test_list_rss_feed_articles_returns_200(client):
     client.post(
         "/settings/webhooks",

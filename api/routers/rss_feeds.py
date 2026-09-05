@@ -8,6 +8,7 @@ from api.model.models import (
     ErrorResponse,
     RSSFeedCreate,
     RSSFeedArticleListResponse,
+    RSSFeedExecuteAllResponse,
     RSSFeedExecuteResponse,
     RSSFeedListResponse,
     RSSFeedResponse,
@@ -40,6 +41,13 @@ def list_rss_feeds(
     service: RSSFeedService = Depends(get_rss_feed_service),
 ):
     return service.list(q=q, page=page, per_page=per_page)
+
+
+@router.post(
+    "/execute-all", status_code=200, response_model=RSSFeedExecuteAllResponse
+)
+def execute_all_rss_feeds(service: RSSFeedService = Depends(get_rss_feed_service)):
+    return service.execute_all()
 
 
 @router.get("/{feed_id}", status_code=200, response_model=RSSFeedResponse)

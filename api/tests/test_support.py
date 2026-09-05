@@ -86,6 +86,8 @@ class CompatTestClient:
                 per_page=int(query.get("per_page", [20])[0]),
             ).model_dump()
             return self._ok(payload)
+        if method == "POST" and path == "/rss-feeds/execute-all":
+            return self._ok(service.execute_all().model_dump())
         if not path.startswith("/rss-feeds/"):
             return None
         parts = path.strip("/").split("/")

@@ -15,7 +15,9 @@ from api.model.models import (
     RSSFeedCreate,
     RSSFeedArticleListResponse,
     RSSFeedArticleResponse,
+    RSSFeedExecuteAllResponse,
     RSSFeedExecuteResponse,
+    RSSFeedExecuteResult,
     RSSFeedListResponse,
     RSSFeedResponse,
     RSSFeedUpdate,
@@ -644,3 +646,68 @@ class RSSFeedService:
                 delivered_count=delivered_count,
                 message=f"Posted {len(notification_articles)} pending article(s).",
             )
+
+    def execute_all(self) -> RSSFeedExecuteAllResponse:
+        """Runs every registered RSS feed once, triggered manually from the
+        feed list screen's "Fetch all" button. Mirrors
+        `NewsSiteService.execute_due()`'s continue-on-error looping so one
+        feed's failure (unreachable URL, webhook error, ...) can't block the
+        rest, but — unlike that cron-only method — collects a per-feed
+        result to report back to the user instead of returning None.
+        """
+        with get_db() as conn:
+            feeds = RSSFeedRepository(conn).find_all_ids()
+
+        results: list[RSSFeedExecuteResult] = []
+        for feed in feeds:
+            feed_id = int(feed["id"])
+            title = str(feed["title"])
+            try:
+                response = self.execute(feed_id)
+                results.append(
+                    RSSFeedExecuteResult(
+                        feed_id=feed_id,
+                        title=response.title,
+                        success=True,
+                        delivered=response.delivered,
+                        delivered_count=response.delivered_count,
+                        message=response.message,
+                    )
+                )
+            except HTTPException as exc:
+                logger.warning(
+                    "rss_feed_execute_all_failed feed_id=%s status_code=%s detail=%s",
+                    feed_id,
+                    exc.status_code,
+                    exc.detail,
+                )
+                results.append(
+                    RSSFeedExecuteResult(
+                        feed_id=feed_id,
+                        title=title,
+                        success=False,
+                        delivered=False,
+                        delivered_count=0,
+                        error=str(exc.detail),
+                    )
+                )
+            except Exception:
+                logger.exception("rss_feed_execute_all_error feed_id=%s", feed_id)
+                results.append(
+                    RSSFeedExecuteResult(
+                        feed_id=feed_id,
+                        title=title,
+                        success=False,
+                        delivered=False,
+                        delivered_count=0,
+                        error="Unexpected error while executing feed",
+                    )
+                )
+
+        succeeded = sum(1 for result in results if result.success)
+        return RSSFeedExecuteAllResponse(
+            items=results,
+            total=len(results),
+            succeeded=succeeded,
+            failed=len(results) - succeeded,
+        )

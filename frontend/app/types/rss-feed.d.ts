@@ -63,3 +63,20 @@ export interface RSSFeedExecuteResponse {
   delivered_count: number;
   message?: string | null;
 }
+
+export interface RSSFeedExecuteResult {
+  feed_id: number;
+  title: string;
+  success: boolean;
+  delivered: boolean;
+  delivered_count: number;
+  message?: string | null;
+  error?: string | null;
+}
+
+export interface RSSFeedExecuteAllResponse {
+  items: RSSFeedExecuteResult[];
+  total: number;
+  succeeded: number;
+  failed: number;
+}
