@@ -181,6 +181,13 @@ const primaryLinks = computed<NavigationMenuItem[]>(() => [
 
 const secondaryLinks = computed<NavigationMenuItem[]>(() => [
   {
+    label: "Docker images",
+    icon: "i-lucide-container",
+    to: "/docker-images",
+    active: isActive("/docker-images"),
+    onSelect: closeSidebar,
+  },
+  {
     label: "GitHub",
     icon: "i-lucide-github",
     to: "/github",

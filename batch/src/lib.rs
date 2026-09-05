@@ -1,5 +1,6 @@
 pub mod analysis;
 pub mod db;
+pub mod docker;
 pub mod github;
 pub mod runner;
 pub mod webhook;
@@ -13,5 +14,6 @@ pub use db::{
     rss_periodic_execution_enabled, rss_webhook_notification_enabled, webhook_article_limit,
     webhook_summary_enabled,
 };
+pub use docker::run_docker_image_batch;
 pub use github::run_github_release_batch;
 pub use runner::run_batch;

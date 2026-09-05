@@ -841,6 +841,47 @@ class GitHubRepositoryListResponse(BaseModel):
     total: int
 
 
+class DockerImageCreate(BaseModel):
+    reference: str
+    webhook_ids: list[int] = PydField(default_factory=list)
+
+    @field_validator("webhook_ids")
+    @classmethod
+    def validate_webhook_ids(cls, value: list[int]) -> list[int]:
+        if len(value) != len(set(value)):
+            raise ValueError("webhook_ids must not contain duplicates")
+        return value
+
+
+class DockerImageUpdate(BaseModel):
+    webhook_ids: list[int]
+
+    @field_validator("webhook_ids")
+    @classmethod
+    def validate_webhook_ids(cls, value: list[int]) -> list[int]:
+        if len(value) != len(set(value)):
+            raise ValueError("webhook_ids must not contain duplicates")
+        return value
+
+
+class DockerImageResponse(BaseModel):
+    id: int
+    registry: str
+    repository: str
+    tag: str
+    display_name: str
+    latest_digest: str
+    fetched_at: datetime
+    created_at: datetime
+    updated_at: datetime
+    webhook_ids: list[int]
+
+
+class DockerImageListResponse(BaseModel):
+    items: list[DockerImageResponse]
+    total: int
+
+
 class ITTrendLink(BaseModel):
     title: str
     url: str

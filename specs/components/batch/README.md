@@ -1,10 +1,12 @@
 # Batch 仕様
 
-定期処理は通常RSS巡回に加え、登録済みGitHubリポジトリの最新公開リリースを確認する。最新タグが最後に通知成功したタグと異なる場合、リポジトリに選択された有効なDiscord・Slack・Microsoft Teams Webhookへ通知する。未選択なら通知せず、1件以上への送信成功後だけ通知済みタグを更新して重複通知を防ぐ。`GITHUB_TOKEN` があればGitHub API認証に利用する。
+定期処理は通常RSS巡回に加え、登録済みGitHubリポジトリの最新公開リリースと登録済みDockerイメージのmanifest digestを確認する。GitHubの最新タグまたはDockerイメージのdigestが最後に通知成功した値と異なる場合、選択された有効なDiscord・Slack・Microsoft Teams Webhookへ通知する。未選択なら通知せず、1件以上への送信成功後だけ通知済み状態を更新して重複通知を防ぐ。`GITHUB_TOKEN` があればGitHub API認証に利用する。
 
 AI記事解析の `article-analysis-v3` は、Topicsを固定大分類から1〜2件、主題を表すKeywordsを3〜5件、中心的なEntitiesを最大5件、Key pointsを最大3件として生成・検証する。表示用メタデータは原文の主要言語を維持し、検索専用aliasesに主要語の日英対訳、略称、別名を最大10件保存する。公式製品名は翻訳せず、旧プロンプト版は順次再解析する。
 
 Rust batch は RSS / Atom フィードだけを定期巡回し、通常RSSとカスタムRSSの保存済み記事をAI事前解析する。カスタムRSSの取得はAPIの手動実行が担当する。
+
+Dockerイメージは匿名アクセスまたはBearer challengeによる匿名トークン取得でmanifestを取得する。HTTPSリダイレクトだけを最大5回追跡し、別ホストへ移動するとAuthorizationを破棄する。`Docker-Content-Digest` はraw bodyのSHA-256と照合し、省略時は計算値を使用する。429やイメージ単位の失敗はその巡回だけをスキップし、少なくとも1つのWebhook送信成功時だけ通知済みdigestを進める。
 
 - SQLite の `app_settings`、`rss_feeds`、`rss_feed_webhooks`、`webhook_endpoints`、通常RSS・カスタムRSSの記事、AI解析結果・使用量テーブルを読む。
 - 通常RSSの定期実行が無効ならRSS巡回を行わない。定期通知が無効でも、定期実行が有効なら取得と未通知記事の保存は行う。

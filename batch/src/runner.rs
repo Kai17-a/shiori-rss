@@ -9,8 +9,8 @@ use std::error::Error;
 use std::time::Duration;
 
 use crate::{
-    analysis::run_article_analysis, fetch_rss_feeds, fetch_webhook_endpoints,
-    github::run_github_release_batch, rss_periodic_execution_enabled,
+    analysis::run_article_analysis, docker::run_docker_image_batch, fetch_rss_feeds,
+    fetch_webhook_endpoints, github::run_github_release_batch, rss_periodic_execution_enabled,
     rss_webhook_notification_enabled, webhook, webhook_article_limit, webhook_summary_enabled,
 };
 
@@ -299,6 +299,7 @@ async fn run_rss_batch(conn: &Connection) -> Result<(), Box<dyn Error>> {
 pub async fn run_batch(conn: &Connection) -> Result<(), Box<dyn Error>> {
     run_rss_batch(conn).await?;
     run_github_release_batch(conn).await?;
+    run_docker_image_batch(conn).await?;
     run_article_analysis(conn).await?;
     Ok(())
 }

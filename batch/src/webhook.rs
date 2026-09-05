@@ -276,6 +276,48 @@ pub async fn send_github_release_webhook(
     Ok(())
 }
 
+pub async fn send_docker_image_update_webhook(
+    webhook_url: &str,
+    display_name: &str,
+    registry: &str,
+    repository: &str,
+    tag: &str,
+    old_digest: &str,
+    new_digest: &str,
+) -> Result<(), Box<dyn Error>> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()?;
+    let service = detect_webhook_service(webhook_url).unwrap_or("discord");
+    let shorten = |digest: &str| {
+        digest
+            .strip_prefix("sha256:")
+            .unwrap_or(digest)
+            .chars()
+            .take(12)
+            .collect::<String>()
+    };
+    let manifest_url = format!("https://{registry}/v2/{repository}/manifests/{tag}");
+    let payload = build_payload(
+        service,
+        format!("**{display_name}** - **Docker image updated**"),
+        vec![serde_json::json!({
+            "title": format!("{} → {}", shorten(old_digest), shorten(new_digest)),
+            "url": manifest_url,
+            "description": format!("Tag: {tag}"),
+        })],
+    );
+    let response = post_with_retry(&client, webhook_url, &payload).await.map_err(|error| io::Error::other(format!("Skipping Docker image {display_name}: failed to notify webhook after 3 attempts: {error}")))?;
+    if !response.status().is_success() {
+        return Err(io::Error::other(format!(
+            "Skipping Docker image {display_name}: webhook returned {}",
+            response.status()
+        ))
+        .into());
+    }
+    Ok(())
+}
+
 async fn send_article_webhook(
     webhook_url: &str,
     source_title: &str,

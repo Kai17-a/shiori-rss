@@ -24,6 +24,7 @@ FastAPI は `/health`、`/dashboard`、`/rss-feeds`、`/news-sites`、`/github-r
 - Ask AI streaming: `POST /ai/chat/stream` はNDJSONで回答差分を逐次返し、回答完了後に実際に引用した出典、続いて完了イベントを返す。エラー時はエラーイベントを返し、OllamaとOpenAI互換のストリーム形式を吸収する。検索候補のうち回答で引用されなかった記事は出典へ含めない
 - Ask AI conversation: chat APIは直近8件の会話履歴と直前回答の出典最大10件を任意で受け付ける。`S9` のような出典参照は対応記事へ直接解決して番号を維持する。履歴と出典は永続保存しない。
 - エラー: `{"detail": ...}`。入力不正は 422、未検出は 404、重複は 409、外部通知失敗は 502 とする。
+- Docker images: `/docker-images` はDocker Hub省略形と明示registry参照を正規化し、公開manifestの検証済みdigestで登録を初期化する。401 Bearer challenge、HTTPS限定redirect、別ホストへの認証情報非転送、raw body SHA-256照合に対応し、レスポンスから通知済みdigestは除外する。
 - 一覧: `items`, `total`, `page`, `per_page`, `total_pages` を返す。
 - Webhook: Discord通知ではフィードの `icon_url` を `avatar_url` に設定する。Incoming Webhookでアイコンを上書きできないSlackとTeamsには追加しない。
 - Webhook article limit: `GET/PUT /settings/webhook-article-limit` で `max_articles` を取得・更新する。通常RSSの定期・手動実行とCustom RSSの手動実行は未通知記事を公開日時の新しい順に並べ、最新の上限件数だけを送る。送信成功後は同じバックログの古い記事も処理済みにして次回送信せず、送信失敗時は未通知のまま最新記事から再試行する。

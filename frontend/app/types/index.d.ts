@@ -6,4 +6,5 @@ export * from "./ai-analysis";
 export * from "./news-site";
 export * from "./dashboard";
 export * from "./github-repository";
+export * from "./docker-image";
 export * from "./it-trend";

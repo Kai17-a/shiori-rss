@@ -28,6 +28,9 @@
 | GET/POST | `/github-repositories` | GitHubリポジトリ一覧・登録と最新公開リリース取得 |
 | POST | `/github-repositories/refresh` | 全登録リポジトリの最新公開リリースを更新 |
 | DELETE | `/github-repositories/{id}` | GitHubリポジトリを削除 |
+| GET/POST | `/docker-images` | Dockerイメージ一覧・登録と現在のmanifest digest取得 |
+| POST | `/docker-images/refresh` | 全登録イメージのmanifest digestを更新 |
+| PATCH/DELETE | `/docker-images/{id}` | 通知先更新・Dockerイメージ削除 |
 | GET/POST | `/settings/webhooks` | Webhook 一覧・作成 |
 | PATCH/DELETE | `/settings/webhooks/{id}` | Webhook 有効化・削除 |
 | POST | `/settings/webhook/ping` | 疎通確認 |
@@ -69,5 +72,6 @@
 8. 利用量を呼び出し単位で記録し、1日のトークン上限に達する前に解析を停止する。
 9. 手動実行では定期解析の有効・無効だけを無視し、同じ件数、対象期間、日次トークン上限と再解析判定を適用する。
 10. 登録済みGitHubリポジトリの最新公開リリースを確認し、通知済みタグから更新があれば有効なWebhookへ通知する。
+11. 登録済みDockerイメージの公開レジストリmanifestを確認し、通知済みdigestから更新があれば選択された有効なWebhookへ通知する。イメージ単位の取得失敗は残りの処理を止めない。
 
 定期巡回の対象は通常RSSだけであり、カスタムRSSの取得はAPIの手動実行が担当する。通常RSSの手動実行もAPIが担当し、自動通知の全体設定とフィード別設定にかかわらず、有効な選択先または有効な全送信先へ未通知記事を送る。
