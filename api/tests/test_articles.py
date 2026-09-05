@@ -93,8 +93,8 @@ def test_list_articles_filters_by_search_text(client):
     }
 
 
-def test_list_articles_filters_by_specific_source(client):
-    response = client.get("/articles?source_type=rss&source_id=2")
+def test_list_articles_filters_by_a_single_source(client):
+    response = client.get("/articles?source=rss:2")
 
     assert response.status_code == 200
     payload = response.json()
@@ -102,13 +102,46 @@ def test_list_articles_filters_by_specific_source(client):
     assert payload["items"][0]["title"] == "Weather report"
 
 
-def test_list_articles_filters_by_source_type_only(client):
-    response = client.get("/articles?source_type=custom")
+def test_list_articles_filters_by_multiple_rss_sources(client):
+    response = client.get("/articles?source=rss:1&source=rss:2")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 2
+    assert {item["title"] for item in payload["items"]} == {
+        "Rocket launch update",
+        "Weather report",
+    }
+
+
+def test_list_articles_filters_by_custom_source_only_hides_rss_articles(client):
+    response = client.get("/articles?source=custom:1")
 
     assert response.status_code == 200
     payload = response.json()
     assert payload["total"] == 1
     assert payload["items"][0]["source_type"] == "custom"
+
+
+def test_list_articles_filters_by_mixed_rss_and_custom_sources(client):
+    response = client.get("/articles?source=rss:1&source=custom:1")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 2
+    assert {item["title"] for item in payload["items"]} == {
+        "Rocket launch update",
+        "Custom rocket news",
+    }
+
+
+def test_list_articles_combines_source_filter_with_search(client):
+    response = client.get("/articles?source=rss:1&source=rss:2&q=weather")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 1
+    assert payload["items"][0]["title"] == "Weather report"
 
 
 def test_list_articles_paginates(client):
@@ -141,13 +174,19 @@ def test_list_articles_escapes_sql_like_wildcards_in_search(client):
     assert response.json()["total"] == 0
 
 
-def test_list_articles_rejects_source_id_without_source_type(client):
-    response = client.get("/articles?source_id=1")
+def test_list_articles_rejects_unknown_source_kind(client):
+    response = client.get("/articles?source=bogus:1")
 
     assert response.status_code == 422
 
 
-def test_list_articles_rejects_invalid_source_type(client):
-    response = client.get("/articles?source_type=bogus")
+def test_list_articles_rejects_source_missing_id(client):
+    response = client.get("/articles?source=rss:")
+
+    assert response.status_code == 422
+
+
+def test_list_articles_rejects_zero_source_id(client):
+    response = client.get("/articles?source=rss:0")
 
     assert response.status_code == 422

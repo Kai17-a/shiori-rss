@@ -1,7 +1,11 @@
+import re
+
 from fastapi import HTTPException
 
 from api.database import get_db
 from api.model.models import ArticleListItem, ArticleListResponse
+
+_SOURCE_PATTERN = re.compile(r"^(rss|custom):([1-9]\d*)$")
 
 _RSS_SELECT = """
   SELECT 'rss' AS source_type, feeds.id AS source_id, feeds.title AS source_title,
@@ -40,42 +44,46 @@ class ArticleService:
     def list_articles(
         self,
         q: str | None = None,
-        source_type: str | None = None,
-        source_id: int | None = None,
+        sources: list[str] | None = None,
         page: int = 1,
         per_page: int = 20,
     ) -> ArticleListResponse:
-        if source_type is not None and source_type not in ("rss", "custom"):
-            raise HTTPException(
-                status_code=422, detail="source_type must be 'rss' or 'custom'"
-            )
-        if source_id is not None and source_type is None:
-            raise HTTPException(
-                status_code=422,
-                detail="source_type is required when source_id is provided",
-            )
+        selected_rss_ids: list[int] = []
+        selected_custom_ids: list[int] = []
+        for raw in sources or []:
+            match = _SOURCE_PATTERN.match(raw)
+            if not match:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Each source must be 'rss:<id>' or 'custom:<id>'",
+                )
+            target = selected_rss_ids if match.group(1) == "rss" else selected_custom_ids
+            target.append(int(match.group(2)))
+        has_selection = bool(selected_rss_ids or selected_custom_ids)
 
         query = (q or "").strip().lower()
         branches: list[tuple[str, list[object]]] = []
 
-        if source_type in (None, "rss"):
+        if not has_selection or selected_rss_ids:
             conditions = []
             params: list[object] = []
-            if source_id is not None:
-                conditions.append("feeds.id = ?")
-                params.append(source_id)
+            if selected_rss_ids:
+                placeholders = ", ".join("?" for _ in selected_rss_ids)
+                conditions.append(f"feeds.id IN ({placeholders})")
+                params.extend(selected_rss_ids)
             if query:
                 conditions.append("LOWER(articles.title) LIKE ? ESCAPE '\\'")
                 params.append(f"%{_escape_like(query)}%")
             where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
             branches.append((_RSS_SELECT.format(where=where), params))
 
-        if source_type in (None, "custom"):
+        if not has_selection or selected_custom_ids:
             conditions = []
             params = []
-            if source_id is not None:
-                conditions.append("sites.id = ?")
-                params.append(source_id)
+            if selected_custom_ids:
+                placeholders = ", ".join("?" for _ in selected_custom_ids)
+                conditions.append(f"sites.id IN ({placeholders})")
+                params.extend(selected_custom_ids)
             if query:
                 conditions.append("LOWER(articles.title) LIKE ? ESCAPE '\\'")
                 params.append(f"%{_escape_like(query)}%")

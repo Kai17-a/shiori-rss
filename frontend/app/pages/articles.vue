@@ -30,7 +30,14 @@
               placeholder="Search article titles"
               class="w-full"
             />
-            <USelect v-model="sourceFilter" :items="sourceOptions" class="w-full" />
+            <USelectMenu
+              v-model="sourceFilters"
+              :items="sourceOptions"
+              multiple
+              clear
+              placeholder="All sources"
+              class="w-full"
+            />
           </div>
 
           <div class="flex flex-wrap items-center justify-between gap-3">
@@ -146,7 +153,7 @@ const { rssFeeds, customFeeds, refresh: refreshSidebarCatalog } = useSidebarCata
 const loading = ref(false);
 const loadError = ref("");
 const search = ref("");
-const sourceFilter = ref("all");
+const sourceFilters = ref<Array<{ label: string; value: string }>>([]);
 const page = ref(1);
 const articles = ref<ArticleListResponse>({
   items: [],
@@ -157,7 +164,6 @@ const articles = ref<ArticleListResponse>({
 });
 
 const sourceOptions = computed(() => [
-  [{ label: "All sources", value: "all" }],
   [
     { type: "label" as const, label: "RSS feeds" },
     ...rssFeeds.value.map((feed) => ({ label: feed.title, value: `rss:${feed.id}` })),
@@ -183,10 +189,8 @@ const loadArticles = async (showToast = false) => {
     const params = new URLSearchParams({ page: String(page.value), per_page: "20" });
     const query = search.value.trim();
     if (query) params.set("q", query);
-    if (sourceFilter.value !== "all") {
-      const [sourceType, sourceId] = sourceFilter.value.split(":");
-      params.set("source_type", sourceType!);
-      params.set("source_id", sourceId!);
+    for (const source of sourceFilters.value) {
+      params.append("source", source.value);
     }
     const result = await request<ArticleListResponse>(`/articles?${params.toString()}`);
     if (requestId !== latestRequestId) return;
@@ -224,7 +228,7 @@ watch(search, () => {
   }, 350);
 });
 
-watch(sourceFilter, async () => {
+watch(sourceFilters, async () => {
   page.value = 1;
   await loadArticles();
 });

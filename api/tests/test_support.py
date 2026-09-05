@@ -137,13 +137,11 @@ class CompatTestClient:
     def _articles_response(self, method: str, path: str, query):
         if method != "GET" or path != "/articles":
             return None
-        source_id_raw = query.get("source_id", [None])[0]
         payload = (
             ArticleService()
             .list_articles(
                 q=query.get("q", [None])[0],
-                source_type=query.get("source_type", [None])[0],
-                source_id=int(source_id_raw) if source_id_raw is not None else None,
+                sources=query.get("source"),
                 page=int(query.get("page", [1])[0]),
                 per_page=int(query.get("per_page", [20])[0]),
             )
