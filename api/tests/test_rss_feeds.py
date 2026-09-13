@@ -21,11 +21,14 @@ def client(tmp_path, monkeypatch):
     import api.services.settings_service as settings_module
     import api.services.webhook_service as webhook_module
 
+    real_feedparser_parse = rss_module.feedparser.parse
+
     def fake_get(url, timeout=5.0, follow_redirects=True):
         class Response:
             status_code = 200
             text = "<?xml version='1.0'?><rss><channel><title>Example</title></channel></rss>"
             content = b"<?xml version='1.0'?><rss><channel><title>Example</title></channel></rss>"
+            headers = {"content-type": "application/rss+xml; charset=utf-8"}
 
         return Response()
 
@@ -35,7 +38,14 @@ def client(tmp_path, monkeypatch):
 
         return Response()
 
-    def fake_parse(content):
+    def fake_parse(content, response_headers=None):
+        if (
+            b"<rdf:RDF" in content
+            or b"<html" in content
+            or "shift_jis" in str(response_headers).lower()
+        ):
+            return real_feedparser_parse(content, response_headers=response_headers)
+
         class ParsedEntry:
             def __init__(self, title, link):
                 self._title = title
@@ -50,6 +60,7 @@ def client(tmp_path, monkeypatch):
 
         class ParsedFeed:
             bozo = False
+            version = "rss20"
             feed = {"title": "Parsed Example"}
             entries = [
                 ParsedEntry("Item 1", "https://example.com/item-1"),
@@ -95,6 +106,163 @@ def test_create_rss_feed_returns_201(client):
     assert body["title"] == "Example"
     assert body["notify_webhook_enabled"] is True
     assert "id" in body
+
+
+def test_create_rss_feed_accepts_rss_1_0_rdf(client, monkeypatch):
+    import api.services.rss_feed_service as rss_module
+
+    rdf_content = b"""<?xml version="1.0" encoding="utf-8"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns="http://purl.org/rss/1.0/">
+  <channel rdf:about="https://example.com/">
+    <title>RDF Example</title>
+    <link>https://example.com/</link>
+    <description>RSS 1.0 feed</description>
+  </channel>
+  <item rdf:about="https://example.com/article">
+    <title>Article</title>
+    <link>https://example.com/article</link>
+  </item>
+</rdf:RDF>"""
+
+    def fake_get(url, timeout=5.0, follow_redirects=True):
+        class Response:
+            status_code = 200
+            content = rdf_content
+            headers = {"content-type": "application/rss+xml; charset=utf-8"}
+
+        return Response()
+
+    monkeypatch.setattr(rss_module.httpx, "get", fake_get)
+
+    response = create_feed(client, url="https://example.com/index.rdf")
+
+    assert response.status_code == 201
+    assert response.json()["url"] == "https://example.com/index.rdf"
+
+
+def test_create_rss_feed_uses_http_charset_for_feed_encoding(client, monkeypatch):
+    import api.services.rss_feed_service as rss_module
+
+    shift_jis_content = """<?xml version="1.0"?>
+<rss version="2.0">
+  <channel>
+    <title>日本語フィード</title>
+    <link>https://example.com/</link>
+    <description>説明</description>
+  </channel>
+</rss>""".encode("shift_jis")
+
+    def fake_get(url, timeout=5.0, follow_redirects=True):
+        class Response:
+            status_code = 200
+            content = shift_jis_content
+            headers = {
+                "content-type": "application/rss+xml; charset=Shift_JIS"
+            }
+
+        return Response()
+
+    monkeypatch.setattr(rss_module.httpx, "get", fake_get)
+
+    response = create_feed(client, url="https://example.com/shift-jis.xml")
+
+    assert response.status_code == 201
+    assert response.json()["url"] == "https://example.com/shift-jis.xml"
+
+
+def test_create_rss_feed_accepts_recovered_character_encoding_override(
+    client, monkeypatch
+):
+    import api.services.rss_feed_service as rss_module
+    from feedparser.api import parse as real_feedparser_parse  # type: ignore
+    from feedparser.exceptions import CharacterEncodingOverride  # type: ignore
+
+    shift_jis_content = """<?xml version="1.0" encoding="Shift_JIS"?>
+<rss version="2.0">
+  <channel>
+    <title>日本語フィード</title>
+    <link>https://example.com/</link>
+    <description>説明</description>
+  </channel>
+</rss>""".encode("shift_jis")
+    parsed_exception = None
+
+    def fake_get(url, timeout=5.0, follow_redirects=True):
+        class Response:
+            status_code = 200
+            content = shift_jis_content
+            headers = {"content-type": "application/rss+xml; charset=utf-8"}
+
+        return Response()
+
+    def parse_with_exception_capture(content, response_headers=None):
+        nonlocal parsed_exception
+        parsed = real_feedparser_parse(content, response_headers=response_headers)
+        parsed_exception = getattr(parsed, "bozo_exception", None)
+        return parsed
+
+    monkeypatch.setattr(rss_module.httpx, "get", fake_get)
+    monkeypatch.setattr(rss_module.feedparser, "parse", parse_with_exception_capture)
+
+    response = create_feed(client, url="https://example.com/encoding-override.xml")
+
+    assert isinstance(parsed_exception, CharacterEncodingOverride)
+    assert response.status_code == 201
+
+
+@pytest.mark.parametrize("content_type", ["text/plain", "application/octet-stream"])
+def test_create_rss_feed_accepts_feed_with_non_xml_content_type(
+    client, monkeypatch, content_type
+):
+    import api.services.rss_feed_service as rss_module
+    from feedparser.api import parse as real_feedparser_parse  # type: ignore
+
+    rss_content = b"""<?xml version="1.0"?>
+<rss version="2.0">
+  <channel>
+    <title>Valid feed</title>
+    <link>https://example.com/</link>
+    <description>Valid RSS with an incorrect Content-Type</description>
+  </channel>
+</rss>"""
+
+    def fake_get(url, timeout=5.0, follow_redirects=True):
+        class Response:
+            status_code = 200
+            content = rss_content
+            headers = {"content-type": content_type}
+
+        return Response()
+
+    monkeypatch.setattr(rss_module.httpx, "get", fake_get)
+    monkeypatch.setattr(rss_module.feedparser, "parse", real_feedparser_parse)
+
+    response = create_feed(client, url=f"https://example.com/{content_type}")
+
+    assert response.status_code == 201
+
+
+def test_create_rss_feed_with_malformed_xml_returns_422(client, monkeypatch):
+    import api.services.rss_feed_service as rss_module
+    from feedparser.api import parse as real_feedparser_parse  # type: ignore
+
+    def fake_get(url, timeout=5.0, follow_redirects=True):
+        class Response:
+            status_code = 200
+            content = b"""<?xml version="1.0"?>
+<rss version="2.0"><channel><title>Broken</title></rss>"""
+            headers = {"content-type": "application/rss+xml"}
+
+        return Response()
+
+    monkeypatch.setattr(rss_module.httpx, "get", fake_get)
+    monkeypatch.setattr(rss_module.feedparser, "parse", real_feedparser_parse)
+
+    response = create_feed(client, url="https://example.com/malformed.xml")
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "RSS feed URL is not a valid RSS feed"
 
 
 def test_rss_feed_icon_can_be_uploaded_and_served(client):
@@ -246,10 +414,15 @@ def test_execute_rss_feed_truncates_long_article_content_for_discord(
 
     class ParsedFeed:
         bozo = False
+        version = "rss20"
         feed = {"title": "Parsed Example"}
         entries = [ParsedEntry()]
 
-    monkeypatch.setattr(rss_module.feedparser, "parse", lambda content: ParsedFeed())
+    monkeypatch.setattr(
+        rss_module.feedparser,
+        "parse",
+        lambda content, response_headers=None: ParsedFeed(),
+    )
 
     resp = client.post(f"/rss-feeds/{feed_id}/execute")
 
@@ -296,10 +469,15 @@ def test_execute_rss_feed_can_omit_article_summaries(client, monkeypatch):
 
     class ParsedFeed:
         bozo = False
+        version = "rss20"
         feed = {"title": "Parsed Example"}
         entries = [ParsedEntry()]
 
-    monkeypatch.setattr(rss_module.feedparser, "parse", lambda content: ParsedFeed())
+    monkeypatch.setattr(
+        rss_module.feedparser,
+        "parse",
+        lambda content, response_headers=None: ParsedFeed(),
+    )
 
     response = client.post(f"/rss-feeds/{feed_id}/execute")
 
@@ -433,6 +611,42 @@ def test_update_rss_feed_returns_200(client):
     resp = client.patch(f"/rss-feeds/{feed_id}", json={"title": "New"})
     assert resp.status_code == 200
     assert resp.json()["title"] == "New"
+
+
+def test_update_rss_feed_accepts_rss_1_0_rdf(client, monkeypatch):
+    import api.services.rss_feed_service as rss_module
+
+    feed_id = create_feed(client).json()["id"]
+    rdf_content = b"""<?xml version="1.0" encoding="utf-8"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns="http://purl.org/rss/1.0/">
+  <channel rdf:about="https://example.com/">
+    <title>RDF Example</title>
+    <link>https://example.com/</link>
+    <description>RSS 1.0 feed</description>
+  </channel>
+  <item rdf:about="https://example.com/article">
+    <title>Article</title>
+    <link>https://example.com/article</link>
+  </item>
+</rdf:RDF>"""
+
+    def fake_get(url, timeout=5.0, follow_redirects=True):
+        class Response:
+            status_code = 200
+            content = rdf_content
+            headers = {"content-type": "application/rss+xml; charset=utf-8"}
+
+        return Response()
+
+    monkeypatch.setattr(rss_module.httpx, "get", fake_get)
+
+    response = client.patch(
+        f"/rss-feeds/{feed_id}", json={"url": "https://example.com/index.rdf"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["url"] == "https://example.com/index.rdf"
 
 
 def test_update_rss_feed_can_clear_description(client):
@@ -670,10 +884,15 @@ def test_execute_rss_feed_preserves_source_timezone_offset(client, monkeypatch):
 
     class ParsedFeed:
         bozo = False
+        version = "rss20"
         feed = {"title": "Parsed Example"}
         entries = [ParsedEntry()]
 
-    monkeypatch.setattr(rss_module.feedparser, "parse", lambda content: ParsedFeed())
+    monkeypatch.setattr(
+        rss_module.feedparser,
+        "parse",
+        lambda content, response_headers=None: ParsedFeed(),
+    )
 
     execute = client.post(f"/rss-feeds/{feed_id}/execute")
     assert execute.status_code == 200
@@ -713,6 +932,7 @@ def test_list_rss_feed_articles_orders_by_published_desc(client, monkeypatch):
 
     class ParsedFeed:
         bozo = False
+        version = "rss20"
         feed = {"title": "Parsed Example"}
         entries = [
             ParsedEntry(
@@ -818,6 +1038,7 @@ def test_list_rss_feed_articles_accepts_page_and_per_page(client, monkeypatch):
 
     class ParsedFeed:
         bozo = False
+        version = "rss20"
         feed = {"title": "Parsed Example"}
         entries = [ParsedEntry(index) for index in range(1, 6)]
 
@@ -872,6 +1093,7 @@ def test_list_rss_feed_articles_filters_by_published_date_range(client, monkeypa
 
     class ParsedFeed:
         bozo = False
+        version = "rss20"
         feed = {"title": "Parsed Example"}
         entries = [
             ParsedEntry(
@@ -938,6 +1160,7 @@ def test_list_rss_feed_articles_filters_by_title_query(client, monkeypatch):
 
     class ParsedFeed:
         bozo = False
+        version = "rss20"
         feed = {"title": "Parsed Example"}
         entries = [
             ParsedEntry(
@@ -1023,6 +1246,7 @@ def test_execute_rss_feed_uses_feedparser_content(client, monkeypatch):
 
     class ParsedFeed:
         bozo = False
+        version = "rss20"
         feed = {"title": "Parsed Example"}
         entries = [
             ParsedEntry("Item 1", "https://example.com/item-1"),
@@ -1056,6 +1280,84 @@ def test_execute_rss_feed_uses_feedparser_content(client, monkeypatch):
             "url": "https://example.com/item-1",
         },
     ]
+
+
+@pytest.mark.parametrize(
+    ("encoding", "content_type"),
+    [
+        ("shift_jis", "application/rss+xml; charset=Shift_JIS"),
+        ("utf-8", "text/plain"),
+    ],
+)
+def test_execute_rss_feed_accepts_recoverable_feedparser_cases(
+    client, monkeypatch, encoding, content_type
+):
+    import api.services.rss_feed_service as rss_module
+    from feedparser.api import parse as real_feedparser_parse  # type: ignore
+
+    feed_id = create_feed(client).json()["id"]
+    response_content = """<?xml version="1.0"?>
+<rss version="2.0">
+  <channel>
+    <title>日本語フィード</title>
+    <link>https://example.com/</link>
+    <description>説明</description>
+    <item>
+      <title>日本語の記事</title>
+      <link>https://example.com/article</link>
+    </item>
+  </channel>
+</rss>""".encode(encoding)
+
+    def fake_get(url, timeout=5.0, follow_redirects=True):
+        class Response:
+            status_code = 200
+            content = response_content
+            headers = {"content-type": content_type}
+
+        return Response()
+
+    monkeypatch.setattr(rss_module.httpx, "get", fake_get)
+    monkeypatch.setattr(rss_module.feedparser, "parse", real_feedparser_parse)
+
+    execute = client.post(f"/rss-feeds/{feed_id}/execute")
+    articles = client.get(f"/rss-feeds/{feed_id}/articles").json()["items"]
+
+    assert execute.status_code == 200
+    assert len(articles) == 1
+    assert articles[0]["title"] == "日本語の記事"
+
+
+def test_execute_rss_feed_rejects_non_feed_xml_without_version(client, monkeypatch):
+    import api.services.rss_feed_service as rss_module
+    from feedparser.api import parse as real_feedparser_parse  # type: ignore
+
+    feed_id = create_feed(client).json()["id"]
+    response_content = b"""<channel>
+  <title>Not a feed</title>
+  <item>
+    <title>Fragment article</title>
+    <link>https://example.com/fragment</link>
+  </item>
+</channel>"""
+
+    def fake_get(url, timeout=5.0, follow_redirects=True):
+        class Response:
+            status_code = 200
+            content = response_content
+            headers = {"content-type": "text/plain"}
+
+        return Response()
+
+    monkeypatch.setattr(rss_module.httpx, "get", fake_get)
+    monkeypatch.setattr(rss_module.feedparser, "parse", real_feedparser_parse)
+
+    execute = client.post(f"/rss-feeds/{feed_id}/execute")
+    articles = client.get(f"/rss-feeds/{feed_id}/articles").json()
+
+    assert execute.status_code == 422
+    assert execute.json()["detail"] == "RSS feed URL is not a valid RSS feed"
+    assert articles["total"] == 0
 
 
 def test_execute_rss_feed_splits_embeds_into_batches(client, monkeypatch):
@@ -1095,6 +1397,7 @@ def test_execute_rss_feed_splits_embeds_into_batches(client, monkeypatch):
 
     class ParsedFeed:
         bozo = False
+        version = "rss20"
         feed = {"title": "Parsed Example"}
         entries = [ParsedEntry(index) for index in range(1, 13)]
 
@@ -1231,6 +1534,7 @@ def test_execute_rss_feed_skips_already_sent_articles(client, monkeypatch):
 
     class ParsedFeed:
         bozo = False
+        version = "rss20"
         feed = {"title": "Parsed Example"}
         entries = [ParsedEntry("Item 1", "https://example.com/item-1")]
 
@@ -1279,6 +1583,7 @@ def test_execute_rss_feed_returns_message_when_no_new_articles(client, monkeypat
 
     class ParsedFeed:
         bozo = False
+        version = "rss20"
         feed = {"title": "Parsed Example"}
         entries = [
             type(
@@ -1754,7 +2059,8 @@ def test_create_rss_feed_with_non_feed_url_returns_422(client, monkeypatch):
     def fake_get(url, timeout=5.0, follow_redirects=True):
         class Response:
             status_code = 200
-            text = "<html><body>Not a feed</body></html>"
+            content = b"<html><body>Not a feed</body></html>"
+            headers = {"content-type": "text/html; charset=utf-8"}
 
         return Response()
 

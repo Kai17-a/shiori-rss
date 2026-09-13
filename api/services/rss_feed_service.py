@@ -1,13 +1,14 @@
 import logging
 import sqlite3
 from calendar import timegm
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
-import xml.etree.ElementTree as ET
 from typing import cast
 
 import feedparser  # type: ignore
 import httpx
+from feedparser.exceptions import ThingsNobodyCaresAboutButMe  # type: ignore
 from fastapi import HTTPException
 
 from api.database import get_db
@@ -138,13 +139,23 @@ class RSSFeedService:
             detail="Failed to notify webhook",
         )
 
-    def _parse_rss_feed(self, content: bytes) -> feedparser.FeedParserDict:
-        parsed = feedparser.parse(content)
-        if parsed.bozo:
+    def _parse_rss_feed(
+        self,
+        content: bytes,
+        response_headers: Mapping[str, str] | None = None,
+    ) -> feedparser.FeedParserDict:
+        if response_headers is None:
+            parsed = feedparser.parse(content)
+        else:
+            parsed = feedparser.parse(content, response_headers=response_headers)
+        bozo_exception = getattr(parsed, "bozo_exception", None)
+        if parsed.bozo and not isinstance(
+            bozo_exception, ThingsNobodyCaresAboutButMe
+        ):
             raise HTTPException(
                 status_code=422, detail="RSS feed URL is not a valid RSS feed"
             )
-        if not parsed.feed and not parsed.entries:
+        if not parsed.version or (not parsed.feed and not parsed.entries):
             raise HTTPException(
                 status_code=422, detail="RSS feed URL is not a valid RSS feed"
             )
@@ -173,26 +184,9 @@ class RSSFeedService:
         if response.status_code >= 400:
             raise HTTPException(status_code=422, detail="RSS feed URL is not reachable")
 
-        try:
-            root = ET.fromstring(response.text)
-        except ET.ParseError as exc:
-            raise HTTPException(
-                status_code=422, detail="RSS feed URL is not a valid RSS feed"
-            ) from exc
-
-        tag = root.tag.split("}", 1)[-1].lower()
-        if tag == "rss":
-            channel = root.find("channel")
-            if channel is None:
-                raise HTTPException(
-                    status_code=422, detail="RSS feed URL is not a valid RSS feed"
-                )
-            return
-        if tag == "feed":
-            return
-
-        raise HTTPException(
-            status_code=422, detail="RSS feed URL is not a valid RSS feed"
+        self._parse_rss_feed(
+            response.content,
+            response.headers,
         )
 
     def _chunk_embeds(
@@ -550,7 +544,10 @@ class RSSFeedService:
                     status_code=422, detail="RSS feed URL is not reachable"
                 )
 
-            parsed_feed = self._parse_rss_feed(response.content)
+            parsed_feed = self._parse_rss_feed(
+                response.content,
+                getattr(response, "headers", None),
+            )
             feed_title = self._get_feed_title(parsed_feed, str(row["title"]))
             sent_urls = self._load_sent_article_urls(conn, feed_id)
             articles: list[dict[str, object]] = []
