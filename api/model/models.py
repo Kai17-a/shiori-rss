@@ -524,6 +524,7 @@ class SettingsAIArticleAnalysisRunResponse(BaseModel):
     succeeded: int
     failed: int
     skipped_current: int
+    skipped_retry_limit: int = 0
     stopped_by_token_limit: bool
     stopped_by_user: bool = False
 
@@ -544,6 +545,7 @@ class SettingsAIArticleAnalysisStatusResponse(BaseModel):
     succeeded: int = 0
     failed: int = 0
     skipped_current: int = 0
+    skipped_retry_limit: int = 0
     current_article_title: str | None = None
     tokens_used_today: int = 0
     daily_token_limit: int = 0

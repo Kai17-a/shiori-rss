@@ -654,6 +654,7 @@ test("runs article analysis manually with a loading state", async ({ page }) => 
         succeeded: 2,
         failed: 0,
         skipped_current: 3,
+        skipped_retry_limit: 0,
         stopped_by_token_limit: false,
       }),
     });
@@ -706,6 +707,7 @@ test("disables manual analysis while the server reports a running job", async ({
         succeeded: 3,
         failed: 1,
         skipped_current: 2,
+        skipped_retry_limit: 3,
         current_article_title: "Vue 3.5 released",
         tokens_used_today: 1250,
         daily_token_limit: 50000,

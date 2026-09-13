@@ -10,6 +10,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 const PROMPT_VERSION: &str = "article-analysis-v3";
 const MAX_INPUT_CHARS: usize = 12_000;
 const RESERVED_OUTPUT_TOKENS: i64 = 600;
+const MAX_AUTO_ANALYSIS_ATTEMPTS: i64 = 3;
 const ANALYSIS_LOCK_KEY: &str = "ai_article_analysis_running";
 const ANALYSIS_PROGRESS_KEY: &str = "ai_article_analysis_progress";
 const ANALYSIS_CANCEL_KEY: &str = "ai_article_analysis_cancel_requested";
@@ -46,6 +47,7 @@ pub struct AnalysisRunReport {
     pub succeeded: usize,
     pub failed: usize,
     pub skipped_current: usize,
+    pub skipped_retry_limit: usize,
     pub stopped_by_token_limit: bool,
     pub stopped_by_user: bool,
 }
@@ -57,6 +59,7 @@ struct AnalysisProgress<'a> {
     succeeded: usize,
     failed: usize,
     skipped_current: usize,
+    skipped_retry_limit: usize,
     current_article_title: Option<&'a str>,
     tokens_used_today: i64,
     daily_token_limit: i64,
@@ -101,6 +104,7 @@ struct ArticleCandidate {
     existing_model: Option<String>,
     existing_prompt_version: Option<String>,
     existing_status: Option<String>,
+    existing_attempt_count: Option<i64>,
     existing_embedding_hash: Option<String>,
     existing_embedding_model: Option<String>,
     // Which provider/base URL produced the stored embedding — compared
@@ -275,9 +279,10 @@ fn load_llm_config(conn: &Connection) -> rusqlite::Result<Option<LlmConfig>> {
     }
 }
 
-fn load_candidates(
+fn load_candidate_chunk(
     conn: &Connection,
     settings: &AnalysisSettings,
+    offset: usize,
 ) -> rusqlite::Result<Vec<ArticleCandidate>> {
     let modifier = format!("-{} days", settings.lookback_days);
     let candidate_limit = (settings.max_articles_per_run * 10).max(100) as i64;
@@ -286,7 +291,8 @@ fn load_candidates(
         SELECT candidates.source_type, candidates.article_id,
                coalesce(candidates.title, ''), coalesce(candidates.summary, ''),
                analyses.content_hash, analyses.model, analyses.prompt_version,
-               analyses.status, analyses.embedding_content_hash, analyses.embedding_model,
+               analyses.status, analyses.attempt_count,
+               analyses.embedding_content_hash, analyses.embedding_model,
                analyses.embedding_provider, analyses.embedding_base_url
         FROM (
           SELECT 'rss' AS source_type, id AS article_id, title, summary,
@@ -305,10 +311,10 @@ fn load_candidates(
                  datetime(candidates.article_date) DESC,
                  candidates.source_type,
                  candidates.article_id DESC
-        LIMIT ?
+        LIMIT ? OFFSET ?
         "#,
     )?;
-    let rows = stmt.query_map(params![modifier, candidate_limit], |row| {
+    let rows = stmt.query_map(params![modifier, candidate_limit, offset as i64], |row| {
         Ok(ArticleCandidate {
             source_type: row.get(0)?,
             article_id: row.get(1)?,
@@ -318,10 +324,11 @@ fn load_candidates(
             existing_model: row.get(5)?,
             existing_prompt_version: row.get(6)?,
             existing_status: row.get(7)?,
-            existing_embedding_hash: row.get(8)?,
-            existing_embedding_model: row.get(9)?,
-            existing_embedding_provider: row.get(10)?,
-            existing_embedding_base_url: row.get(11)?,
+            existing_attempt_count: row.get(8)?,
+            existing_embedding_hash: row.get(9)?,
+            existing_embedding_model: row.get(10)?,
+            existing_embedding_provider: row.get(11)?,
+            existing_embedding_base_url: row.get(12)?,
         })
     })?;
     rows.collect()
@@ -345,7 +352,8 @@ fn load_candidate(
         r#"
         SELECT coalesce(articles.title, ''), coalesce(articles.summary, ''),
                analyses.content_hash, analyses.model, analyses.prompt_version,
-               analyses.status, analyses.embedding_content_hash, analyses.embedding_model,
+               analyses.status, analyses.attempt_count,
+               analyses.embedding_content_hash, analyses.embedding_model,
                analyses.embedding_provider, analyses.embedding_base_url
         FROM {table} AS articles
         LEFT JOIN article_ai_analyses AS analyses
@@ -363,10 +371,11 @@ fn load_candidate(
             existing_model: row.get(3)?,
             existing_prompt_version: row.get(4)?,
             existing_status: row.get(5)?,
-            existing_embedding_hash: row.get(6)?,
-            existing_embedding_model: row.get(7)?,
-            existing_embedding_provider: row.get(8)?,
-            existing_embedding_base_url: row.get(9)?,
+            existing_attempt_count: row.get(6)?,
+            existing_embedding_hash: row.get(7)?,
+            existing_embedding_model: row.get(8)?,
+            existing_embedding_provider: row.get(9)?,
+            existing_embedding_base_url: row.get(10)?,
         })
     })
     .optional()
@@ -731,9 +740,9 @@ fn save_success(
         INSERT INTO article_ai_analyses (
           source_type, article_id, content_hash, model, prompt_version, ai_summary,
           key_points_json, topics_json, keywords_json, entities_json, search_aliases_json,
-          input_tokens, output_tokens, status, error_message, analyzed_at, updated_at
+          input_tokens, output_tokens, status, error_message, attempt_count, analyzed_at, updated_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', NULL,
-                  datetime('now'), datetime('now'))
+                  0, datetime('now'), datetime('now'))
         ON CONFLICT(source_type, article_id) DO UPDATE SET
           content_hash = excluded.content_hash,
           model = excluded.model,
@@ -748,7 +757,7 @@ fn save_success(
           output_tokens = excluded.output_tokens,
           status = 'completed',
           error_message = NULL,
-          attempt_count = article_ai_analyses.attempt_count + 1,
+          attempt_count = 0,
           analyzed_at = datetime('now'),
           updated_at = datetime('now')
         "#,
@@ -793,7 +802,14 @@ fn save_failure(
           output_tokens = 0,
           status = 'failed',
           error_message = excluded.error_message,
-          attempt_count = article_ai_analyses.attempt_count + 1,
+          attempt_count = CASE
+            WHEN article_ai_analyses.content_hash = excluded.content_hash
+             AND article_ai_analyses.model = excluded.model
+             AND article_ai_analyses.prompt_version = excluded.prompt_version
+             AND article_ai_analyses.status = 'failed'
+            THEN article_ai_analyses.attempt_count + 1
+            ELSE 1
+          END,
           analyzed_at = datetime('now'),
           updated_at = datetime('now')
         "#,
@@ -834,7 +850,6 @@ async fn run_article_analysis_with_mode(
     let client = Client::builder()
         .timeout(Duration::from_secs(config.timeout_seconds))
         .build()?;
-    let candidates = load_candidates(conn, &settings)?;
     let mut used_tokens = used_tokens_today(conn)?;
     let mut report = AnalysisRunReport::default();
     let started_at = SystemTime::now()
@@ -842,35 +857,52 @@ async fn run_article_analysis_with_mode(
         .unwrap_or_default()
         .as_secs();
     let mut articles_to_process = Vec::new();
-    for article in candidates {
-        let hash = content_hash(&article);
-        let analysis_current = article.existing_hash.as_deref() == Some(&hash)
-            && article.existing_model.as_deref() == Some(&config.model)
-            && article.existing_prompt_version.as_deref() == Some(PROMPT_VERSION)
-            && article.existing_status.as_deref() == Some("completed");
-        // Embedding staleness is independent of text-analysis staleness: an
-        // article can have a fresh analysis but a missing/stale embedding
-        // (embedding just configured, switched to a different model, or
-        // repointed at a different provider/URL under the same model name),
-        // or vice versa. When no embedding_model is configured, embeddings
-        // are "current" by definition — nothing to do, zero behavior change.
-        let embedding_current = config.embedding_model.is_none()
-            || (article.existing_embedding_hash.as_deref() == Some(&hash)
-                && article.existing_embedding_model.as_deref()
-                    == config.embedding_model.as_deref()
-                && article.existing_embedding_provider.as_deref()
-                    == Some(config.embedding_provider.as_str())
-                && article.existing_embedding_base_url.as_deref()
-                    == Some(config.embedding_base_url.as_str()));
-        if analysis_current && embedding_current {
-            report.skipped_current += 1;
-            continue;
-        }
-        let needs_analysis = !analysis_current;
-        let needs_embedding = !embedding_current;
-        articles_to_process.push((article, hash, needs_analysis, needs_embedding));
-        if articles_to_process.len() >= settings.max_articles_per_run {
+    let mut candidate_offset = 0;
+    'candidate_chunks: loop {
+        let candidates = load_candidate_chunk(conn, &settings, candidate_offset)?;
+        if candidates.is_empty() {
             break;
+        }
+        candidate_offset += candidates.len();
+        for article in candidates {
+            let hash = content_hash(&article);
+            let same_analysis_identity = article.existing_hash.as_deref() == Some(&hash)
+                && article.existing_model.as_deref() == Some(&config.model)
+                && article.existing_prompt_version.as_deref() == Some(PROMPT_VERSION);
+            let retry_limit_reached = same_analysis_identity
+                && article.existing_status.as_deref() == Some("failed")
+                && article.existing_attempt_count.unwrap_or_default() >= MAX_AUTO_ANALYSIS_ATTEMPTS;
+            if retry_limit_reached {
+                report.skipped_retry_limit += 1;
+            }
+            let analysis_current =
+                same_analysis_identity && article.existing_status.as_deref() == Some("completed");
+            // Embedding staleness is independent of text-analysis staleness: an
+            // article can have a fresh analysis but a missing/stale embedding
+            // (embedding just configured, switched to a different model, or
+            // repointed at a different provider/URL under the same model name),
+            // or vice versa. When no embedding_model is configured, embeddings
+            // are "current" by definition — nothing to do, zero behavior change.
+            let embedding_current = config.embedding_model.is_none()
+                || (article.existing_embedding_hash.as_deref() == Some(&hash)
+                    && article.existing_embedding_model.as_deref()
+                        == config.embedding_model.as_deref()
+                    && article.existing_embedding_provider.as_deref()
+                        == Some(config.embedding_provider.as_str())
+                    && article.existing_embedding_base_url.as_deref()
+                        == Some(config.embedding_base_url.as_str()));
+            let needs_analysis = !analysis_current && !retry_limit_reached;
+            let needs_embedding = !embedding_current;
+            if !needs_analysis && !needs_embedding {
+                if analysis_current {
+                    report.skipped_current += 1;
+                }
+                continue;
+            }
+            articles_to_process.push((article, hash, needs_analysis, needs_embedding));
+            if articles_to_process.len() >= settings.max_articles_per_run {
+                break 'candidate_chunks;
+            }
         }
     }
     let analysis_total = articles_to_process.len();
@@ -882,6 +914,7 @@ async fn run_article_analysis_with_mode(
             succeeded: 0,
             failed: 0,
             skipped_current: report.skipped_current,
+            skipped_retry_limit: report.skipped_retry_limit,
             current_article_title: None,
             tokens_used_today: used_tokens,
             daily_token_limit: settings.daily_token_limit,
@@ -925,6 +958,7 @@ async fn run_article_analysis_with_mode(
                 succeeded: report.succeeded,
                 failed: report.failed,
                 skipped_current: report.skipped_current,
+                skipped_retry_limit: report.skipped_retry_limit,
                 current_article_title: Some(&article.title),
                 tokens_used_today: used_tokens,
                 daily_token_limit: settings.daily_token_limit,
@@ -1043,6 +1077,7 @@ async fn run_article_analysis_with_mode(
                 succeeded: report.succeeded,
                 failed: report.failed,
                 skipped_current: report.skipped_current,
+                skipped_retry_limit: report.skipped_retry_limit,
                 current_article_title: None,
                 tokens_used_today: used_tokens,
                 daily_token_limit: settings.daily_token_limit,
@@ -1051,11 +1086,12 @@ async fn run_article_analysis_with_mode(
         )?;
     }
     eprintln!(
-        "AI article analysis finished: processed={}, succeeded={}, failed={}, skipped_current={}, stopped_by_token_limit={}",
+        "AI article analysis finished: processed={}, succeeded={}, failed={}, skipped_current={}, skipped_retry_limit={}, stopped_by_token_limit={}",
         report.processed,
         report.succeeded,
         report.failed,
         report.skipped_current,
+        report.skipped_retry_limit,
         report.stopped_by_token_limit
     );
     Ok(report)
@@ -1122,6 +1158,7 @@ pub async fn run_single_article_analysis(
             succeeded: 0,
             failed: 0,
             skipped_current: 0,
+            skipped_retry_limit: 0,
             current_article_title: Some(&article.title),
             tokens_used_today: used_tokens,
             daily_token_limit: settings.daily_token_limit,
@@ -1217,6 +1254,7 @@ pub async fn run_single_article_analysis(
             succeeded: report.succeeded,
             failed: report.failed,
             skipped_current: 0,
+            skipped_retry_limit: 0,
             current_article_title: None,
             tokens_used_today: used_tokens,
             daily_token_limit: settings.daily_token_limit,
@@ -1230,11 +1268,12 @@ pub async fn run_single_article_analysis(
 #[cfg(test)]
 mod tests {
     use super::{
-        ANALYSIS_CANCEL_KEY, AnalysisProgress, ArticleCandidate, DEFAULT_LLM_TIMEOUT_SECONDS,
-        PROMPT_VERSION, analysis_array, analysis_keywords, analysis_topics, cancellation_requested,
-        content_hash, ensure_vec_extension_registered, extract_json, load_llm_config,
-        pack_embedding, run_article_analysis, run_article_analysis_manual,
-        run_single_article_analysis, save_progress, truncate,
+        ANALYSIS_CANCEL_KEY, AnalysisProgress, AnalysisResult, AnalysisSettings, ArticleCandidate,
+        DEFAULT_LLM_TIMEOUT_SECONDS, LlmConfig, PROMPT_VERSION, analysis_array, analysis_keywords,
+        analysis_topics, cancellation_requested, content_hash, ensure_vec_extension_registered,
+        extract_json, load_candidate_chunk, load_llm_config, pack_embedding, run_article_analysis,
+        run_article_analysis_manual, run_single_article_analysis, save_failure, save_progress,
+        save_success, truncate,
     };
     use rusqlite::Connection;
     use serde_json::json;
@@ -1261,6 +1300,7 @@ mod tests {
                 succeeded: 2,
                 failed: 1,
                 skipped_current: 4,
+                skipped_retry_limit: 2,
                 current_article_title: Some("Current article"),
                 tokens_used_today: 1200,
                 daily_token_limit: 50000,
@@ -1453,6 +1493,297 @@ mod tests {
         );
     "#;
 
+    fn candidate_hash(title: &str, summary: &str) -> String {
+        content_hash(&ArticleCandidate {
+            source_type: "rss".to_string(),
+            article_id: 1,
+            title: title.to_string(),
+            summary: summary.to_string(),
+            existing_hash: None,
+            existing_model: None,
+            existing_prompt_version: None,
+            existing_status: None,
+            existing_attempt_count: None,
+            existing_embedding_hash: None,
+            existing_embedding_model: None,
+            existing_embedding_provider: None,
+            existing_embedding_base_url: None,
+        })
+    }
+
+    fn configure_analysis(conn: &Connection, base_url: &str, max_articles: usize) {
+        conn.execute_batch(&format!(
+            r#"
+            INSERT INTO app_settings (key, value) VALUES
+              ('ai_article_analysis_enabled', '0'),
+              ('ai_article_analysis_max_articles_per_run', '{max_articles}'),
+              ('ai_article_analysis_daily_token_limit', '50000'),
+              ('ai_article_analysis_lookback_days', '30'),
+              ('llm_provider', 'openai'),
+              ('llm_model', 'test-model'),
+              ('llm_base_url', '{}');
+            "#,
+            base_url.replace('"', "")
+        ))
+        .expect("save analysis settings");
+    }
+
+    fn successful_analysis_response() -> serde_json::Value {
+        json!({
+            "choices": [{"message": {"content": "{\"summary\":\"AI summary\",\"key_points\":[\"Point\"],\"topics\":[\"AI & Machine Learning\"],\"keywords\":[\"agent\",\"reliability\",\"automation\"],\"entities\":[],\"search_aliases\":[]}"}}],
+            "usage": {"prompt_tokens": 20, "completion_tokens": 10}
+        })
+    }
+
+    fn test_llm_config() -> LlmConfig {
+        LlmConfig {
+            provider: "openai".to_string(),
+            base_url: "http://localhost".to_string(),
+            api_key: None,
+            model: "test-model".to_string(),
+            embedding_model: None,
+            embedding_dim: None,
+            embedding_provider: "openai".to_string(),
+            embedding_base_url: "http://localhost".to_string(),
+            embedding_api_key: None,
+            timeout_seconds: DEFAULT_LLM_TIMEOUT_SECONDS,
+        }
+    }
+
+    fn test_analysis_result() -> AnalysisResult {
+        AnalysisResult {
+            summary: "summary".to_string(),
+            key_points: "[]".to_string(),
+            topics: "[]".to_string(),
+            keywords: "[]".to_string(),
+            entities: "[]".to_string(),
+            search_aliases: "[]".to_string(),
+            input_tokens: 10,
+            output_tokens: 5,
+        }
+    }
+
+    #[test]
+    fn successes_reset_consecutive_failures_before_the_next_failure() {
+        let conn = Connection::open_in_memory().expect("open database");
+        conn.execute_batch(SINGLE_ARTICLE_SCHEMA)
+            .expect("create schema");
+        let article = ArticleCandidate {
+            source_type: "rss".to_string(),
+            article_id: 1,
+            title: "Article".to_string(),
+            summary: "Summary".to_string(),
+            existing_hash: None,
+            existing_model: None,
+            existing_prompt_version: None,
+            existing_status: None,
+            existing_attempt_count: None,
+            existing_embedding_hash: None,
+            existing_embedding_model: None,
+            existing_embedding_provider: None,
+            existing_embedding_base_url: None,
+        };
+        let config = test_llm_config();
+        let hash = content_hash(&article);
+
+        save_success(&conn, &config, &article, &hash, &test_analysis_result())
+            .expect("save first success");
+        save_success(&conn, &config, &article, &hash, &test_analysis_result())
+            .expect("save second success");
+        save_failure(&conn, &config, &article, &hash, "failed", 10)
+            .expect("save failure after successes");
+
+        let (status, attempts): (String, i64) = conn
+            .query_row(
+                "SELECT status, attempt_count FROM article_ai_analyses",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("load analysis state");
+        assert_eq!(status, "failed");
+        assert_eq!(attempts, 1);
+    }
+
+    #[test]
+    fn candidate_loading_is_bounded_to_chunks() {
+        let conn = Connection::open_in_memory().expect("open database");
+        conn.execute_batch(SINGLE_ARTICLE_SCHEMA)
+            .expect("create schema");
+        for id in 1..=250 {
+            conn.execute(
+                "INSERT INTO rss_feed_articles (id, title, summary) VALUES (?, ?, 'summary')",
+                rusqlite::params![id, format!("Article {id}")],
+            )
+            .expect("insert article");
+        }
+        let settings = AnalysisSettings {
+            max_articles_per_run: 1,
+            daily_token_limit: 50_000,
+            lookback_days: 30,
+        };
+
+        assert_eq!(
+            load_candidate_chunk(&conn, &settings, 0)
+                .expect("load first chunk")
+                .len(),
+            100
+        );
+        assert_eq!(
+            load_candidate_chunk(&conn, &settings, 100)
+                .expect("load second chunk")
+                .len(),
+            100
+        );
+        assert_eq!(
+            load_candidate_chunk(&conn, &settings, 200)
+                .expect("load final chunk")
+                .len(),
+            50
+        );
+    }
+
+    #[tokio::test]
+    async fn automatic_analysis_retries_failures_below_the_limit() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(successful_analysis_response()))
+            .expect(2)
+            .mount(&server)
+            .await;
+        let conn = Connection::open_in_memory().expect("open database");
+        conn.execute_batch(SINGLE_ARTICLE_SCHEMA)
+            .expect("create schema");
+        configure_analysis(&conn, &server.uri(), 10);
+        for (id, attempts) in [(1, 1), (2, 2)] {
+            let title = format!("Retry {id}");
+            let hash = candidate_hash(&title, "summary");
+            conn.execute(
+                "INSERT INTO rss_feed_articles (id, title, summary) VALUES (?, ?, 'summary')",
+                rusqlite::params![id, title],
+            )
+            .expect("insert article");
+            conn.execute(
+                "INSERT INTO article_ai_analyses (source_type, article_id, content_hash, model, prompt_version, status, attempt_count) VALUES ('rss', ?, ?, 'test-model', ?, 'failed', ?)",
+                rusqlite::params![id, hash, PROMPT_VERSION, attempts],
+            ).expect("insert failed analysis");
+        }
+
+        let report = run_article_analysis_manual(&conn)
+            .await
+            .expect("run analysis");
+        assert_eq!(report.processed, 2);
+        assert_eq!(report.succeeded, 2);
+        assert_eq!(report.skipped_retry_limit, 0);
+        let attempts: Vec<i64> = conn
+            .prepare("SELECT attempt_count FROM article_ai_analyses ORDER BY article_id")
+            .expect("prepare attempts")
+            .query_map([], |row| row.get(0))
+            .expect("load attempts")
+            .collect::<rusqlite::Result<_>>()
+            .expect("collect attempts");
+        assert_eq!(attempts, vec![0, 0]);
+    }
+
+    #[tokio::test]
+    async fn automatic_analysis_skips_capped_failures_without_hiding_valid_candidates() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(successful_analysis_response()))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let conn = Connection::open_in_memory().expect("open database");
+        conn.execute_batch(SINGLE_ARTICLE_SCHEMA)
+            .expect("create schema");
+        configure_analysis(&conn, &server.uri(), 1);
+        for id in 1..=101 {
+            let title = format!("Capped {id}");
+            let hash = candidate_hash(&title, "summary");
+            conn.execute(
+                "INSERT INTO rss_feed_articles (id, title, summary) VALUES (?, ?, 'summary')",
+                rusqlite::params![id, title],
+            )
+            .expect("insert capped article");
+            conn.execute("INSERT INTO article_ai_analyses (source_type, article_id, content_hash, model, prompt_version, status, attempt_count) VALUES ('rss', ?, ?, 'test-model', ?, 'failed', 3)", rusqlite::params![id, hash, PROMPT_VERSION]).expect("insert capped analysis");
+        }
+        conn.execute("INSERT INTO rss_feed_articles (id, title, summary, created_at) VALUES (1000, 'Retryable article', 'summary', datetime('now', '-1 day'))", []).expect("insert retryable article");
+        let retryable_hash = candidate_hash("Retryable article", "summary");
+        conn.execute(
+            "INSERT INTO article_ai_analyses (source_type, article_id, content_hash, model, prompt_version, status, attempt_count) VALUES ('rss', 1000, ?, 'test-model', ?, 'failed', 2)",
+            rusqlite::params![retryable_hash, PROMPT_VERSION],
+        )
+        .expect("insert retryable analysis");
+
+        let report = run_article_analysis_manual(&conn)
+            .await
+            .expect("run analysis");
+        assert_eq!(report.processed, 1);
+        assert_eq!(report.succeeded, 1);
+        assert_eq!(report.skipped_retry_limit, 101);
+    }
+
+    #[tokio::test]
+    async fn changed_identity_resets_a_capped_failure_attempt_count() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(successful_analysis_response()))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let conn = Connection::open_in_memory().expect("open database");
+        conn.execute_batch(SINGLE_ARTICLE_SCHEMA)
+            .expect("create schema");
+        configure_analysis(&conn, &server.uri(), 1);
+        conn.execute("INSERT INTO rss_feed_articles (id, title, summary) VALUES (1, 'Changed title', 'summary')", []).expect("insert article");
+        conn.execute("INSERT INTO article_ai_analyses (source_type, article_id, content_hash, model, prompt_version, status, attempt_count) VALUES ('rss', 1, 'old-hash', 'test-model', ?, 'failed', 9)", [PROMPT_VERSION]).expect("insert old analysis");
+
+        let report = run_article_analysis_manual(&conn)
+            .await
+            .expect("run analysis");
+        assert_eq!(report.succeeded, 1);
+        assert_eq!(report.skipped_retry_limit, 0);
+        assert_eq!(
+            conn.query_row("SELECT attempt_count FROM article_ai_analyses", [], |row| {
+                row.get::<_, i64>(0)
+            })
+            .expect("load attempt count"),
+            0
+        );
+    }
+
+    #[tokio::test]
+    async fn changed_identity_resets_attempt_count_when_the_new_attempt_fails() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(ResponseTemplate::new(500))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let conn = Connection::open_in_memory().expect("open database");
+        conn.execute_batch(SINGLE_ARTICLE_SCHEMA)
+            .expect("create schema");
+        configure_analysis(&conn, &server.uri(), 1);
+        conn.execute("INSERT INTO rss_feed_articles (id, title, summary) VALUES (1, 'Changed title', 'summary')", []).expect("insert article");
+        conn.execute("INSERT INTO article_ai_analyses (source_type, article_id, content_hash, model, prompt_version, status, attempt_count) VALUES ('rss', 1, 'old-hash', 'test-model', ?, 'failed', 9)", [PROMPT_VERSION]).expect("insert old analysis");
+
+        let report = run_article_analysis_manual(&conn)
+            .await
+            .expect("run analysis");
+        assert_eq!(report.failed, 1);
+        assert_eq!(report.skipped_retry_limit, 0);
+        assert_eq!(
+            conn.query_row("SELECT attempt_count FROM article_ai_analyses", [], |row| {
+                row.get::<_, i64>(0)
+            })
+            .expect("load attempt count"),
+            1
+        );
+    }
+
     #[tokio::test]
     async fn reanalyzes_a_single_article_even_when_its_analysis_is_already_current() {
         let server = MockServer::start().await;
@@ -1502,6 +1833,7 @@ mod tests {
             existing_model: None,
             existing_prompt_version: None,
             existing_status: None,
+            existing_attempt_count: None,
             existing_embedding_hash: None,
             existing_embedding_model: None,
             existing_embedding_provider: None,
@@ -1512,9 +1844,9 @@ mod tests {
             &format!(
                 "INSERT INTO article_ai_analyses (
                    source_type, article_id, content_hash, model, prompt_version, ai_summary,
-                   status, analyzed_at, updated_at
+                   status, attempt_count, analyzed_at, updated_at
                  ) VALUES ('rss', 1, ?, 'test-model', '{PROMPT_VERSION}', 'Stale summary',
-                           'completed', datetime('now'), datetime('now'))"
+                           'completed', 3, datetime('now'), datetime('now'))"
             ),
             [hash],
         )
@@ -1538,11 +1870,52 @@ mod tests {
         assert_eq!(summary, "Refreshed summary");
         assert_eq!(
             conn.query_row(
+                "SELECT attempt_count FROM article_ai_analyses WHERE source_type = 'rss' AND article_id = 1",
+                [],
+                |row| row.get::<_, i64>(0),
+            ).expect("load attempt count"),
+            0
+        );
+        assert_eq!(
+            conn.query_row(
                 "SELECT count(*) FROM app_settings WHERE key = 'ai_article_analysis_running'",
                 [],
                 |row| row.get::<_, i64>(0),
             )
             .expect("check run lock cleanup"),
+            0
+        );
+    }
+
+    #[tokio::test]
+    async fn single_article_reanalysis_resets_attempts_after_identity_change() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(successful_analysis_response()))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let conn = Connection::open_in_memory().expect("open database");
+        conn.execute_batch(SINGLE_ARTICLE_SCHEMA)
+            .expect("create schema");
+        configure_analysis(&conn, &server.uri(), 1);
+        conn.execute(
+            "INSERT INTO rss_feed_articles (id, title, summary) VALUES (1, 'New title', 'summary')",
+            [],
+        )
+        .expect("insert article");
+        conn.execute("INSERT INTO article_ai_analyses (source_type, article_id, content_hash, model, prompt_version, status, attempt_count) VALUES ('rss', 1, 'old-hash', 'test-model', ?, 'failed', 7)", [PROMPT_VERSION]).expect("insert old analysis");
+
+        let report = run_single_article_analysis(&conn, "rss", 1)
+            .await
+            .expect("reanalyze article");
+        assert_eq!(report.succeeded, 1);
+        assert_eq!(
+            conn.query_row("SELECT attempt_count FROM article_ai_analyses", [], |row| {
+                row.get::<_, i64>(0)
+            })
+            .expect("load attempt count"),
             0
         );
     }
@@ -1771,6 +2144,63 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn retry_limited_analysis_still_refreshes_a_stale_embedding() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(0)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/embeddings"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "data": [{"embedding": vec![0.25; 8]}],
+                "usage": {"prompt_tokens": 12}
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let conn = build_embedding_test_db();
+        conn.execute(
+            "INSERT INTO rss_feed_articles (id, title, summary) VALUES (1, 'Retry limited', 'summary')",
+            [],
+        )
+        .expect("insert article");
+        let hash = candidate_hash("Retry limited", "summary");
+        conn.execute(
+            "INSERT INTO article_ai_analyses (source_type, article_id, content_hash, model, prompt_version, status, attempt_count) VALUES ('rss', 1, ?, 'test-model', ?, 'failed', 3)",
+            rusqlite::params![hash, PROMPT_VERSION],
+        )
+        .expect("insert retry-limited analysis");
+        configure_analysis(&conn, &server.uri(), 5);
+        conn.execute(
+            "INSERT INTO app_settings (key, value) VALUES ('embedding_model', 'test-embedding-model')",
+            [],
+        )
+        .expect("configure embedding model");
+
+        let report = run_article_analysis_manual(&conn)
+            .await
+            .expect("refresh embedding");
+
+        assert_eq!(report.processed, 1);
+        assert_eq!(report.succeeded, 1);
+        assert_eq!(report.skipped_retry_limit, 1);
+        let (status, attempt_count, embedding_model): (String, i64, String) = conn
+            .query_row(
+                "SELECT status, attempt_count, embedding_model FROM article_ai_analyses",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .expect("load refreshed embedding state");
+        assert_eq!(status, "failed");
+        assert_eq!(attempt_count, 3);
+        assert_eq!(embedding_model, "test-embedding-model");
+    }
+
+    #[tokio::test]
     async fn enabling_embedding_model_only_embeds_already_analyzed_articles() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
@@ -1807,6 +2237,7 @@ mod tests {
             existing_model: None,
             existing_prompt_version: None,
             existing_status: None,
+            existing_attempt_count: None,
             existing_embedding_hash: None,
             existing_embedding_model: None,
             existing_embedding_provider: None,
@@ -1912,6 +2343,7 @@ mod tests {
             existing_model: None,
             existing_prompt_version: None,
             existing_status: None,
+            existing_attempt_count: None,
             existing_embedding_hash: None,
             existing_embedding_model: None,
             existing_embedding_provider: None,
@@ -2002,6 +2434,7 @@ mod tests {
             existing_model: None,
             existing_prompt_version: None,
             existing_status: None,
+            existing_attempt_count: None,
             existing_embedding_hash: None,
             existing_embedding_model: None,
             existing_embedding_provider: None,

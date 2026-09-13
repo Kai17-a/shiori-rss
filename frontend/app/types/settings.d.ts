@@ -52,6 +52,7 @@ export interface SettingsAIArticleAnalysisRunResponse {
   succeeded: number;
   failed: number;
   skipped_current: number;
+  skipped_retry_limit: number;
   stopped_by_token_limit: boolean;
   stopped_by_user: boolean;
 }
@@ -72,6 +73,7 @@ export interface SettingsAIArticleAnalysisStatusResponse {
   succeeded: number;
   failed: number;
   skipped_current: number;
+  skipped_retry_limit: number;
   current_article_title: string | null;
   tokens_used_today: number;
   daily_token_limit: number;

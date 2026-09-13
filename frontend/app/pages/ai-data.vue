@@ -75,16 +75,17 @@
           />
 
           <div
-            v-if="analysisRunning && analysisStatus.total > 0"
+            v-if="analysisRunning && (analysisStatus.total > 0 || analysisStatus.skipped_retry_limit > 0)"
             class="space-y-3 rounded-2xl border border-default bg-elevated/30 p-4"
           >
-            <div class="flex flex-wrap items-center justify-between gap-2 text-sm">
+            <div v-if="analysisStatus.total > 0" class="flex flex-wrap items-center justify-between gap-2 text-sm">
               <span class="font-semibold text-default">
                 {{ analysisStatus.processed }} / {{ analysisStatus.total }} articles
               </span>
               <span class="text-muted">{{ analysisProgressPercent }}%</span>
             </div>
             <UProgress
+              v-if="analysisStatus.total > 0"
               :model-value="analysisStatus.processed"
               :max="analysisStatus.total"
               color="primary"
@@ -102,6 +103,7 @@
               <span>{{ analysisStatus.succeeded }} succeeded</span>
               <span>{{ analysisStatus.failed }} failed</span>
               <span>{{ analysisStatus.skipped_current }} already current</span>
+              <span>{{ analysisStatus.skipped_retry_limit }} retry limit reached</span>
               <span v-if="analysisStatus.daily_token_limit">
                 {{ analysisStatus.tokens_used_today.toLocaleString() }} /
                 {{ analysisStatus.daily_token_limit.toLocaleString() }} tokens today
@@ -288,6 +290,7 @@ const emptyAnalysisStatus = (): SettingsAIArticleAnalysisStatusResponse => ({
   succeeded: 0,
   failed: 0,
   skipped_current: 0,
+  skipped_retry_limit: 0,
   current_article_title: null,
   tokens_used_today: 0,
   daily_token_limit: 0,
@@ -469,7 +472,7 @@ const runAnalysis = async () => {
       "/settings/ai-article-analysis/execute",
       { method: "POST" },
     );
-    const description = `${response.succeeded} succeeded, ${response.failed} failed, ${response.skipped_current} already current.`;
+    const description = `${response.succeeded} succeeded, ${response.failed} failed, ${response.skipped_current} already current, ${response.skipped_retry_limit} skipped after reaching the automatic retry limit.`;
     toast.show({
       title: response.stopped_by_token_limit
         ? "Analysis stopped at the daily token limit."
@@ -477,10 +480,12 @@ const runAnalysis = async () => {
           ? "Article analysis stopped."
         : response.processed
           ? "Article analysis completed."
+          : response.skipped_retry_limit
+            ? "Automatic retry limit reached."
           : "All eligible articles are already analyzed.",
       description,
-      color: response.failed || response.stopped_by_token_limit ? "warning" : "success",
-      icon: response.failed || response.stopped_by_token_limit
+      color: response.failed || response.skipped_retry_limit || response.stopped_by_token_limit ? "warning" : "success",
+      icon: response.failed || response.skipped_retry_limit || response.stopped_by_token_limit
         ? "i-lucide-triangle-alert"
         : "i-lucide-check",
     });

@@ -308,11 +308,13 @@ class ArticleAnalysisService:
                     detail="Article analysis returned an invalid result",
                 )
             _logger.info(
-                "AI article analysis completed: processed=%d succeeded=%d failed=%d skipped=%d",
+                "AI article analysis completed: processed=%d succeeded=%d failed=%d "
+                "skipped_current=%d skipped_retry_limit=%d",
                 report.processed,
                 report.succeeded,
                 report.failed,
                 report.skipped_current,
+                report.skipped_retry_limit,
             )
             return report
         finally:

@@ -381,7 +381,8 @@ def test_ai_article_analysis_can_run_manually_while_schedule_is_disabled(
             self.stdout = io.StringIO(
                 "Analyzing article rss:1 (1/20)\n"
                 '{"processed":2,"succeeded":2,"failed":0,'
-                '"skipped_current":3,"stopped_by_token_limit":false}\n'
+                '"skipped_current":3,"skipped_retry_limit":1,'
+                '"stopped_by_token_limit":false}\n'
             )
 
         def wait(self):
@@ -409,6 +410,7 @@ def test_ai_article_analysis_can_run_manually_while_schedule_is_disabled(
         "succeeded": 2,
         "failed": 0,
         "skipped_current": 3,
+        "skipped_retry_limit": 1,
         "stopped_by_token_limit": False,
         "stopped_by_user": False,
     }
@@ -425,7 +427,8 @@ def test_ai_article_analysis_can_reanalyze_a_single_article(client, monkeypatch)
         def __init__(self):
             self.stdout = io.StringIO(
                 '{"processed":1,"succeeded":1,"failed":0,'
-                '"skipped_current":0,"stopped_by_token_limit":false}\n'
+                '"skipped_current":0,"skipped_retry_limit":0,'
+                '"stopped_by_token_limit":false}\n'
             )
 
         def wait(self):
@@ -452,6 +455,7 @@ def test_ai_article_analysis_can_reanalyze_a_single_article(client, monkeypatch)
         "succeeded": 1,
         "failed": 0,
         "skipped_current": 0,
+        "skipped_retry_limit": 0,
         "stopped_by_token_limit": False,
         "stopped_by_user": False,
     }
@@ -529,6 +533,7 @@ def test_ai_article_analysis_status_returns_batch_progress(client):
                             "succeeded": 3,
                             "failed": 1,
                             "skipped_current": 2,
+                            "skipped_retry_limit": 5,
                             "current_article_title": "Vue 3.5 released",
                             "tokens_used_today": 1250,
                             "daily_token_limit": 50000,
@@ -550,6 +555,7 @@ def test_ai_article_analysis_status_returns_batch_progress(client):
         "succeeded": 3,
         "failed": 1,
         "skipped_current": 2,
+        "skipped_retry_limit": 5,
         "current_article_title": "Vue 3.5 released",
         "tokens_used_today": 1250,
         "daily_token_limit": 50000,

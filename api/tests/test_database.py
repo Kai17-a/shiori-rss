@@ -1,5 +1,7 @@
 import sqlite3
 import tempfile
+from pathlib import Path
+from shutil import copy2
 from contextlib import contextmanager
 
 from api.database import (
@@ -130,6 +132,7 @@ def test_initialize_database_applies_every_migration_idempotently(tmp_path):
         "202608271200",
         "202609031300",
         "202609051900",
+        "202609140000",
     }
     assert "published" in article_columns
     assert "summary" in article_columns
@@ -137,6 +140,38 @@ def test_initialize_database_applies_every_migration_idempotently(tmp_path):
     assert "notify_webhook_enabled" in feed_columns
     assert {"icon_url", "icon_data", "icon_media_type"} <= feed_columns
     assert "enabled" in webhook_columns
+
+
+def test_attempt_count_migration_normalizes_legacy_rows(tmp_path):
+    migrations_source = Path(__file__).resolve().parents[2] / "db" / "migrations"
+    staged_migrations = tmp_path / "migrations"
+    staged_migrations.mkdir()
+    normalization_migration = "202609140000_reset_article_analysis_attempt_count.sql"
+    for migration in migrations_source.glob("*.sql"):
+        if migration.name != normalization_migration:
+            copy2(migration, staged_migrations / migration.name)
+
+    db_path = str(tmp_path / "legacy.db")
+    initialize_database(db_path, staged_migrations)
+    with sqlite3.connect(db_path) as conn:
+        conn.executemany(
+            "INSERT INTO article_ai_analyses "
+            "(source_type, article_id, content_hash, model, prompt_version, status, attempt_count) "
+            "VALUES ('rss', ?, 'hash', 'model', 'prompt', ?, ?)",
+            [(1, "failed", 7), (2, "completed", 9)],
+        )
+
+    copy2(
+        migrations_source / normalization_migration,
+        staged_migrations / normalization_migration,
+    )
+    initialize_database(db_path, staged_migrations)
+
+    with sqlite3.connect(db_path) as conn:
+        rows = conn.execute(
+            "SELECT status, attempt_count FROM article_ai_analyses ORDER BY article_id"
+        ).fetchall()
+    assert rows == [("failed", 1), ("completed", 0)]
 
 
 def test_db_error_returns_500(tmp_path, monkeypatch):
