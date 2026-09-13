@@ -25,7 +25,6 @@
           :collapsed="collapsed"
           :primary-links="primaryLinks"
           :secondary-links="secondaryLinks"
-          v-model:primary-model-value="sidebarOpenItems"
           @navigate="closeSidebar"
         />
       </template>
@@ -71,7 +70,7 @@ import AskAIChatLauncher from "~/components/AskAIChatLauncher.vue";
 import { refreshSidebarCatalogSafely } from "~/utils/sidebarCatalog";
 
 const route = useRoute();
-const { rssFeeds, customFeeds, refresh } = useSidebarCatalog();
+const { refresh } = useSidebarCatalog();
 const {
   checked: healthChecked,
   ok: healthOk,
@@ -100,12 +99,6 @@ const retryApiConnection = async () => {
 
 const isActive = (path: string) => route.path === path;
 const isActivePrefix = (path: string) => route.path === path || route.path.startsWith(`${path}/`);
-const initialOpenSection = isActivePrefix("/feeds")
-  ? "rss-feeds"
-  : isActivePrefix("/custom-feeds")
-    ? "custom-feeds"
-    : null;
-const sidebarOpenItems = ref<string[]>(initialOpenSection ? [initialOpenSection] : []);
 
 const primaryLinks = computed<NavigationMenuItem[]>(() => [
   {
@@ -132,50 +125,16 @@ const primaryLinks = computed<NavigationMenuItem[]>(() => [
   {
     label: "RSS feeds",
     icon: "i-lucide-rss",
-    value: "rss-feeds",
-    type: "trigger",
+    to: "/feeds",
     active: isActivePrefix("/feeds"),
-    defaultOpen: false,
-    children: [
-      {
-        label: "All",
-        to: "/feeds",
-        exact: true,
-        active: isActive("/feeds"),
-        onSelect: closeSidebar,
-      },
-      ...rssFeeds.value.map((feed) => ({
-        label: feed.title,
-        to: `/feeds/${feed.id}`,
-        exact: true,
-        active: isActive(`/feeds/${feed.id}`),
-        onSelect: closeSidebar,
-      })),
-    ],
+    onSelect: closeSidebar,
   },
   {
     label: "Custom RSS",
     icon: "i-lucide-wand-sparkles",
-    value: "custom-feeds",
-    type: "trigger",
+    to: "/custom-feeds",
     active: isActivePrefix("/custom-feeds"),
-    defaultOpen: false,
-    children: [
-      {
-        label: "All",
-        to: "/custom-feeds",
-        exact: true,
-        active: isActive("/custom-feeds"),
-        onSelect: closeSidebar,
-      },
-      ...customFeeds.value.map((feed) => ({
-        label: feed.title,
-        to: `/custom-feeds/${feed.id}`,
-        exact: true,
-        active: isActive(`/custom-feeds/${feed.id}`),
-        onSelect: closeSidebar,
-      })),
-    ],
+    onSelect: closeSidebar,
   },
 ]);
 

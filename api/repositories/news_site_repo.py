@@ -1,6 +1,10 @@
 import sqlite3
 
 
+def _escape_like(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 class NewsSiteRepository:
     def __init__(self, conn: sqlite3.Connection) -> None:
         self.conn = conn
@@ -84,23 +88,26 @@ class NewsSiteRepository:
         ).fetchall()
         return [dict(row) for row in rows]
 
+    @staticmethod
+    def _search_filter(q: str | None) -> tuple[str, list[object]]:
+        query = (q or "").strip()
+        if not query:
+            return "", []
+        like = f"%{_escape_like(query)}%"
+        return " WHERE (title LIKE ? ESCAPE '\\' OR url LIKE ? ESCAPE '\\')", [
+            like,
+            like,
+        ]
+
     def count_all(self, q: str | None = None) -> int:
-        query = "SELECT COUNT(*) AS total FROM news_sites"
-        params: list[object] = []
-        if q is not None and q.strip():
-            query += " WHERE title LIKE ? OR url LIKE ?"
-            like = f"%{q.strip()}%"
-            params.extend([like, like])
+        where, params = self._search_filter(q)
+        query = f"SELECT COUNT(*) AS total FROM news_sites{where}"
         row = self.conn.execute(query, params).fetchone()
         return int(row["total"]) if row else 0
 
     def find_all(self, q: str | None, limit: int, offset: int) -> list[dict]:
-        query = "SELECT * FROM news_sites"
-        params: list[object] = []
-        if q is not None and q.strip():
-            query += " WHERE title LIKE ? OR url LIKE ?"
-            like = f"%{q.strip()}%"
-            params.extend([like, like])
+        where, params = self._search_filter(q)
+        query = f"SELECT * FROM news_sites{where}"
         query += " ORDER BY title ASC, id ASC LIMIT ? OFFSET ?"
         params.extend([limit, offset])
         rows = self.conn.execute(query, params).fetchall()

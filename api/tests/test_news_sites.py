@@ -271,6 +271,85 @@ def test_registration_analyzes_and_tests_scraping_before_saving(client):
     assert listed.json()["total"] == 1
 
 
+def test_list_news_sites_searches_title_and_url_and_trims_whitespace(client):
+    first = create_site(
+        client,
+        url="https://alpha.example.com/news",
+        title="Alpha Dispatch",
+        configuration_mode="manual",
+        scrape_config={
+            "item_selector": ".news-item",
+            "title_selector": "h2 a",
+            "link_selector": "h2 a",
+            "link_attribute": "href",
+        },
+    )
+    second = create_site(
+        client,
+        url="https://beta.example.com/news",
+        title="Beta Journal",
+        configuration_mode="manual",
+        scrape_config={
+            "item_selector": ".news-item",
+            "title_selector": "h2 a",
+            "link_selector": "h2 a",
+            "link_attribute": "href",
+        },
+    )
+    assert first.status_code == 201
+    assert second.status_code == 201
+
+    by_title = client.get("/news-sites", params={"q": "  Alpha  "}).json()
+    by_url = client.get("/news-sites", params={"q": "beta.example.com"}).json()
+
+    assert [item["title"] for item in by_title["items"]] == ["Alpha Dispatch"]
+    assert [item["title"] for item in by_url["items"]] == ["Beta Journal"]
+
+
+@pytest.mark.parametrize("literal", ["%", "_", "\\"])
+def test_list_news_sites_treats_like_wildcards_as_literals(client, literal):
+    manual_config = {
+        "item_selector": ".news-item",
+        "title_selector": "h2 a",
+        "link_selector": "h2 a",
+        "link_attribute": "href",
+    }
+    create_site(
+        client,
+        url="https://literal.example.com/news",
+        title=f"Literal {literal} source",
+        configuration_mode="manual",
+        scrape_config=manual_config,
+    )
+    create_site(
+        client,
+        url="https://ordinary.example.com/news",
+        title="Ordinary",
+        configuration_mode="manual",
+        scrape_config=manual_config,
+    )
+
+    response = client.get("/news-sites", params={"q": literal})
+
+    assert response.status_code == 200
+    assert [item["title"] for item in response.json()["items"]] == [
+        f"Literal {literal} source"
+    ]
+
+
+def test_list_news_sites_returns_empty_paging_for_no_search_matches(client):
+    response = client.get("/news-sites", params={"q": "missing", "page": 9})
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "items": [],
+        "total": 0,
+        "page": 9,
+        "per_page": 20,
+        "total_pages": 0,
+    }
+
+
 def test_update_can_reanalyze_unchanged_site_url(client, monkeypatch):
     import api.services.news_site_service as news_module
 
@@ -635,9 +714,9 @@ def test_manual_execution_notifies_only_latest_articles_without_draining_backlog
     )
 
     first = client.post(f"/news-sites/{site.json()['id']}/execute")
-    first_articles = client.get(
-        f"/news-sites/{site.json()['id']}/articles"
-    ).json()["items"]
+    first_articles = client.get(f"/news-sites/{site.json()['id']}/articles").json()[
+        "items"
+    ]
 
     assert first.json()["message"] == "Posted 1 pending article(s)."
     assert payloads[0]["embeds"][0]["title"] == "Second article"
@@ -812,9 +891,7 @@ def test_execute_due_continues_after_one_site_fails(client, monkeypatch, caplog)
         NewsSiteService().execute_due()
 
     assert len(payloads) == 1
-    healthy_articles = client.get(
-        f"/news-sites/{healthy_site['id']}/articles"
-    ).json()
+    healthy_articles = client.get(f"/news-sites/{healthy_site['id']}/articles").json()
     assert healthy_articles["total"] == 2
     broken_articles = client.get(f"/news-sites/{broken_site['id']}/articles").json()
     assert broken_articles["total"] == 0

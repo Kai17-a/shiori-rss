@@ -22,11 +22,21 @@
                 variant="soft"
                 :loading="executingAll"
                 loading-icon="i-lucide-loader-circle"
-                :disabled="executingAll || executingFeedId !== null || feedList.total === 0"
+                :disabled="executingAll || executingFeedId !== null || !hasRegisteredFeeds"
                 @click="executeAllFeeds"
               />
               <UButton label="Add feed" icon="i-lucide-plus" @click="openCreateModal" />
             </div>
+          </div>
+
+          <div class="border-b border-default pb-5">
+            <UInput
+              v-model="search"
+              icon="i-lucide-search"
+              placeholder="Search feed names or URLs"
+              aria-label="Search RSS feeds"
+              class="w-full"
+            />
           </div>
 
           <div
@@ -62,9 +72,9 @@
               <span class="mx-auto grid size-12 place-items-center rounded-2xl bg-primary/10 text-primary">
                 <UIcon :name="loading ? 'i-lucide-loader-circle' : 'i-lucide-radio-tower'" class="size-6" :class="{ 'animate-spin': loading }" />
               </span>
-              <p class="font-semibold text-default">{{ loading ? 'Tuning in…' : loadError ? 'Could not load feeds' : 'Your feed library is empty' }}</p>
-              <p class="text-sm text-muted">{{ loadError || 'Add an RSS or Atom URL to start following the web.' }}</p>
-              <UButton v-if="!loading && !loadError" label="Add your first feed" icon="i-lucide-plus" @click="openCreateModal" />
+              <p class="font-semibold text-default">{{ loading ? 'Tuning in…' : loadError ? 'Could not load feeds' : search.trim() ? 'No RSS feeds found' : 'Your feed library is empty' }}</p>
+              <p class="text-sm text-muted">{{ loadError || (search.trim() ? 'Try a different feed name or URL.' : 'Add an RSS or Atom URL to start following the web.') }}</p>
+              <UButton v-if="!loading && !loadError && !search.trim()" label="Add your first feed" icon="i-lucide-plus" @click="openCreateModal" />
             </div>
           </div>
         </UPageCard>
@@ -120,6 +130,8 @@ const executingFeedId = ref<number | null>(null);
 const executingAll = ref(false);
 const updatingNotificationFeedId = ref<number | null>(null);
 const loadError = ref("");
+const search = ref("");
+const registeredFeedCount = ref(0);
 const modalOpen = ref(false);
 const deleteOpen = ref(false);
 const pendingFeed = ref<RSSFeedResponse | null>(null);
@@ -145,6 +157,7 @@ const feedForm = reactive({
 });
 
 const pageCount = computed(() => Math.max(feedList.value.total_pages, 1));
+const hasRegisteredFeeds = computed(() => registeredFeedCount.value > 0);
 
 const openCreateModal = () => {
   feedForm.id = "";
@@ -191,14 +204,21 @@ const loadWebhooks = async () => {
 };
 
 type LoadToastKind = "loaded" | "refreshed";
+let latestRequestId = 0;
 
 const loadFeeds = async (showToast = false, toastKind: LoadToastKind = "loaded") => {
+  const requestId = ++latestRequestId;
   loading.value = true;
   loadError.value = "";
   try {
-    const response = await request<RSSFeedListResponse>(`/rss-feeds?page=${page.value}`);
+    const params = new URLSearchParams({ page: String(page.value), per_page: "20" });
+    const query = search.value.trim();
+    if (query) params.set("q", query);
+    const response = await request<RSSFeedListResponse>(`/rss-feeds?${params.toString()}`);
+    if (requestId !== latestRequestId) return;
     feedList.value = response;
     page.value = response.page;
+    if (!query) registeredFeedCount.value = response.total;
     if (showToast) {
       toast.show({
         title: toastKind === "loaded" ? "RSS feeds loaded." : "RSS feeds refreshed.",
@@ -207,6 +227,7 @@ const loadFeeds = async (showToast = false, toastKind: LoadToastKind = "loaded")
       });
     }
   } catch (err) {
+    if (requestId !== latestRequestId) return;
     loadError.value = err instanceof Error ? err.message : "Failed to load RSS feeds.";
     toast.show({
       title: "Failed to load RSS feeds.",
@@ -215,7 +236,7 @@ const loadFeeds = async (showToast = false, toastKind: LoadToastKind = "loaded")
       icon: "i-lucide-circle-alert",
     });
   } finally {
-    loading.value = false;
+    if (requestId === latestRequestId) loading.value = false;
   }
 };
 
@@ -227,6 +248,16 @@ const setPage = async (nextPage: number) => {
   page.value = Math.min(Math.max(nextPage, 1), pageCount.value);
   await loadFeeds();
 };
+
+let searchDebounceTimer: ReturnType<typeof setTimeout> | undefined;
+
+watch(search, () => {
+  clearTimeout(searchDebounceTimer);
+  searchDebounceTimer = setTimeout(() => {
+    page.value = 1;
+    void loadFeeds();
+  }, 350);
+});
 
 const saveFeed = async () => {
   const url = feedForm.url.trim();

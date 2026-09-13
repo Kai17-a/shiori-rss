@@ -17,6 +17,16 @@
       </div>
     </div>
 
+    <div class="border-b border-default pb-5">
+      <UInput
+        v-model="search"
+        icon="i-lucide-search"
+        placeholder="Search source names or URLs"
+        aria-label="Search custom RSS"
+        class="w-full"
+      />
+    </div>
+
     <div
       class="flex flex-col gap-3 border-b border-default pb-4 md:flex-row md:items-center md:justify-between"
     >
@@ -44,10 +54,10 @@
       class="rounded-3xl border border-dashed border-default bg-elevated/20 p-8 text-center"
     >
       <p class="font-semibold text-default">
-        {{ loading ? "Loading custom RSS…" : "No custom RSS sources yet" }}
+        {{ loading ? "Loading custom RSS…" : search.trim() ? "No custom RSS sources found" : "No custom RSS sources yet" }}
       </p>
       <p class="mt-2 text-sm text-muted">
-        Register a page URL and the LLM will identify its article selectors.
+        {{ search.trim() ? "Try a different source name or URL." : "Register a page URL and the LLM will identify its article selectors." }}
       </p>
     </div>
 
@@ -95,6 +105,7 @@ const updatingNotificationId = ref<number | null>(null);
 const modalOpen = ref(false);
 const deleteOpen = ref(false);
 const saveError = ref("");
+const search = ref("");
 const pendingSite = ref<NewsSiteResponse | null>(null);
 const page = ref(1);
 const sites = ref<NewsSiteListResponse>({
@@ -105,6 +116,7 @@ const sites = ref<NewsSiteListResponse>({
   total_pages: 0,
 });
 const pageCount = computed(() => Math.max(sites.value.total_pages, 1));
+let latestRequestId = 0;
 const form = reactive({
   id: "",
   title: "",
@@ -177,14 +189,21 @@ const openEdit = (site: NewsSiteResponse) => {
 };
 
 const loadSites = async (showToast = false) => {
+  const requestId = ++latestRequestId;
   loading.value = true;
   try {
-    sites.value = await request<NewsSiteListResponse>(`/news-sites?page=${page.value}`);
-    page.value = sites.value.page;
+    const params = new URLSearchParams({ page: String(page.value), per_page: "20" });
+    const query = search.value.trim();
+    if (query) params.set("q", query);
+    const result = await request<NewsSiteListResponse>(`/news-sites?${params.toString()}`);
+    if (requestId !== latestRequestId) return;
+    sites.value = result;
+    page.value = result.page;
     if (showToast) {
       toast.show({ title: "Custom RSS refreshed.", color: "success", icon: "i-lucide-check" });
     }
   } catch (error) {
+    if (requestId !== latestRequestId) return;
     toast.show({
       title: "Failed to load custom RSS.",
       description: error instanceof Error ? error.message : undefined,
@@ -192,7 +211,7 @@ const loadSites = async (showToast = false) => {
       icon: "i-lucide-circle-alert",
     });
   } finally {
-    loading.value = false;
+    if (requestId === latestRequestId) loading.value = false;
   }
 };
 
@@ -200,6 +219,16 @@ const setPage = async (nextPage: number) => {
   page.value = Math.min(Math.max(nextPage, 1), pageCount.value);
   await loadSites();
 };
+
+let searchDebounceTimer: ReturnType<typeof setTimeout> | undefined;
+
+watch(search, () => {
+  clearTimeout(searchDebounceTimer);
+  searchDebounceTimer = setTimeout(() => {
+    page.value = 1;
+    void loadSites();
+  }, 350);
+});
 
 const saveSite = async () => {
   if (!form.url.trim()) {

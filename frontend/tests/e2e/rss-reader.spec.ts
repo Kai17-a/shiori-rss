@@ -360,51 +360,14 @@ test("opens the Ask AI chat modal from the floating launcher", async ({ page }) 
   await expect(page.getByRole("dialog", { name: "Ask AI" })).toBeHidden();
 });
 
-test("lists custom RSS sources in the sidebar", async ({ page }) => {
-  await page.route("**/news-sites?per_page=100", async (route) => {
-    await route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({
-        items: [{
-          id: 7,
-          title: "LLM Daily",
-          url: "https://example.com/news",
-          description: null,
-          notify_webhook_enabled: true,
-          webhook_ids: [],
-          created_at: "2026-08-08T00:00:00Z",
-          updated_at: "2026-08-08T00:00:00Z",
-        }],
-        total: 1,
-        page: 1,
-        per_page: 100,
-        total_pages: 1,
-      }),
-    });
-  });
-
+test("navigates directly from feed links in the sidebar", async ({ page }) => {
   await page.goto("/");
 
-  // Clicking the "Custom RSS" trigger only expands its children — it must
-  // not navigate away from the current page.
-  await page.getByRole("button", { name: "Custom RSS", exact: true }).click();
-  await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole("link", { name: "LLM Daily" })).toHaveAttribute(
-    "href",
-    "/custom-feeds/7",
-  );
+  await page.getByRole("link", { name: "RSS feeds", exact: true }).click();
+  await expect(page).toHaveURL(/\/feeds$/);
 
-  // The "All" child link is what actually navigates to the library.
-  await page.getByRole("link", { name: "All", exact: true }).click();
+  await page.getByRole("link", { name: "Custom RSS", exact: true }).click();
   await expect(page).toHaveURL(/\/custom-feeds$/);
-
-  await page.getByRole("button", { name: "Custom RSS", exact: true }).click();
-  await expect(page.getByRole("link", { name: "LLM Daily" })).toBeHidden();
-
-  await page.goto("/custom-feeds/7");
-  await expect(page.getByRole("link", { name: "LLM Daily" })).toBeVisible();
-  await page.getByRole("button", { name: "Custom RSS", exact: true }).click();
-  await expect(page.getByRole("link", { name: "LLM Daily" })).toBeHidden();
 });
 
 test("scrolls the custom RSS editor when it exceeds the viewport", async ({ page }) => {
