@@ -2,17 +2,24 @@
   <div class="flex h-full flex-col gap-4">
     <UNavigationMenu
       :collapsed="collapsed"
-      :items="primaryLinks"
+      :items="browsingLinks"
       orientation="vertical"
       tooltip
-      popover
+      aria-label="Browse"
     />
     <UNavigationMenu
       :collapsed="collapsed"
-      :items="secondaryLinks"
+      :items="sourceLinks"
       orientation="vertical"
       tooltip
-      class="mt-auto"
+      aria-label="Sources"
+    />
+    <UNavigationMenu
+      :collapsed="collapsed"
+      :items="managementLinks"
+      orientation="vertical"
+      tooltip
+      aria-label="Manage"
     />
   </div>
 </template>
@@ -22,7 +29,8 @@ import type { NavigationMenuItem } from "@nuxt/ui";
 
 defineProps<{
   collapsed: boolean;
-  primaryLinks: NavigationMenuItem[];
-  secondaryLinks: NavigationMenuItem[];
+  browsingLinks: NavigationMenuItem[];
+  sourceLinks: NavigationMenuItem[];
+  managementLinks: NavigationMenuItem[];
 }>();
 </script>

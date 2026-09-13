@@ -11,7 +11,7 @@ Nuxt 4 SPA は RSS 専用 UI を提供する。
 - `/custom-feeds` はサイト名・URL検索と、AI解析または手動CSSセレクタ設定で作るカスタムRSSの一覧、作成・更新・削除、手動取得を提供する。検索入力は350msのデバウンス後に一覧を再取得し、検索変更時は1ページ目へ戻る。作成・編集モーダルはAI setupとManual setupをタブで切り替え、手動設定では記事要素、タイトル、リンク、任意の概要・公開日時のセレクタと属性を入力し、LLMを呼ばずにライブ抽出テストして保存する。カスタムRSSは定期巡回の対象外で、取得は画面から手動で行う。モーダルは画面高を超える場合にフォーム領域を縦スクロールでき、入力項目、解析・抽出エラー、操作ボタンを確認できる。
 - `/custom-feeds/{id}` はカスタムRSSの詳細と抽出済み記事を提供し、通常RSS詳細と同じリスト型レイアウト、タイトル・公開日の検索、番号付きページネーション、記事サマリーの160文字・最大3行表示を使用する。
 - 通常RSSとカスタムRSSの詳細画面は、最大横幅、中央寄せ、ヘッダーカード、検索、記事一覧、公開日時、通知状態、ページネーションを共通コンポーネントで統一して描画する。
-- サイドメニューは Home、IT trends、通常RSS、カスタムRSS、GitHub、AI analysis data、Preferencesで構成し、各項目から対応する一覧ルートへ直接遷移する。
+- サイドメニューは `Browse`（Home、IT trends、Articles）、`Sources`（RSS feeds、Custom RSS、GitHub、Docker images）、`Manage`（AI analysis data、Preferences）の3グループで構成し、各項目から対応する一覧ルートへ直接遷移する。`Manage` グループだけをサイドバー下部に固定し、折りたたみ時は各項目のツールチップを表示する。
 - `/github` はRSSとは独立したGitHubリポジトリ管理画面であり、リポジトリURLの登録・削除・一括更新、リポジトリごとの通知先Webhook複数選択と、各リポジトリの最新公開リリース1件の名前、タグ、公開日時、概要、リンクを表示する。通知先未選択時は通知しない。
 - `/docker-images` は公開Dockerイメージ参照の登録・削除・一括更新、イメージごとの通知先Webhook複数選択を提供し、registry、repository、tag、短縮した現在digest、最終取得日時を表示する。通知先未選択時は通知しない。
 - `/settings` は General、Automation、Webhooks、LLM のカテゴリタブを持ち、テーマ、通常RSSの定期取得、定期実行時の全体通知、Webhook、LLM接続設定を提供する。Webhooksタブでは1回のフィード実行で通知する最新記事数を1〜100件で設定でき、既定値は20件とする。同じバックログ内の古い記事は後続実行で通知しない。Automationの設定は手動取得を抑止しない。LLMタブではデフォルトOFFのAI記事解析バッチ、1回の記事数、日次トークン上限、対象期間を設定でき、記事情報の送信とトークン消費に関する注意を表示する。
@@ -22,7 +22,7 @@ Nuxt 4 SPA は RSS 専用 UI を提供する。
 - Home、Custom RSS、GitHubの一覧は375px幅でも横スクロールを発生させず、長い記事名・URL・リポジトリ名・リリース本文をカード内で折り返す。一覧の縦スクロールは維持する。
 - 非同期処理を実行する `UButton` は `loading-icon="i-lucide-loader-circle"` を明示し、処理中アイコンを画面間で統一する。アイコン操作と更新操作は既存の共通ボタンを使用する。
 - E2Eヘルパーは実行ごとに空きポートと一時SQLite DBを確保し、並行・残留プロセスとの競合を避ける。明示した `FRONTEND_PORT`、`API_PORT`、`DATABASE_URL` はそのまま使用する。
-- サイドバーには Home、IT trends、RSS feeds、Custom RSS、GitHub、AI analysis data、Preferencesを表示する。
+- サイドバーには `Browse`、`Sources`、`Manage` の見出しと、各グループに属する Home、IT trends、Articles、RSS feeds、Custom RSS、GitHub、Docker images、AI analysis data、Preferencesを表示する。
 - 旧 `/rss` と `/rss/{id}` ルートは提供しない。
 - API 呼び出しは `useApi` と `/api` reverse proxy を通す。
 - 保存、削除、取得、再読込、通知切替などの非同期ボタンは、処理中にNuxt UIの `loading` 状態とLucideの `loader-circle` アイコンを表示して再実行を防ぐ。

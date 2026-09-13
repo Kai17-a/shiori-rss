@@ -37,7 +37,7 @@
 ## UI
 
 1. `/` はリダイレクトせず、通常フィード数、カスタムRSS数、直近24時間の記事数、Webhook未通知数のサマリーと、アクセス時点から24時間以内の記事を表示する。
-2. ナビゲーションは Home、RSS feeds、Custom RSS、GitHub、AI analysis data、Preferencesを表示し、各項目から対応する一覧ルートへ直接遷移する。
+2. ナビゲーションは `Browse`（Home、IT trends、Articles）、`Sources`（RSS feeds、Custom RSS、GitHub、Docker images）、`Manage`（AI analysis data、Preferences）の3グループをこの順で表示し、各項目から対応する一覧ルートへ直接遷移する。`Manage` だけをサイドバー下部に固定し、折りたたみ時もツールチップから項目名を確認できる。
 3. `/feeds` でサイト名またはURLによる検索、通常フィードの CRUD と手動取得を操作できる。
 4. `/custom-feeds` でサイト名またはURLによる検索、カスタムRSSの CRUD と手動取得を操作できる。
 5. `/feeds/{id}` でフィード情報と保存済み記事を閲覧・検索できる。

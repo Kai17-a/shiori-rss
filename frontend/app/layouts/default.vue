@@ -23,8 +23,9 @@
       <template #default="{ collapsed }">
         <SidebarNav
           :collapsed="collapsed"
-          :primary-links="primaryLinks"
-          :secondary-links="secondaryLinks"
+          :browsing-links="browsingLinks"
+          :source-links="sourceLinks"
+          :management-links="managementLinks"
           @navigate="closeSidebar"
         />
       </template>
@@ -100,9 +101,14 @@ const retryApiConnection = async () => {
 const isActive = (path: string) => route.path === path;
 const isActivePrefix = (path: string) => route.path === path || route.path.startsWith(`${path}/`);
 
-const primaryLinks = computed<NavigationMenuItem[]>(() => [
+const browsingLinks = computed<NavigationMenuItem[]>(() => [
+  {
+    type: "label",
+    label: "Browse",
+  },
   {
     label: "Home",
+    "aria-label": "Home",
     icon: "i-lucide-house",
     to: "/",
     active: isActive("/"),
@@ -110,6 +116,7 @@ const primaryLinks = computed<NavigationMenuItem[]>(() => [
   },
   {
     label: "IT trends",
+    "aria-label": "IT trends",
     icon: "i-lucide-flame",
     to: "/trends",
     active: isActive("/trends"),
@@ -117,13 +124,22 @@ const primaryLinks = computed<NavigationMenuItem[]>(() => [
   },
   {
     label: "Articles",
+    "aria-label": "Articles",
     icon: "i-lucide-library-big",
     to: "/articles",
     active: isActive("/articles"),
     onSelect: closeSidebar,
   },
+]);
+
+const sourceLinks = computed<NavigationMenuItem[]>(() => [
+  {
+    type: "label",
+    label: "Sources",
+  },
   {
     label: "RSS feeds",
+    "aria-label": "RSS feeds",
     icon: "i-lucide-rss",
     to: "/feeds",
     active: isActivePrefix("/feeds"),
@@ -131,30 +147,38 @@ const primaryLinks = computed<NavigationMenuItem[]>(() => [
   },
   {
     label: "Custom RSS",
+    "aria-label": "Custom RSS",
     icon: "i-lucide-wand-sparkles",
     to: "/custom-feeds",
     active: isActivePrefix("/custom-feeds"),
     onSelect: closeSidebar,
   },
-]);
-
-const secondaryLinks = computed<NavigationMenuItem[]>(() => [
-  {
-    label: "Docker images",
-    icon: "i-lucide-container",
-    to: "/docker-images",
-    active: isActive("/docker-images"),
-    onSelect: closeSidebar,
-  },
   {
     label: "GitHub",
+    "aria-label": "GitHub",
     icon: "i-lucide-github",
     to: "/github",
     active: isActive("/github"),
     onSelect: closeSidebar,
   },
   {
+    label: "Docker images",
+    "aria-label": "Docker images",
+    icon: "i-lucide-container",
+    to: "/docker-images",
+    active: isActive("/docker-images"),
+    onSelect: closeSidebar,
+  },
+]);
+
+const managementLinks = computed<NavigationMenuItem[]>(() => [
+  {
+    type: "label",
+    label: "Manage",
+  },
+  {
     label: "AI analysis data",
+    "aria-label": "AI analysis data",
     icon: "i-lucide-database",
     to: "/ai-data",
     active: isActive("/ai-data"),
@@ -162,6 +186,7 @@ const secondaryLinks = computed<NavigationMenuItem[]>(() => [
   },
   {
     label: "Preferences",
+    "aria-label": "Preferences",
     icon: "i-lucide-sliders-horizontal",
     to: "/settings",
     active: isActive("/settings"),

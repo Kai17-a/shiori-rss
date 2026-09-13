@@ -13,6 +13,45 @@ test("opens the rolling 24-hour news summary as the app home", async ({ page }) 
   await expect(page.getByRole("link", { name: "Bookmarks" })).toHaveCount(0);
 });
 
+test("groups sidebar navigation and keeps collapsed links working", async ({ page }) => {
+  await page.goto("/");
+
+  const expectedGroups = [
+    { name: "Browse", links: ["Home", "IT trends", "Articles"] },
+    { name: "Sources", links: ["RSS feeds", "Custom RSS", "GitHub", "Docker images"] },
+    { name: "Manage", links: ["AI analysis data", "Preferences"] },
+  ];
+  const navigationMenus = page.getByRole("navigation");
+
+  await expect(navigationMenus).toHaveCount(3);
+  for (const [index, group] of expectedGroups.entries()) {
+    const menu = navigationMenus.nth(index);
+    await expect(menu).toHaveAttribute("aria-label", group.name);
+    await expect(menu.getByText(group.name, { exact: true })).toBeVisible();
+    await expect(menu.getByRole("link")).toHaveText(group.links);
+  }
+
+  const sourcesMenu = page.getByRole("navigation", { name: "Sources" });
+  const manageMenu = page.getByRole("navigation", { name: "Manage" });
+  const sourcesBox = await sourcesMenu.boundingBox();
+  const manageBox = await manageMenu.boundingBox();
+  expect(sourcesBox).not.toBeNull();
+  expect(manageBox).not.toBeNull();
+  expect(manageBox!.y).toBeGreaterThan(sourcesBox!.y + sourcesBox!.height);
+
+  await page.getByRole("button", { name: "Collapse sidebar" }).click();
+  for (const group of expectedGroups) {
+    const menu = page.getByRole("navigation", { name: group.name });
+    for (const link of group.links) {
+      await expect(menu.getByRole("link", { name: link, exact: true })).toBeVisible();
+    }
+  }
+
+  const dockerImagesLink = sourcesMenu.getByRole("link", { name: "Docker images", exact: true });
+  await dockerImagesLink.click();
+  await expect(page).toHaveURL(/\/docker-images$/);
+});
+
 test("shows live global IT trends on mobile", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await page.route("**/api/it-trends", async (route) => {
