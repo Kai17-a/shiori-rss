@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 chrono = { version = "0.4.44", default-features = false }
 feed-rs = "2.4.0"
-quick-xml = "0.41.0"
+quick-xml = "0.42.0"
 rusqlite = { version = "0.40.1", features = ["bundled"] }
 sqlite-vec = "0.1.9"
 reqwest = { version = "0.13", features = ["json"] }
