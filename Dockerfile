@@ -44,7 +44,7 @@ RUN --mount=type=cache,id=cargo-registry-${TARGETPLATFORM},target=/usr/local/car
 # embedding feature but never copied into the old requirements.txt by hand,
 # so a shipped image crashed at runtime with `ModuleNotFoundError:
 # No module named 'sqlite_vec'` the first time that code path ran.
-FROM python:3.14-slim AS api-deps
+FROM python:3.15-slim AS api-deps
 
 WORKDIR /app/api
 
@@ -55,7 +55,7 @@ RUN uv export --no-dev --no-emit-project --no-hashes --format requirements.txt \
     -o requirements.txt
 
 # Runtime stage
-FROM python:3.14-slim
+FROM python:3.15-slim
 
 ARG TARGETARCH
 
